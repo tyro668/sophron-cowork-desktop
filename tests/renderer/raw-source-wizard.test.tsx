@@ -100,6 +100,37 @@ describe('RawSourceWizard', () => {
     expect(p.onOpenData).toHaveBeenCalledWith('t1');
   });
 
+  it('config page follows the grouped layout: select-all, counts, merge reason, tabs', async () => {
+    client.scanRawSource.mockResolvedValue(excelScan);
+    render(<RawSourceWizard {...props()} />);
+    await scanPath('/d/销售.xlsx');
+    fireEvent.click(screen.getByTestId('raw-source-mode-excel_per_sheet'));
+    fireEvent.click(screen.getByTestId('raw-source-next'));
+    expect(screen.getByTestId('raw-source-source-group').textContent).toContain('/d/销售.xlsx');
+    expect(screen.getByTestId('raw-source-create').textContent).toContain('3');
+    const count = () => screen.getByTestId('raw-source-selected-count').textContent;
+    expect(count()).toMatch(/3\s*\/\s*3/);
+    // Different structures: merge is disabled and the reason lives in the ⓘ tooltip.
+    expect((screen.getByTestId('raw-source-merge-sheets') as HTMLButtonElement).disabled).toBe(
+      true
+    );
+    expect(screen.getByTestId('raw-source-merge-reason')).toBeTruthy();
+    const all = screen.getByTestId('raw-source-sheet-all') as HTMLInputElement;
+    expect(all.checked).toBe(true);
+    fireEvent.click(all);
+    expect(count()).toMatch(/0\s*\/\s*3/);
+    fireEvent.click(all);
+    expect(count()).toMatch(/3\s*\/\s*3/);
+    // Data / Automation tabs are disabled before creation; no footer note.
+    const tabs = screen.getByTestId('raw-source-config-tabs').querySelectorAll('[role=tab]');
+    expect(Array.from(tabs).map((tab) => (tab as HTMLButtonElement).disabled)).toEqual([
+      false,
+      true,
+      true,
+    ]);
+    expect(screen.queryByText(/将创建/)).toBeNull();
+  });
+
   it('merges same-structure sheets only when the toggle is on', async () => {
     client.scanRawSource.mockResolvedValue(excelScan);
     client.createRawSource.mockResolvedValue({

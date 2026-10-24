@@ -13,9 +13,11 @@ import {
   CloudDownload,
   FileSpreadsheet,
   Folder,
+  Info,
   Layers,
   Minus,
   Plus,
+  RefreshCw,
   Table2,
 } from 'lucide-react';
 import type {
@@ -32,6 +34,13 @@ import type {
 import { dataClient } from '../../features/data/api/data-client';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RebuildConfirmDialog } from './raw-source-rebuild-dialog';
+import {
+  bottomTabBarClass,
+  bottomTabListClass,
+  bottomTabTriggerClass,
+  DataMoreMenu,
+  RawTableStatusBadge,
+} from './shared';
 
 type Step = 1 | 2 | 3 | 4;
 type FileRange = 'excel_csv' | 'excel' | 'csv';
@@ -61,8 +70,6 @@ const footerClass =
   'flex h-[3.25rem] flex-shrink-0 items-center gap-3 border-t border-border-subtle bg-surface px-4';
 const primaryButton =
   'inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50';
-const dangerButton =
-  'inline-flex h-8 items-center gap-1.5 rounded-md bg-error px-3 text-[13px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50';
 const secondaryButton =
   'inline-flex h-8 items-center gap-1.5 rounded-md border border-border-subtle bg-surface px-3 text-[13px] text-text-primary hover:bg-surface-hover disabled:opacity-50';
 
@@ -84,6 +91,7 @@ export function RawSourceWizard({
   const [path, setPath] = useState(rebuild?.source.sourcePath ?? '');
   const [pathInput, setPathInput] = useState('');
   const [scan, setScan] = useState<DataRawSourceScan | null>(null);
+  const [scannedAt, setScannedAt] = useState<number | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<DataRawSourceBuildMode | null>(rebuild?.buildMode ?? null);
@@ -123,6 +131,7 @@ export function RawSourceWizard({
           fileRange,
         });
         setScan(next);
+        setScannedAt(Date.now());
         setPath(next.sourcePath);
         if (!opts?.keepStep) {
           const dataSheets = next.sheets.filter((sheet) => !sheet.empty);
@@ -348,39 +357,67 @@ export function RawSourceWizard({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="raw-source-wizard">
-      <div className="flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-subtle px-4">
-        <button type="button" className={secondaryButton} onClick={onBack}>
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {tr('back')}
-        </button>
-        <span className="text-[14px] font-medium text-text-primary">
-          {rebuild ? rebuild.source.name : tr('newTitle')}
-        </span>
-        <div className="ml-auto flex items-center gap-2 text-[12.5px]">
-          {stepLabels.map((label, index) => {
-            const n = (index + 1) as Step;
-            const state = n < step ? 'done' : n === step ? 'current' : 'todo';
-            return (
-              <span key={label} className="flex items-center gap-1.5">
-                {index > 0 && <span className="h-px w-5 bg-border-subtle" />}
-                <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
-                    state === 'todo'
-                      ? 'border border-border-subtle text-text-muted'
-                      : 'bg-accent text-accent-foreground'
-                  }`}
-                >
-                  {state === 'done' ? <Check className="h-3 w-3" /> : n}
+      {step === 3 && scan ? (
+        <ConfigTitleBar
+          tr={tr}
+          name={sourceName}
+          createLabel={createLabel}
+          canCreate={canCreate}
+          danger={!!rebuild}
+          onBack={
+            rebuild
+              ? onBack
+              : () =>
+                  setStep(
+                    scan.kind === 'csv'
+                      ? 1
+                      : scan.kind === 'folder' || scan.sheets.length > 1
+                        ? 2
+                        : 1
+                  )
+          }
+          onCreate={() => void create()}
+          onRechooseMode={
+            !rebuild && scan.kind !== 'csv' && (scan.kind === 'folder' || scan.sheets.length > 1)
+              ? () => setStep(2)
+              : undefined
+          }
+        />
+      ) : (
+        <div className="flex h-11 flex-shrink-0 items-center gap-3 border-b border-border-subtle px-4">
+          <button type="button" className={secondaryButton} onClick={onBack}>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {tr('back')}
+          </button>
+          <span className="text-[14px] font-medium text-text-primary">
+            {rebuild ? rebuild.source.name : tr('newTitle')}
+          </span>
+          <div className="ml-auto flex items-center gap-2 text-[12.5px]">
+            {stepLabels.map((label, index) => {
+              const n = (index + 1) as Step;
+              const state = n < step ? 'done' : n === step ? 'current' : 'todo';
+              return (
+                <span key={label} className="flex items-center gap-1.5">
+                  {index > 0 && <span className="h-px w-5 bg-border-subtle" />}
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${
+                      state === 'todo'
+                        ? 'border border-border-subtle text-text-muted'
+                        : 'bg-accent text-accent-foreground'
+                    }`}
+                  >
+                    {state === 'done' ? <Check className="h-3 w-3" /> : n}
+                  </span>
+                  <span className={state === 'current' ? 'text-text-primary' : 'text-text-muted'}>
+                    {label}
+                  </span>
                 </span>
-                <span className={state === 'current' ? 'text-text-primary' : 'text-text-muted'}>
-                  {label}
-                </span>
-              </span>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
-      {error && (
+      )}
+      {error && step !== 3 && (
         <div
           className="mx-4 mt-3 rounded-md bg-error/[0.08] px-3 py-2 text-[12.5px] text-error"
           data-testid="raw-source-error"
@@ -493,44 +530,67 @@ export function RawSourceWizard({
         </div>
       )}
       {step === 3 && scan && (
-        <div className={panelClass}>
-          <div className="mx-auto w-full max-w-4xl px-6 py-5">
-            <SourceSummary scan={scan} tr={tr} onChange={rebuild ? undefined : () => setStep(1)} />
-            {scan.kind === 'csv' && (
-              <div className="mt-4">
-                <div className="text-[12.5px] text-text-muted">{tr('csv.hint')}</div>
-                <NameField
-                  label={tr('excel.tableName')}
-                  value={names.__single ?? fileStem}
-                  onChange={(value) => setNames({ ...names, __single: value })}
-                />
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-auto bg-surface p-2"
+          data-testid="raw-source-config"
+        >
+          {error && (
+            <div
+              className="mb-2 rounded-md bg-error/[0.08] px-3 py-2 text-[12.5px] text-error"
+              data-testid="raw-source-error"
+            >
+              {error}
+            </div>
+          )}
+          <SourceGroup
+            tr={tr}
+            scan={scan}
+            scannedAt={scannedAt}
+            onChange={rebuild ? undefined : () => setStep(1)}
+          />
+          {scan.kind === 'csv' && (
+            <section className={groupClass}>
+              <div className="ui-group-title">{tr('config.tableGroup')}</div>
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">{tr('excel.tableName')}</div>
+                <div className="ui-form-value">
+                  <input
+                    value={names.__single ?? fileStem}
+                    onChange={(event) => setNames({ ...names, __single: event.target.value })}
+                    className={cellInputClass}
+                    data-testid="raw-source-table-name"
+                  />
+                </div>
               </div>
-            )}
-            {scan.kind === 'excel' && (
-              <SheetConfigurator
-                tr={tr}
-                scan={scan}
-                multi={effectiveMode !== 'excel_single'}
-                singleSheet={singleSheet}
-                setSingleSheet={setSingleSheet}
-                checked={checkedSheets}
-                setChecked={setChecked}
-                names={names}
-                setNames={setNames}
-                headerRows={headerRows}
-                setHeaderRows={setHeaderRows}
-                fileStem={fileStem}
-                mergeSheets={mergeSheets}
-                setMergeSheets={setMergeSheets}
-                mergeable={mergeable}
-                mergedName={mergedName}
-                setMergedName={setMergedName}
-                autoInclude={autoInclude}
-                setAutoInclude={setAutoInclude}
-              />
-            )}
-            {scan.kind === 'folder' && (
-              <div className="mt-4 flex flex-col gap-3">
+            </section>
+          )}
+          {scan.kind === 'excel' && (
+            <SheetConfigurator
+              tr={tr}
+              scan={scan}
+              multi={effectiveMode !== 'excel_single'}
+              singleSheet={singleSheet}
+              setSingleSheet={setSingleSheet}
+              checked={checkedSheets}
+              setChecked={setChecked}
+              names={names}
+              setNames={setNames}
+              headerRows={headerRows}
+              setHeaderRows={setHeaderRows}
+              fileStem={fileStem}
+              mergeSheets={mergeSheets}
+              setMergeSheets={setMergeSheets}
+              mergeable={mergeable}
+              mergedName={mergedName}
+              setMergedName={setMergedName}
+              autoInclude={autoInclude}
+              setAutoInclude={setAutoInclude}
+            />
+          )}
+          {scan.kind === 'folder' && (
+            <section className={groupClass}>
+              <div className="ui-group-title">{tr('config.importGroup')}</div>
+              <div className="flex flex-col gap-3 p-2">
                 <SheetStrategyRow
                   tr={tr}
                   files={files}
@@ -585,13 +645,11 @@ export function RawSourceWizard({
                   />
                 )}
               </div>
-            )}
-            <div className="mt-4 text-[12.5px] text-text-muted">
-              {willCreate > 1 ? tr('excel.afterCreateHintMany') : tr('excel.afterCreateHint')}
-            </div>
-          </div>
+            </section>
+          )}
         </div>
       )}
+      {step === 3 && scan && <ConfigTabBar tr={tr} />}
       {step === 4 && result && (
         <DoneStep
           tr={tr}
@@ -601,54 +659,25 @@ export function RawSourceWizard({
           onCreatePipeline={onCreatePipeline}
         />
       )}
-      {(step === 2 || step === 3) && (
+      {step === 2 && (
         <div className={footerClass}>
-          {step === 3 && (
-            <span className="text-[12.5px] text-text-muted">
-              {tr('excel.willCreate', { count: willCreate })}
-            </span>
-          )}
           <span className="ml-auto" />
           {!rebuild && (
-            <button
-              type="button"
-              className={secondaryButton}
-              onClick={() =>
-                setStep(
-                  step === 3 &&
-                    scan?.kind !== 'csv' &&
-                    (scan?.kind === 'folder' || (scan?.sheets.length ?? 0) > 1)
-                    ? 2
-                    : 1
-                )
-              }
-            >
+            <button type="button" className={secondaryButton} onClick={() => setStep(1)}>
               <ArrowLeft className="h-3.5 w-3.5" />
               {tr('back')}
             </button>
           )}
-          {step === 2 ? (
-            <button
-              type="button"
-              className={primaryButton}
-              disabled={!mode}
-              onClick={() => setStep(3)}
-              data-testid="raw-source-next"
-            >
-              {tr('steps.configure')}
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={rebuild ? dangerButton : primaryButton}
-              disabled={!canCreate}
-              onClick={() => void create()}
-              data-testid="raw-source-create"
-            >
-              {createLabel}
-            </button>
-          )}
+          <button
+            type="button"
+            className={primaryButton}
+            disabled={!mode}
+            onClick={() => setStep(3)}
+            data-testid="raw-source-next"
+          >
+            {tr('steps.configure')}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
       {rebuild && impact && (
@@ -691,6 +720,431 @@ function SourceCard(props: {
     </button>
   );
 }
+
+/** Config page (design raw_sheetcfg_v1): full-width groups in an 8px-padded content area. */
+const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface';
+/** Borderless control filling its table / form cell; focus draws an inner outline. */
+const cellInputClass =
+  'h-full min-h-[35px] w-full border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)] disabled:text-text-muted';
+const titleCellClass =
+  'inline-flex h-full items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle px-4 text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50';
+
+function ConfigTitleBar(props: {
+  tr: Tr;
+  name: string;
+  createLabel: string;
+  canCreate: boolean;
+  danger: boolean;
+  onBack: () => void;
+  onCreate: () => void;
+  onRechooseMode?: () => void;
+}) {
+  const { tr } = props;
+  return (
+    <div className="flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle">
+      <div className="flex min-w-0 items-stretch">
+        <button
+          type="button"
+          onClick={props.onBack}
+          className="inline-flex w-[104px] flex-shrink-0 items-center justify-center gap-1.5 border-r border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          {tr('back')}
+        </button>
+        <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
+          <RawTableStatusBadge label={tr('config.pending')} tone="warning" />
+          <span
+            className="truncate text-[14px] font-semibold text-text-primary"
+            title={props.name}
+            data-testid="raw-source-config-name"
+          >
+            {props.name}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          disabled={!props.canCreate}
+          onClick={props.onCreate}
+          data-testid="raw-source-create"
+          className={`${titleCellClass} ${props.danger ? 'text-error hover:bg-error/[0.08]' : 'text-accent'}`}
+        >
+          <Check className="h-3.5 w-3.5" />
+          {props.createLabel}
+        </button>
+        <DataMoreMenu
+          items={
+            props.onRechooseMode
+              ? [
+                  {
+                    key: 'mode',
+                    label: tr('config.rechooseMode'),
+                    icon: <Layers className="h-3.5 w-3.5" />,
+                    onClick: props.onRechooseMode,
+                  },
+                ]
+              : []
+          }
+        />
+      </div>
+    </div>
+  );
+}
+
+function ConfigTabBar({ tr }: { tr: Tr }) {
+  const tabs: Array<[string, boolean]> = [
+    [tr('config.tabConfig'), true],
+    [tr('config.tabData'), false],
+    [tr('config.tabAutomation'), false],
+  ];
+  return (
+    <div className={`${bottomTabBarClass} justify-between`} data-testid="raw-source-config-tabs">
+      <div className={bottomTabListClass} role="tablist">
+        {tabs.map(([label, active]) => (
+          <button
+            key={label}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            disabled={!active}
+            data-state={active ? 'active' : 'inactive'}
+            className={`${bottomTabTriggerClass} inline-flex items-center disabled:cursor-not-allowed disabled:opacity-45`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center px-4 text-xs text-text-muted">
+        {tr('config.afterCreate')}
+      </div>
+    </div>
+  );
+}
+
+function formatScanTime(at: number): string {
+  const d = new Date(at);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function SourceGroup({
+  tr,
+  scan,
+  scannedAt,
+  onChange,
+}: {
+  tr: Tr;
+  scan: DataRawSourceScan;
+  scannedAt: number | null;
+  onChange?: () => void;
+}) {
+  const isFolder = scan.kind === 'folder';
+  return (
+    <section className={groupClass} data-testid="raw-source-source-group">
+      <div className="ui-group-title">{tr('config.sourceGroup')}</div>
+      <div className="ui-form-row">
+        <div className="ui-form-label items-center">
+          {isFolder ? tr('config.folder') : tr('config.file')}
+        </div>
+        <div className="ui-form-value !flex-row items-stretch">
+          <div className="flex min-w-0 flex-1 items-center gap-2 px-2.5">
+            {isFolder ? (
+              <Folder className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+            ) : (
+              <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+            )}
+            <span
+              className="truncate font-mono text-[12px] text-text-primary"
+              title={scan.sourcePath}
+            >
+              {scan.sourcePath}
+            </span>
+          </div>
+          {onChange && (
+            <button
+              type="button"
+              onClick={onChange}
+              className="ui-accent-cell w-[112px] flex-shrink-0 border-l border-border-subtle"
+              data-testid="raw-source-change-file"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {isFolder ? tr('config.changeFolder') : tr('config.changeFile')}
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="ui-form-row">
+        <div className="ui-form-label items-center">{tr('config.scanResult')}</div>
+        <div className="ui-form-value">
+          <div className="flex flex-1 items-center gap-1.5 px-2.5 text-[12.5px] text-text-primary">
+            {isFolder
+              ? tr('config.files', { count: scan.files.length })
+              : scan.kind === 'excel'
+                ? tr('config.sheets', { count: scan.sheets.length })
+                : scan.name}
+            {scannedAt !== null && (
+              <span className="text-[12px] text-text-muted">
+                {tr('config.scannedAt', { time: formatScanTime(scannedAt) })}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InfoTip({ label }: { label: string }) {
+  return (
+    <span className="group relative inline-flex" data-testid="raw-source-merge-reason">
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted hover:text-accent focus:outline-none"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      <span className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md bg-[#1f1f2b] px-2.5 py-1.5 text-[12px] text-white shadow-elevated group-hover:block group-focus-within:block">
+        {label}
+      </span>
+    </span>
+  );
+}
+
+function SheetConfigurator(props: {
+  tr: Tr;
+  scan: DataRawSourceScan;
+  multi: boolean;
+  singleSheet: string | null;
+  setSingleSheet: (name: string) => void;
+  checked: string[];
+  setChecked: (names: string[]) => void;
+  names: Record<string, string>;
+  setNames: (names: Record<string, string>) => void;
+  headerRows: Record<string, number | undefined>;
+  setHeaderRows: (rows: Record<string, number | undefined>) => void;
+  fileStem: string;
+  mergeSheets: boolean;
+  setMergeSheets: (on: boolean) => void;
+  mergeable: boolean;
+  mergedName: string;
+  setMergedName: (name: string) => void;
+  autoInclude: boolean;
+  setAutoInclude: (on: boolean) => void;
+}) {
+  const { tr, scan, multi, checked } = props;
+  const toggle = (name: string) =>
+    props.setChecked(
+      checked.includes(name) ? checked.filter((item) => item !== name) : [...checked, name]
+    );
+  const merged = multi && props.mergeSheets && props.mergeable;
+  const selectable = scan.sheets.filter((s) => !s.empty).map((s) => s.name);
+  const allChecked = selectable.length > 0 && selectable.every((name) => checked.includes(name));
+  const mergeReason =
+    checked.length < 2
+      ? tr('excel.mergeNeedTwo')
+      : !props.mergeable
+        ? tr('excel.mergeDisabled')
+        : '';
+  const showName = !merged;
+  return (
+    <>
+      {multi && (
+        <section className={groupClass} data-testid="raw-source-import-group">
+          <div className="ui-group-title">{tr('config.importGroup')}</div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('config.mergeRow')}</div>
+            <div className="ui-form-value">
+              <div className="flex flex-1 items-center gap-2 px-2.5">
+                <Toggle
+                  on={merged}
+                  disabled={!props.mergeable}
+                  onChange={props.setMergeSheets}
+                  label={merged ? tr('config.on') : tr('config.off')}
+                  testId="raw-source-merge-sheets"
+                />
+                {mergeReason ? <InfoTip label={mergeReason} /> : null}
+                {merged && (
+                  <span className="text-[12px] text-text-muted">{tr('excel.mergeOn')}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          {merged ? (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{tr('excel.tableName')}</div>
+              <div className="ui-form-value">
+                <input
+                  value={props.mergedName}
+                  onChange={(event) => props.setMergedName(event.target.value)}
+                  className={cellInputClass}
+                  data-testid="raw-source-merged-name"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="ui-form-row">
+              <div className="ui-form-label items-center">{tr('config.newSheetRow')}</div>
+              <div className="ui-form-value">
+                <div className="flex flex-1 items-center px-2.5">
+                  <Toggle
+                    on={props.autoInclude}
+                    onChange={props.setAutoInclude}
+                    label={tr('excel.autoIncludeSheets')}
+                    testId="raw-source-auto-include"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+      <section className={groupClass} data-testid="raw-source-sheet-list">
+        <div className="ui-group-title gap-2">
+          <span>{tr('config.sheetGroup')}</span>
+          {multi ? (
+            <>
+              <span className="font-normal text-text-muted" data-testid="raw-source-selected-count">
+                {tr('excel.selected', { selected: checked.length, total: scan.sheets.length })}
+              </span>
+              <button
+                type="button"
+                className="ml-auto font-normal text-accent"
+                onClick={() => props.setChecked(selectable)}
+              >
+                {tr('config.selectAll')}
+              </button>
+            </>
+          ) : (
+            <span className="font-normal text-text-muted">{tr('excel.pickOne')}</span>
+          )}
+        </div>
+        <table className="w-full table-fixed border-collapse text-left text-[12.5px]">
+          <colgroup>
+            <col className="w-9" />
+            <col className="w-[28%]" />
+            {showName && <col />}
+            <col className="w-[26%]" />
+            <col className="w-[92px]" />
+          </colgroup>
+          <thead>
+            <tr className="h-8 border-b border-border-subtle bg-surface-muted text-[12px] text-text-secondary">
+              <th className="border-r border-border-subtle text-center">
+                {multi ? (
+                  <input
+                    type="checkbox"
+                    aria-label={tr('config.selectAll')}
+                    checked={allChecked}
+                    onChange={() => props.setChecked(allChecked ? [] : selectable)}
+                    data-testid="raw-source-sheet-all"
+                    className="accent-[var(--color-accent)] align-middle"
+                  />
+                ) : null}
+              </th>
+              <th className="border-r border-border-subtle px-2.5 font-medium">
+                {tr('folder.colSheet')}
+              </th>
+              {showName && (
+                <th className="border-r border-border-subtle px-2.5 font-medium">
+                  {tr('excel.tableName')}
+                </th>
+              )}
+              <th className="border-r border-border-subtle px-2.5 font-medium">
+                {tr('excel.headerRow')}
+              </th>
+              <th className="px-2.5 text-right font-medium">{tr('excel.size')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {scan.sheets.map((sheet) => {
+              const active = multi
+                ? checked.includes(sheet.name)
+                : props.singleSheet === sheet.name;
+              const defaultName = multi ? `${props.fileStem} / ${sheet.name}` : props.fileStem;
+              return (
+                <tr
+                  key={sheet.name}
+                  className={`h-9 border-b border-border-subtle last:border-b-0 ${active ? 'bg-accent/[0.04]' : ''} ${sheet.empty ? 'opacity-50' : ''}`}
+                  data-testid={`raw-source-sheet-row-${sheet.name}`}
+                >
+                  <td className="border-r border-border-subtle text-center">
+                    <input
+                      type={multi ? 'checkbox' : 'radio'}
+                      checked={active}
+                      disabled={sheet.empty}
+                      aria-label={sheet.name}
+                      onChange={() =>
+                        multi ? toggle(sheet.name) : props.setSingleSheet(sheet.name)
+                      }
+                      data-testid={`raw-source-sheet-${sheet.name}`}
+                      className="accent-[var(--color-accent)] align-middle"
+                    />
+                  </td>
+                  <td className="border-r border-border-subtle px-2.5">
+                    <span className="flex min-w-0 items-center gap-1.5 text-text-primary">
+                      <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                      <span className="truncate" title={sheet.name}>
+                        {sheet.name}
+                      </span>
+                    </span>
+                  </td>
+                  {showName && (
+                    <td className="border-r border-border-subtle p-0">
+                      {active ? (
+                        <input
+                          value={props.names[sheet.name] ?? defaultName}
+                          onChange={(event) =>
+                            props.setNames({ ...props.names, [sheet.name]: event.target.value })
+                          }
+                          aria-label={tr('excel.tableName')}
+                          className={cellInputClass}
+                          data-testid={multi ? undefined : 'raw-source-table-name'}
+                        />
+                      ) : (
+                        <span className="px-2.5 text-text-muted">—</span>
+                      )}
+                    </td>
+                  )}
+                  <td className="border-r border-border-subtle p-0">
+                    <select
+                      value={props.headerRows[sheet.name] ?? ''}
+                      disabled={!active}
+                      aria-label={tr('excel.headerRow')}
+                      onChange={(event) =>
+                        props.setHeaderRows({
+                          ...props.headerRows,
+                          [sheet.name]: event.target.value ? Number(event.target.value) : undefined,
+                        })
+                      }
+                      className={`${cellInputClass} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7`}
+                      style={{ backgroundImage: SELECT_CHEVRON }}
+                    >
+                      <option value="">{tr('excel.headerAuto')}</option>
+                      {[1, 2, 3, 4, 5].map((row) => (
+                        <option key={row} value={row}>
+                          {tr('excel.headerManual', { row })}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-2.5 text-right tabular-nums text-text-muted">
+                    {sheet.empty
+                      ? tr('excel.sheetEmpty', { rows: sheet.rowCount })
+                      : tr('config.sizeCompact', { rows: sheet.rowCount, cols: sheet.columnCount })}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </section>
+    </>
+  );
+}
+
+const SELECT_CHEVRON =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";
 
 function SourceSummary({
   scan,
@@ -782,241 +1236,6 @@ export function Toggle({
       </span>
       {label}
     </button>
-  );
-}
-
-function HeaderRowSelect({
-  tr,
-  value,
-  onChange,
-}: {
-  tr: Tr;
-  value: number | undefined;
-  onChange: (value: number | undefined) => void;
-}) {
-  return (
-    <select
-      value={value ?? ''}
-      onChange={(event) => onChange(event.target.value ? Number(event.target.value) : undefined)}
-      className="h-7 rounded-md border border-border-subtle bg-surface px-2 text-[12.5px]"
-    >
-      <option value="">{tr('excel.headerAuto')}</option>
-      {[1, 2, 3, 4, 5].map((row) => (
-        <option key={row} value={row}>
-          {tr('excel.headerManual', { row })}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-function SheetConfigurator(props: {
-  tr: Tr;
-  scan: DataRawSourceScan;
-  multi: boolean;
-  singleSheet: string | null;
-  setSingleSheet: (name: string) => void;
-  checked: string[];
-  setChecked: (names: string[]) => void;
-  names: Record<string, string>;
-  setNames: (names: Record<string, string>) => void;
-  headerRows: Record<string, number | undefined>;
-  setHeaderRows: (rows: Record<string, number | undefined>) => void;
-  fileStem: string;
-  mergeSheets: boolean;
-  setMergeSheets: (on: boolean) => void;
-  mergeable: boolean;
-  mergedName: string;
-  setMergedName: (name: string) => void;
-  autoInclude: boolean;
-  setAutoInclude: (on: boolean) => void;
-}) {
-  const { tr, scan, multi, checked } = props;
-  const toggle = (name: string) =>
-    props.setChecked(
-      checked.includes(name) ? checked.filter((item) => item !== name) : [...checked, name]
-    );
-  const merged = multi && props.mergeSheets && props.mergeable;
-  return (
-    <div className="mt-4 grid grid-cols-[15rem_1fr] gap-4">
-      <div className="rounded-lg border border-border-subtle" data-testid="raw-source-sheet-list">
-        <div className="flex h-9 items-center border-b border-border-subtle px-3 text-[12.5px] text-text-muted">
-          {multi ? tr('excel.pickMany') : tr('excel.pickOne')}
-          {multi && (
-            <>
-              <span className="ml-2">
-                {tr('excel.selected', { selected: checked.length, total: scan.sheets.length })}
-              </span>
-              <button
-                type="button"
-                className="ml-auto text-accent"
-                onClick={() =>
-                  props.setChecked(scan.sheets.filter((s) => !s.empty).map((s) => s.name))
-                }
-              >
-                {tr('excel.selectAll')}
-              </button>
-            </>
-          )}
-        </div>
-        {scan.sheets.map((sheet) => {
-          const active = multi ? checked.includes(sheet.name) : props.singleSheet === sheet.name;
-          return (
-            <label
-              key={sheet.name}
-              className={`flex cursor-pointer items-center gap-2 px-3 py-2 text-[13px] ${active ? 'bg-accent/[0.06]' : ''} ${sheet.empty ? 'opacity-50' : ''}`}
-            >
-              <input
-                type={multi ? 'checkbox' : 'radio'}
-                checked={active}
-                disabled={sheet.empty}
-                onChange={() => (multi ? toggle(sheet.name) : props.setSingleSheet(sheet.name))}
-                data-testid={`raw-source-sheet-${sheet.name}`}
-              />
-              <span className="min-w-0 flex-1 truncate text-text-primary">{sheet.name}</span>
-              <span className="text-[11.5px] text-text-muted">
-                {sheet.empty
-                  ? tr('excel.sheetEmpty', { rows: sheet.rowCount })
-                  : tr('excel.sheetMeta', { rows: sheet.rowCount, cols: sheet.columnCount })}
-              </span>
-            </label>
-          );
-        })}
-      </div>
-      <div className="min-w-0">
-        {multi && (
-          <div className="mb-3 flex flex-wrap items-center gap-4">
-            <Toggle
-              on={merged}
-              disabled={!props.mergeable}
-              onChange={props.setMergeSheets}
-              label={tr('excel.mergeToggle')}
-              testId="raw-source-merge-sheets"
-            />
-            <span className="text-[12px] text-text-muted">
-              {checked.length < 2
-                ? tr('excel.mergeNeedTwo')
-                : !props.mergeable
-                  ? tr('excel.mergeDisabled')
-                  : merged
-                    ? tr('excel.mergeOn')
-                    : ''}
-            </span>
-            <span className="ml-auto" />
-            {!merged && (
-              <Toggle
-                on={props.autoInclude}
-                onChange={props.setAutoInclude}
-                label={tr('excel.autoIncludeSheets')}
-              />
-            )}
-          </div>
-        )}
-        {!multi && props.singleSheet && (
-          <SheetDetail {...props} sheetName={props.singleSheet} defaultName={props.fileStem} />
-        )}
-        {merged && (
-          <NameField
-            label={tr('excel.tableName')}
-            value={props.mergedName}
-            onChange={props.setMergedName}
-            testId="raw-source-merged-name"
-          />
-        )}
-        {multi && !merged && (
-          <table className="w-full border-collapse text-left text-[12.5px]">
-            <thead>
-              <tr className="h-8 border-b border-border-subtle text-text-muted">
-                <th className="px-2 font-medium">{tr('folder.colSheet')}</th>
-                <th className="px-2 font-medium">{tr('excel.tableName')}</th>
-                <th className="px-2 font-medium">{tr('excel.headerRow')}</th>
-                <th className="px-2 text-right font-medium">{tr('excel.size')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {checked.map((name) => {
-                const sheet = scan.sheets.find((s) => s.name === name)!;
-                return (
-                  <tr key={name} className="h-9 border-b border-dashed border-border-muted">
-                    <td className="px-2 text-text-primary">{name}</td>
-                    <td className="px-2">
-                      <input
-                        value={props.names[name] ?? `${props.fileStem} / ${name}`}
-                        onChange={(event) =>
-                          props.setNames({ ...props.names, [name]: event.target.value })
-                        }
-                        className="h-7 w-full rounded-md border border-border-subtle bg-surface px-2"
-                      />
-                    </td>
-                    <td className="px-2">
-                      <HeaderRowSelect
-                        tr={tr}
-                        value={props.headerRows[name]}
-                        onChange={(value) =>
-                          props.setHeaderRows({ ...props.headerRows, [name]: value })
-                        }
-                      />
-                    </td>
-                    <td className="px-2 text-right tabular-nums text-text-muted">
-                      {tr('excel.sizeValue', { rows: sheet.rowCount, cols: sheet.columnCount })}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SheetDetail(props: {
-  tr: Tr;
-  scan: DataRawSourceScan;
-  sheetName: string;
-  defaultName: string;
-  names: Record<string, string>;
-  setNames: (names: Record<string, string>) => void;
-  headerRows: Record<string, number | undefined>;
-  setHeaderRows: (rows: Record<string, number | undefined>) => void;
-}) {
-  const { tr, sheetName } = props;
-  const sheet = props.scan.sheets.find((s) => s.name === sheetName);
-  if (!sheet) return null;
-  return (
-    <div className="rounded-lg border border-border-subtle p-4">
-      <NameField
-        label={tr('excel.tableName')}
-        value={props.names[sheetName] ?? props.defaultName}
-        onChange={(value) => props.setNames({ ...props.names, [sheetName]: value })}
-        testId="raw-source-table-name"
-      />
-      <div className="mt-3 flex items-center gap-3 text-[12.5px] text-text-secondary">
-        <span className="w-20">{tr('excel.headerRow')}</span>
-        <HeaderRowSelect
-          tr={tr}
-          value={props.headerRows[sheetName]}
-          onChange={(value) => props.setHeaderRows({ ...props.headerRows, [sheetName]: value })}
-        />
-      </div>
-      <div className="mt-3 flex items-center gap-3 text-[12.5px] text-text-secondary">
-        <span className="w-20">{tr('excel.size')}</span>
-        <span className="text-text-primary">
-          {tr('excel.sizeValue', { rows: sheet.rowCount, cols: sheet.columnCount })}
-        </span>
-      </div>
-      <div className="mt-3 flex items-start gap-3 text-[12.5px] text-text-secondary">
-        <span className="w-20 flex-shrink-0">{tr('excel.columns')}</span>
-        <span className="flex flex-wrap gap-1">
-          {sheet.columns.map((column) => (
-            <span key={column} className="rounded bg-surface-hover px-1.5 py-0.5 text-text-primary">
-              {column}
-            </span>
-          ))}
-        </span>
-      </div>
-    </div>
   );
 }
 

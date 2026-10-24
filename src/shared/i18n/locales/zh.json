@@ -2294,6 +2294,32 @@
         "similarityTip": "结构与数据相似度",
         "sameTip": "保留原表，绑定改为新名称",
         "newTip": "旧表标为不存在，另行导入"
+      },
+      "config": {
+        "pending": "待配置",
+        "sourceGroup": "数据来源",
+        "file": "文件",
+        "folder": "文件夹",
+        "changeFile": "更换文件",
+        "changeFolder": "更换文件夹",
+        "scanResult": "扫描结果",
+        "sheets": "{{count}} 个 Sheet",
+        "files": "{{count}} 个文件",
+        "scannedAt": "· 扫描完成 {{time}}",
+        "importGroup": "导入方式",
+        "mergeRow": "合并为一张表",
+        "newSheetRow": "新增 Sheet",
+        "on": "开",
+        "off": "关",
+        "sheetGroup": "Sheet",
+        "tableGroup": "原始表",
+        "tabConfig": "配置",
+        "tabData": "数据",
+        "tabAutomation": "自动化",
+        "afterCreate": "创建后可在“数据”页查看",
+        "sizeCompact": "{{rows}} × {{cols}}",
+        "rechooseMode": "更改组织方式",
+        "selectAll": "全选"
       }
     }
   },

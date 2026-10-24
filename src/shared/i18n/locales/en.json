@@ -2294,6 +2294,32 @@
         "similarityTip": "Structure and data similarity",
         "sameTip": "Keep the table and rebind to the new name",
         "newTip": "Mark old as missing and import separately"
+      },
+      "config": {
+        "pending": "Not created",
+        "sourceGroup": "Source",
+        "file": "File",
+        "folder": "Folder",
+        "changeFile": "Change file",
+        "changeFolder": "Change folder",
+        "scanResult": "Scan",
+        "sheets": "{{count}} sheet(s)",
+        "files": "{{count}} file(s)",
+        "scannedAt": "· scanned {{time}}",
+        "importGroup": "Import",
+        "mergeRow": "Merge into one",
+        "newSheetRow": "New sheets",
+        "on": "On",
+        "off": "Off",
+        "sheetGroup": "Sheet",
+        "tableGroup": "Raw table",
+        "tabConfig": "Config",
+        "tabData": "Data",
+        "tabAutomation": "Automation",
+        "afterCreate": "View data on the Data tab after creating",
+        "sizeCompact": "{{rows}} × {{cols}}",
+        "rechooseMode": "Change build mode",
+        "selectAll": "Select all"
       }
     }
   },
