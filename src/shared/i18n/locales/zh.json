@@ -2223,15 +2223,12 @@
         "sourceDetail": "数据源详情",
         "deleteSource": "删除数据源",
         "partMissingSheet": "缺少 Sheet，未合并",
-        "partConflict": "类型冲突，未合并",
-        "partFiles": "{{count}} 个文件",
-        "partSheets": "{{count}} 个 Sheet"
+        "partConflict": "类型冲突，未合并"
       },
       "detail": {
         "section": "来源",
         "path": "路径",
         "buildMode": "组织方式",
-        "buildModeHint": "（可修改；修改会删除现有表并重新创建）",
         "autoInclude": "新 Sheet / 文件自动纳入",
         "on": "开",
         "off": "关",

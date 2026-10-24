@@ -167,6 +167,7 @@ export function RawTablesPanel({
   const selectedRow = visibleRows.find((row) => row.id === selectedRawTableId) ?? null;
   const selectedRawTable = selectedRow?.kind === 'rawTable' ? selectedRow.rawTable : null;
   const selectedDraft = selectedRow?.kind === 'draft' ? selectedRow.draft : null;
+  const selectedSource = selectedRow?.kind === 'source' ? selectedRow.source : null;
   const selectedRowBusy = selectedRow ? actionId === selectedRow.id : false;
   const bulkBusy = actionId === 'delete-all-raw-tables';
 
@@ -322,14 +323,6 @@ export function RawTablesPanel({
                 <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
                   {t('data.rawSources.list.mergeBadge')}
                 </span>
-                <span className="flex-shrink-0 text-[11.5px] text-text-muted">
-                  {t(
-                    sourceKind === 'folder'
-                      ? 'data.rawSources.list.partFiles'
-                      : 'data.rawSources.list.partSheets',
-                    { count: parts.filter((part) => part.included).length }
-                  )}
-                </span>
               </>
             )}
           </div>
@@ -380,6 +373,7 @@ export function RawTablesPanel({
     const updatedAt = Math.max(...members.map((member) => member.updatedAt));
     const pipelines = [...new Set(members.flatMap((member) => member.relatedPipelineNames ?? []))];
     const expanded = !collapsedSources.has(source.id);
+    const selected = selectedRawTableId === `source:${source.id}`;
     const icon =
       source.sourceKind === 'cloud' ? (
         <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
@@ -395,9 +389,14 @@ export function RawTablesPanel({
         key={`source:${source.id}`}
         data-testid="raw-source-group-row"
         aria-expanded={expanded}
-        onClick={() => toggleSource(source.id)}
+        aria-selected={selected}
+        onClick={() => setSelectedRawTableId(`source:${source.id}`)}
         onDoubleClick={() => onOpenSource?.(source)}
-        className="h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 bg-[var(--data-grid-header-surface)] hover:bg-surface-hover"
+        className={`h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 ${
+          selected
+            ? 'bg-accent-muted'
+            : 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
+        }`}
       >
         <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-2">
@@ -416,17 +415,9 @@ export function RawTablesPanel({
               />
             </button>
             {icon}
-            <button
-              type="button"
-              className="min-w-0 max-w-[60%] flex-shrink-0 truncate text-[13px] font-semibold text-text-primary hover:text-accent"
-              title={source.sourcePath}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenSource?.(source);
-              }}
-            >
+            <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
               {source.name}
-            </button>
+            </span>
             <span
               className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
                 merged ? 'bg-warning/10 text-warning' : 'bg-accent-muted text-accent'
@@ -435,12 +426,6 @@ export function RawTablesPanel({
               {merged
                 ? t('data.rawSources.list.mergeBadge')
                 : t('data.rawSources.list.tablesBadge', { count: source.memberIds.length })}
-            </span>
-            <span
-              className="min-w-0 truncate text-[11.5px] text-text-muted"
-              title={source.sourcePath}
-            >
-              {source.sourcePath}
             </span>
           </div>
         </td>
@@ -531,6 +516,8 @@ export function RawTablesPanel({
                 onClick={() => {
                   if (selectedDraft) {
                     onEditDraft(selectedDraft.id);
+                  } else if (selectedSource) {
+                    onOpenSource?.(selectedSource);
                   } else if (selectedRawTable) {
                     onEditRawTable(selectedRawTable.id);
                   }
@@ -601,7 +588,7 @@ export function RawTablesPanel({
                 label: t('data.rawTables.actions.delete'),
                 icon: <Trash2 className="h-3.5 w-3.5" />,
                 danger: true,
-                disabled: !selectedRow || selectedRowBusy || bulkBusy,
+                disabled: !selectedRow || !!selectedSource || selectedRowBusy || bulkBusy,
                 onClick: () => {
                   if (selectedDraft) {
                     onDeleteDraft(selectedDraft.id);

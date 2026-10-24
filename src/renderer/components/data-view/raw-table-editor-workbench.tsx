@@ -1,3 +1,4 @@
+import { modesForSource } from './raw-source-detail';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
@@ -30,6 +31,8 @@ import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
 import type {
   DataColumnTypeInfo,
   DataRawTable,
+  DataRawSource,
+  DataRawSourceBuildMode,
   DataRawTableColumnTypeOverride,
   DataRawTableConfig,
   DataRawTableExcelConfig,
@@ -117,6 +120,9 @@ export type RawTableEditorProps = {
   onDelete?: (rawTable: DataRawTable) => void | Promise<void>;
   /** Tab to show first (the source wizard opens a new table on its Data tab). */
   initialViewTab?: 'config' | 'data' | 'automation';
+  /** The table's source; Excel / folder sources can switch build mode (rebuild wizard). */
+  rawSource?: DataRawSource | null;
+  onChangeBuildMode?: (source: DataRawSource, mode: DataRawSourceBuildMode) => void;
 };
 
 export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
@@ -142,6 +148,8 @@ export function RawTableEditorWorkbench({
   onSyncCloudSource,
   onDelete,
   initialViewTab,
+  rawSource,
+  onChangeBuildMode,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
@@ -1045,6 +1053,23 @@ export function RawTableEditorWorkbench({
                     )}
                   </RawTableConfigRow>
 
+                  {rawSource && onChangeBuildMode && modesForSource(rawSource).length > 1 && (
+                    <RawTableConfigRow label={t('data.rawSources.detail.buildMode')}>
+                      <GlassSelect
+                        ariaLabel={t('data.rawSources.detail.buildMode')}
+                        value={rawSource.buildMode}
+                        onValueChange={(value) => {
+                          if (value !== rawSource.buildMode)
+                            onChangeBuildMode(rawSource, value as DataRawSourceBuildMode);
+                        }}
+                        options={modesForSource(rawSource).map((mode) => ({
+                          value: mode,
+                          label: t(`data.rawSources.modes.${mode}`),
+                        }))}
+                        disabled={isBusy}
+                      />
+                    </RawTableConfigRow>
+                  )}
                   <RawTableConfigRow label={t('data.rawTables.editor.sourceType')}>
                     <GlassSelect
                       value={localSourceKind}
