@@ -2220,7 +2220,9 @@
         "memberMissing": "来源中已不存在",
         "refreshSource": "刷新数据源",
         "sourceDetail": "数据源详情",
-        "deleteSource": "删除数据源"
+        "deleteSource": "删除数据源",
+        "partMissingSheet": "缺少 Sheet，未合并",
+        "partConflict": "类型冲突，未合并"
       },
       "detail": {
         "section": "来源",
@@ -2246,7 +2248,8 @@
         "excel_merge_sheets": "多个 Sheet 合并为一张表",
         "folder_merge": "合并为一张表",
         "folder_per_file": "每个文件一张表",
-        "single": "单张表"
+        "single": "单张表",
+        "cloud_table": "云端表"
       },
       "rebuild": {
         "title": "修改构建方式将删除现有原始表",
@@ -2262,6 +2265,43 @@
         "suggest": "建议先导出或复制需要保留的数据",
         "cancel": "取消",
         "confirm": "删除并重新创建"
+      },
+      "picker": {
+        "search": "搜索数据源或表名",
+        "empty": "没有匹配的表"
+      },
+      "missing": {
+        "label": "来源状态",
+        "inline": "来源中已不存在，运行会报错",
+        "useLastData": "用上次数据继续",
+        "banner": "{{count}} 个输入不可用：原始表“{{name}}”（{{key}}）在来源中已不存在，运行会报 E_SOURCE_MEMBER_MISSING。",
+        "replace": "重新指定 / 换成其他原始表"
+      },
+      "refresh": {
+        "title": "刷新结果：{{name}}",
+        "added": "{{count}} 新增",
+        "renamed": "{{count}} 疑似改名",
+        "missing": "{{count}} 已不存在",
+        "unchanged": "{{count}} 无变化",
+        "colChange": "变化",
+        "colSheet": "Sheet",
+        "colFile": "文件",
+        "colAction": "处理",
+        "addedRow": "新发现",
+        "addedAction": "已按“自动纳入”导入为原始表 {{name}}",
+        "renamedRow": "疑似改名",
+        "similarity": "列结构与数据指纹相似 {{percent}}%",
+        "confirmSame": "确认是同一张",
+        "asNew": "当作新表",
+        "missingRow": "来源中已不存在",
+        "missingUsed": "保留原始表与历史数据；{{count}} 个数据加工引用它（{{names}}），运行时会报错",
+        "missingKept": "保留原始表与历史数据",
+        "unchangedRow": "无变化",
+        "explain": "确认改名：原始表 ID 不变，Sheet / 文件绑定改为新名称，下游数据加工无需修改。选“当作新表”：旧表标为已不存在，新 Sheet / 文件导入为新表。",
+        "fingerprint": "指纹 = 列名 + 类型 + 前 50 行",
+        "later": "稍后处理",
+        "apply": "应用",
+        "applied": "已处理：改名 {{renamed}} 张，新增 {{added}} 张"
       }
     }
   },

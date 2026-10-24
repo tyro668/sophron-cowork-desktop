@@ -2220,7 +2220,9 @@
         "memberMissing": "No longer in source",
         "refreshSource": "Refresh source",
         "sourceDetail": "Source details",
-        "deleteSource": "Delete source"
+        "deleteSource": "Delete source",
+        "partMissingSheet": "missing sheet, not merged",
+        "partConflict": "type conflict, not merged"
       },
       "detail": {
         "section": "Source",
@@ -2246,7 +2248,8 @@
         "excel_merge_sheets": "Sheets merged into one table",
         "folder_merge": "Merged into one table",
         "folder_per_file": "One table per file",
-        "single": "Single table"
+        "single": "Single table",
+        "cloud_table": "Cloud table"
       },
       "rebuild": {
         "title": "Changing the build mode deletes the existing tables",
@@ -2262,6 +2265,43 @@
         "suggest": "Export or copy any data you need first",
         "cancel": "Cancel",
         "confirm": "Delete and recreate"
+      },
+      "picker": {
+        "search": "Search sources or tables",
+        "empty": "No matching tables"
+      },
+      "missing": {
+        "label": "Source status",
+        "inline": "No longer in its source; runs will fail",
+        "useLastData": "Continue with last data",
+        "banner": "{{count}} input(s) unavailable: raw table \"{{name}}\" ({{key}}) is no longer in its source; runs fail with E_SOURCE_MEMBER_MISSING.",
+        "replace": "Re-bind / pick another table"
+      },
+      "refresh": {
+        "title": "Refresh result: {{name}}",
+        "added": "{{count}} new",
+        "renamed": "{{count}} possibly renamed",
+        "missing": "{{count}} missing",
+        "unchanged": "{{count}} unchanged",
+        "colChange": "Change",
+        "colSheet": "Sheet",
+        "colFile": "File",
+        "colAction": "Action",
+        "addedRow": "New",
+        "addedAction": "Imported as raw table {{name}} (auto-include)",
+        "renamedRow": "Possibly renamed",
+        "similarity": "Columns and data fingerprint {{percent}}% similar",
+        "confirmSame": "Same table",
+        "asNew": "Treat as new",
+        "missingRow": "No longer in source",
+        "missingUsed": "Table and history kept; used by {{count}} pipeline(s) ({{names}}), runs will fail",
+        "missingKept": "Table and history kept",
+        "unchangedRow": "Unchanged",
+        "explain": "Same table: the raw table id stays and the sheet / file binding moves to the new name, so pipelines keep working. Treat as new: the old table is marked missing and the new sheet / file is imported as a new table.",
+        "fingerprint": "Fingerprint = column names + types + first 50 rows",
+        "later": "Later",
+        "apply": "Apply",
+        "applied": "Done: {{renamed}} renamed, {{added}} added"
       }
     }
   },

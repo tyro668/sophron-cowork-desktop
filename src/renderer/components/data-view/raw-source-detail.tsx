@@ -2,16 +2,14 @@
  * Source detail page: path, build mode (changing it rebuilds via the wizard after an explicit
  * delete confirmation), auto-include, last scan, and the member tables with refresh.
  */
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, RefreshCw, Table2 } from 'lucide-react';
 import type { DataRawSource, DataRawSourceBuildMode, DataRawTable } from '../../types';
-import { dataClient } from '../../features/data/api/data-client';
-import { formatDataErrorMessage } from '../../features/data/model/errors';
-import { showToast } from '../../utils/toast';
+import { useRawSourceRefresh } from './raw-source-refresh-dialog';
 import { formatDateTime } from './shared';
 
 export function modesForSource(source: DataRawSource): DataRawSourceBuildMode[] {
+  if (source.sourceKind === 'cloud') return ['cloud_table'];
   if (source.sourceKind === 'folder') return ['folder_merge', 'folder_per_file'];
   if (source.sourceKind === 'excel')
     return ['excel_single', 'excel_per_sheet', 'excel_merge_sheets'];
@@ -36,31 +34,12 @@ export function RawSourceDetail({
   const { t } = useTranslation();
   const tr = (key: string, options?: Record<string, unknown>) =>
     String(t(`data.rawSources.${key}`, options ?? {}));
-  const [refreshing, setRefreshing] = useState(false);
   const members = source.memberIds
     .map((id) => rawTables.find((table) => table.id === id))
     .filter((table): table is DataRawTable => !!table);
-
-  const refresh = async () => {
-    setRefreshing(true);
-    try {
-      const result = await dataClient.refreshRawSource(source.id);
-      showToast(
-        result.failed.length ? 'error' : 'success',
-        tr('detail.refreshed', {
-          refreshed: result.refreshed.length,
-          added: result.added.length,
-          missing: result.missing.length,
-        })
-      );
-      onChanged();
-    } catch (err) {
-      showToast('error', formatDataErrorMessage(err, t));
-    } finally {
-      setRefreshing(false);
-    }
-  };
-
+  const { refresh, refreshingId, dialog } = useRawSourceRefresh(onChanged);
+  const refreshing = refreshingId === source.id;
+  const isCloud = source.sourceKind === 'cloud';
   const row = 'flex min-h-9 items-center gap-4 border-b border-dashed border-border-muted py-1.5';
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="raw-source-detail">
@@ -77,16 +56,18 @@ export function RawSourceDetail({
         <span className="rounded bg-accent-muted px-1.5 py-0.5 text-[11.5px] text-accent">
           {tr('list.tablesBadge', { count: source.memberIds.length })}
         </span>
-        <button
-          type="button"
-          disabled={refreshing}
-          onClick={() => void refresh()}
-          data-testid="raw-source-refresh"
-          className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-          {tr('list.refreshSource')}
-        </button>
+        {!isCloud && (
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => void refresh(source.id)}
+            data-testid="raw-source-refresh"
+            className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-[13px] font-medium text-accent-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            {tr('list.refreshSource')}
+          </button>
+        )}
       </div>
       <div className="min-h-0 flex-1 overflow-auto px-6 py-5 text-[13px]">
         <div className="mb-2 text-[12px] font-medium text-text-muted">{tr('detail.section')}</div>
@@ -102,6 +83,7 @@ export function RawSourceDetail({
               const next = event.target.value as DataRawSourceBuildMode;
               if (next !== source.buildMode) onChangeMode(source, next);
             }}
+            disabled={isCloud}
             data-testid="raw-source-build-mode"
             className="h-7 rounded-md border border-border-subtle bg-surface px-2"
           >
@@ -168,6 +150,7 @@ export function RawSourceDetail({
           </tbody>
         </table>
       </div>
+      {dialog}
     </div>
   );
 }

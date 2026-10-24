@@ -1,10 +1,16 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cloud, Database, FileSpreadsheet, FileText, Folder, type LucideIcon } from 'lucide-react';
 import { Cell, FormGrid, FormScroll, LabelCell } from '../../../workflow-forms/shared/FormGrid';
 import { INPUT_GRID_COLUMNS } from '../../../workflow-forms/shared/gridColumns';
-import type { DataRawTable, DataRawTableSourceKind, DataWorkflowNode } from '../../../../types';
-import { GlassSelect } from '../../../GlassSelect';
+import type {
+  DataRawSource,
+  DataRawTable,
+  DataRawTableSourceKind,
+  DataWorkflowNode,
+} from '../../../../types';
+import { GlassSelect, type GlassSelectOption } from '../../../GlassSelect';
+import { dataClient } from '../../../../features/data/api/data-client';
 import { stringValue } from './workflow-summary';
 
 const SOURCE_KIND_ICONS: Record<DataRawTableSourceKind, LucideIcon> = {
@@ -13,6 +19,56 @@ const SOURCE_KIND_ICONS: Record<DataRawTableSourceKind, LucideIcon> = {
   csv: FileText,
   folder: Folder,
 };
+
+const MERGE_MODES = new Set(['folder_merge', 'excel_merge_sheets']);
+
+/** Picker options grouped by data source (design 4.4): multi-table and merged sources get a
+ *  header; search matches the source name too; tables missing from their source are muted. */
+export function rawTableOptionsBySource(
+  rawTables: DataRawTable[],
+  sources: DataRawSource[],
+  t: (key: string, options?: Record<string, unknown>) => string
+): GlassSelectOption[] {
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const grouped = new Map<string, DataRawTable[]>();
+  const flat: DataRawTable[] = [];
+  for (const table of rawTables) {
+    const source = table.sourceId ? byId.get(table.sourceId) : undefined;
+    if (source && (source.memberIds.length > 1 || MERGE_MODES.has(source.buildMode))) {
+      grouped.set(source.id, [...(grouped.get(source.id) ?? []), table]);
+    } else {
+      flat.push(table);
+    }
+  }
+  const option = (table: DataRawTable, source?: DataRawSource): GlassSelectOption => {
+    const missing = table.memberStatus === 'missing';
+    return {
+      value: table.id,
+      label: table.name,
+      hint: missing
+        ? String(t('data.rawSources.list.memberMissing'))
+        : String(t('data.rawSources.done.rowsValue', { rows: table.rowCount.toLocaleString() })),
+      muted: missing,
+      ...(source
+        ? {
+            group: source.id,
+            groupLabel: source.name,
+            groupMeta: MERGE_MODES.has(source.buildMode)
+              ? String(t('data.rawSources.list.mergeBadge'))
+              : String(source.memberIds.length),
+            searchText: source.name,
+          }
+        : {}),
+    };
+  };
+  const out: GlassSelectOption[] = [];
+  for (const [sourceId, tables] of grouped) {
+    const source = byId.get(sourceId)!;
+    for (const table of tables) out.push(option(table, source));
+  }
+  for (const table of flat) out.push(option(table));
+  return out;
+}
 
 export function WorkflowInputSourceConfig({
   node,
@@ -26,6 +82,20 @@ export function WorkflowInputSourceConfig({
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }) {
   const { t } = useTranslation();
+  const [sources, setSources] = useState<DataRawSource[]>([]);
+  useEffect(() => {
+    if (!dataClient.isAvailable() || !dataClient.has('listRawSources')) return;
+    let cancelled = false;
+    void dataClient
+      .listRawSources()
+      .then((next) => {
+        if (!cancelled) setSources(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const selectedRawTableId = stringValue(node.config.rawTableId);
   const selectedRawTableName =
     stringValue(node.config.rawTableName) || stringValue(node.config.name);
@@ -95,8 +165,11 @@ export function WorkflowInputSourceConfig({
                     },
                   ]
                 : []),
-              ...rawTables.map((rawTable) => ({ value: rawTable.id, label: rawTable.name })),
+              ...rawTableOptionsBySource(rawTables, sources, t),
             ]}
+            searchable
+            searchPlaceholder={t('data.rawSources.picker.search')}
+            searchEmptyText={t('data.rawSources.picker.empty')}
             placeholder={
               isLoading
                 ? t('data.workflow.loadingRawTables')
@@ -124,6 +197,37 @@ export function WorkflowInputSourceConfig({
             </span>
           ) : null}
         </Cell>
+
+        {selectedRawTable?.memberStatus === 'missing' ? (
+          <>
+            <LabelCell>{t('data.rawSources.missing.label')}</LabelCell>
+            <Cell v={['ctl', 'err']}>
+              <span className="truncate text-error" data-testid="input-member-missing">
+                {t('data.rawSources.missing.inline')}
+              </span>
+            </Cell>
+            <Cell v={['muted']}>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={node.config.allowMissingSourceMember === true}
+                  onChange={(event) =>
+                    onNodeChange((current) => ({
+                      ...current,
+                      config: {
+                        ...current.config,
+                        allowMissingSourceMember: event.target.checked,
+                      },
+                      updatedAt: Date.now(),
+                    }))
+                  }
+                  data-testid="input-allow-missing-member"
+                />
+                {t('data.rawSources.missing.useLastData')}
+              </label>
+            </Cell>
+          </>
+        ) : null}
 
         <LabelCell>{t('data.workflow.inputAlias')}</LabelCell>
         <Cell v={['mono']}>{alias || '—'}</Cell>

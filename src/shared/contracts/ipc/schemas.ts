@@ -777,6 +777,14 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   ],
   'data.createRawSource': [z.looseObject({ sourcePath: str, buildMode: str, name: strOpt })],
   'data.refreshRawSource': [str],
+  'data.resolveRawSourceRenames': [
+    z.looseObject({
+      sourceId: str,
+      decisions: z.array(
+        z.looseObject({ tableId: str, newKey: str, action: z.enum(['rename', 'new']) })
+      ),
+    }),
+  ],
   'data.getRawSourceRebuildImpact': [str],
   'data.rebuildRawSource': [
     z.looseObject({

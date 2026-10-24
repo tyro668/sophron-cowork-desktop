@@ -1,6 +1,7 @@
 import { dialog } from 'electron';
 import * as fs from 'fs';
 import type {
+  DataResolveRawSourceRenamesInput,
   DataDeleteRawTableNormalizerVersionInput,
   DataExportTableInput,
   DataExportTableResult,
@@ -59,6 +60,12 @@ export function registerRawTablesIpc({
     'data.createRawSource',
     'creating raw source',
     (payload: DataCreateRawSourceInput) => requireDataPipelineStore().createRawSource(payload)
+  );
+  sourceChannel(
+    'data.resolveRawSourceRenames',
+    'resolving raw source renames',
+    (input: DataResolveRawSourceRenamesInput) =>
+      requireDataPipelineStore().resolveRawSourceRenames(input)
   );
   sourceChannel('data.refreshRawSource', 'refreshing raw source', (id: string) =>
     requireDataPipelineStore().refreshRawSource(id)

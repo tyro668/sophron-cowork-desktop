@@ -121,6 +121,7 @@ export function RawTablesPanel({
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedMerges, setExpandedMerges] = useState<Set<string>>(new Set());
   const filteredDrafts = useMemo(
     () => drafts.filter((draft) => matchesSearchText(draft.name, searchQuery)),
     [drafts, searchQuery]
@@ -134,15 +135,15 @@ export function RawTablesPanel({
         ? []
         : [
             ...pageDrafts.map((draft) => ({ kind: 'draft' as const, id: draft.id, draft })),
-            ...groupBySource(rawTables, sources),
+            ...groupBySource(rawTables, sources, expandedMerges),
           ],
-    [rawTables, isLoading, pageDrafts, sources]
+    [rawTables, isLoading, pageDrafts, sources, expandedMerges]
   );
   const pageRows = visibleRows;
   const pageSections = useMemo(
     () =>
       buildGroupSections(pageRows, groups, (row) =>
-        row.kind === 'rawTable' || row.kind === 'source' ? (row.rawTable?.groupId ?? null) : null
+        row.kind !== 'draft' ? (row.rawTable?.groupId ?? null) : null
       ),
     [pageRows, groups]
   );
@@ -172,6 +173,32 @@ export function RawTablesPanel({
     if (row.kind === 'source') {
       return renderSourceRow(row.source, row.members, indented);
     }
+    if (row.kind === 'part') {
+      return (
+        <tr
+          key={row.id}
+          data-testid="raw-merge-part-row"
+          className="h-8 border-b border-dashed border-border-muted/60 text-[12px]"
+        >
+          <td colSpan={6} className={row.child || indented ? 'pl-16 pr-2' : 'pl-14 pr-2'}>
+            <span
+              className={row.part.included ? 'text-text-secondary' : 'text-text-muted line-through'}
+            >
+              {row.part.name}
+            </span>
+            {!row.part.included && (
+              <span className="ml-2 text-warning">
+                {t(
+                  row.part.reason === 'type_conflict'
+                    ? 'data.rawSources.list.partConflict'
+                    : 'data.rawSources.list.partMissingSheet'
+                )}
+              </span>
+            )}
+          </td>
+        </tr>
+      );
+    }
     const isChild = row.kind === 'rawTable' && row.child;
     indented = indented || !!isChild;
     const rawTable = row.kind === 'rawTable' ? row.rawTable : null;
@@ -199,6 +226,30 @@ export function RawTablesPanel({
       >
         <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-3">
+            {rawTable && mergeParts(rawTable) ? (
+              <button
+                type="button"
+                aria-expanded={expandedMerges.has(rawTable.id)}
+                data-testid="raw-merge-expand"
+                title={t('data.rawSources.list.mergeFiles', {
+                  count: mergeParts(rawTable)!.filter((part) => part.included).length,
+                })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setExpandedMerges((current) => {
+                    const next = new Set(current);
+                    if (next.has(rawTable.id)) next.delete(rawTable.id);
+                    else next.add(rawTable.id);
+                    return next;
+                  });
+                }}
+                className="-mr-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover"
+              >
+                <ChevronRight
+                  className={`h-3.5 w-3.5 transition-transform ${expandedMerges.has(rawTable.id) ? 'rotate-90' : ''}`}
+                />
+              </button>
+            ) : null}
             {indented ? (
               <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
             ) : (
@@ -274,7 +325,9 @@ export function RawTablesPanel({
       >
         <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-2">
-            {source.sourceKind === 'folder' ? (
+            {source.sourceKind === 'cloud' ? (
+              <CloudDownload className="h-4 w-4 flex-shrink-0 text-accent" />
+            ) : source.sourceKind === 'folder' ? (
               <Folder className="h-4 w-4 flex-shrink-0 text-accent" />
             ) : (
               <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
@@ -602,8 +655,48 @@ export function RawTablesPanel({
   );
 }
 
+export type MergePart = {
+  name: string;
+  included: boolean;
+  reason?: 'missing_sheet' | 'type_conflict';
+};
+
+/** Files / sheets a merged table is built from (null when the table is not a merge). */
+export function mergeParts(table: DataRawTable): MergePart[] | null {
+  const config = table.inputConfig as {
+    sourceKind?: string;
+    mergeSheets?: string[];
+    mergeReport?: {
+      includedFiles?: string[];
+      missingSheetFiles?: string[];
+      typeConflictFiles?: Array<{ file: string }>;
+    };
+  };
+  if (config.sourceKind === 'excel' && (config.mergeSheets?.length ?? 0) > 1) {
+    return config.mergeSheets!.map((name) => ({ name, included: true }));
+  }
+  if (config.sourceKind === 'folder' && config.mergeReport) {
+    const report = config.mergeReport;
+    return [
+      ...(report.includedFiles ?? []).map((name) => ({ name, included: true })),
+      ...(report.missingSheetFiles ?? []).map((name) => ({
+        name,
+        included: false,
+        reason: 'missing_sheet' as const,
+      })),
+      ...(report.typeConflictFiles ?? []).map((item) => ({
+        name: item.file,
+        included: false,
+        reason: 'type_conflict' as const,
+      })),
+    ];
+  }
+  return null;
+}
+
 type PanelRow =
   | { kind: 'rawTable'; id: string; rawTable: DataRawTable; child?: boolean }
+  | { kind: 'part'; id: string; rawTable: DataRawTable; part: MergePart; child?: boolean }
   | {
       kind: 'source';
       id: string;
@@ -616,7 +709,17 @@ type PanelRow =
  * Layout A: a source with more than one member table becomes a header row followed by its
  * members as flush child rows; single-table sources stay one plain row.
  */
-export function groupBySource(rawTables: DataRawTable[], sources: DataRawSource[]): PanelRow[] {
+export function groupBySource(
+  rawTables: DataRawTable[],
+  sources: DataRawSource[],
+  expandedMerges: ReadonlySet<string> = new Set()
+): PanelRow[] {
+  const pushParts = (rows: PanelRow[], table: DataRawTable, child: boolean) => {
+    if (!expandedMerges.has(table.id)) return;
+    (mergeParts(table) ?? []).forEach((part, index) =>
+      rows.push({ kind: 'part', id: `part:${table.id}:${index}`, rawTable: table, part, child })
+    );
+  };
   const byId = new Map(sources.map((source) => [source.id, source]));
   const membersBySource = new Map<string, DataRawTable[]>();
   for (const table of rawTables) {
@@ -632,6 +735,7 @@ export function groupBySource(rawTables: DataRawTable[], sources: DataRawSource[
     const members = table.sourceId ? membersBySource.get(table.sourceId) : undefined;
     if (!members) {
       rows.push({ kind: 'rawTable', id: table.id, rawTable: table });
+      pushParts(rows, table, false);
       continue;
     }
     if (emitted.has(table.sourceId!)) continue;
@@ -649,6 +753,7 @@ export function groupBySource(rawTables: DataRawTable[], sources: DataRawSource[
     });
     for (const member of ordered) {
       rows.push({ kind: 'rawTable', id: member.id, rawTable: member, child: true });
+      pushParts(rows, member, true);
     }
   }
   return rows;

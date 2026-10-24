@@ -1036,6 +1036,19 @@ export function PipelineEditor({
   // Structured expect-failure card: the executor names the offending node and
   // the violation counts in the failure message; this run's stats — persisted
   // for real runs, returned in-band for temporary runs — carry the samples.
+  // Design 4.5: inputs bound to a table that is no longer present in its source.
+  const missingSourceInputs = useMemo(
+    () =>
+      nodes.flatMap((node) => {
+        if (node.type !== 'input' || node.config.allowMissingSourceMember === true) return [];
+        const ref = typeof node.config.rawTableId === 'string' ? node.config.rawTableId : '';
+        const table = ref
+          ? rawTableChoices.find((candidate) => candidate.id === ref || candidate.name === ref)
+          : undefined;
+        return table?.memberStatus === 'missing' ? [{ node, table }] : [];
+      }),
+    [nodes, rawTableChoices]
+  );
   const failedExpectRun = useMemo(() => {
     if (!lastRunFailure) return null;
     const match = /Expect failed at node ([^:]+): (.+)$/.exec(lastRunFailure.message);
@@ -1868,6 +1881,32 @@ export function PipelineEditor({
         edges={edges}
         onOpenChange={setExplainDialogOpen}
       />
+      {missingSourceInputs.length > 0 && (
+        <div
+          role="alert"
+          data-testid="pipeline-missing-member-banner"
+          className="absolute left-1/2 top-14 z-30 flex w-[min(94%,46rem)] -translate-x-1/2 items-center gap-2 rounded-lg border border-error/30 bg-surface px-3.5 py-2.5 text-[13px] shadow-card"
+        >
+          <AlertCircle className="h-4 w-4 flex-shrink-0 text-error" />
+          <span className="min-w-0 flex-1 text-text-primary">
+            {t('data.rawSources.missing.banner', {
+              count: missingSourceInputs.length,
+              name: missingSourceInputs[0].table.name,
+              key: missingSourceInputs[0].table.memberKey ?? '',
+            })}
+          </span>
+          <button
+            type="button"
+            className="flex-shrink-0 text-[12.5px] text-accent"
+            onClick={() => {
+              selectSingleNode(missingSourceInputs[0].node.id);
+              setActiveInspectorTab('config');
+            }}
+          >
+            {t('data.rawSources.missing.replace')}
+          </button>
+        </div>
+      )}
       {failedExpectRun && lastRunFailure && (
         <div className="absolute bottom-4 left-1/2 z-40 flex w-[min(92%,36rem)] -translate-x-1/2 flex-col items-center gap-2">
           {failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at && (

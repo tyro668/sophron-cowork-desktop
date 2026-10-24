@@ -16,6 +16,10 @@ import type {
   DataRawSourceKind,
   DataRawSourceRebuildImpact,
   DataRawSourceRefreshResult,
+  DataRawSourceChangeItem,
+  DataRawSourceRenameCandidate,
+  DataResolveRawSourceRenamesInput,
+  DataResolveRawSourceRenamesResult,
   DataRawSourceScan,
   DataRawSourceSheetScan,
   DataRawTable,
@@ -438,7 +442,9 @@ export class RawSourceService {
   // ---- refresh ------------------------------------------------------------------------------
 
   /** Re-imports every table of the source; per-sheet / per-file sources also pick up new
-   *  sheets / files (when auto-include is on) and flag members that disappeared. */
+   *  sheets / files (when auto-include is on) and flag members that disappeared. A missing
+   *  member whose fingerprint matches a new sheet / file is reported as a suspected rename and
+   *  left untouched until the user resolves it (resolveRenames). */
   async refreshSource(id: string): Promise<DataRawSourceRefreshResult> {
     await this.ctx.ensureReady();
     const source = await this.sources.requireSource(id);
@@ -448,7 +454,16 @@ export class RawSourceService {
       added: [],
       missing: [],
       failed: [],
+      renames: [],
+      addedItems: [],
+      missingItems: [],
+      unchangedNames: [],
     };
+    if (source.sourceKind === 'cloud') {
+      throw new Error(
+        'E_CLOUD_SOURCE_REFRESH: cloud tables are refreshed by cloud sync, not from a local path'
+      );
+    }
     const members = await Promise.all(
       source.memberIds.map((m) => this.rawTableRepo.requireRawTable(m))
     );
@@ -471,66 +486,266 @@ export class RawSourceService {
         // file gone: every member is missing
       }
     }
+    const memberKeys = new Set(
+      members.map((m) => m.memberKey).filter((k): k is string => Boolean(k))
+    );
+    const known = new Set([...(source.config.knownMembers ?? []), ...memberKeys]);
+    const fresh = [...present].filter((key) => !known.has(key) && !memberKeys.has(key));
+    const gone = tracksMembers
+      ? members.filter((m) => m.memberKey && !present.has(m.memberKey))
+      : [];
+    result.renames = await this.detectRenames(source, gone, fresh);
+    const renamedIds = new Set(result.renames.map((r) => r.tableId));
+    const renameTargets = new Set(result.renames.map((r) => r.newKey));
+
     for (const member of members) {
+      if (renamedIds.has(member.id)) continue;
       if (tracksMembers && member.memberKey && !present.has(member.memberKey)) {
         await this.sources.setMemberStatus(member.id, 'missing');
         result.missing.push(member.id);
+        result.missingItems.push(await this.changeItem(member));
         continue;
       }
       try {
         await this.rawTables.updateRawTable({ id: member.id, config: member.inputConfig });
         await this.sources.setMemberStatus(member.id, 'ok');
         result.refreshed.push(member.id);
+        result.unchangedNames.push(member.name);
       } catch (error) {
         result.failed.push({ id: member.id, error: errorText(error) });
       }
     }
     if (MULTI_TABLE_MODES.has(source.buildMode) && source.config.autoInclude) {
-      const known = new Set([
-        ...(source.config.knownMembers ?? []),
-        ...members.map((m) => m.memberKey).filter((k): k is string => Boolean(k)),
-      ]);
-      const fresh = [...present].filter((key) => !known.has(key));
-      if (fresh.length > 0) {
-        const skipped: DataRawSourceCreateResult['skipped'] = [];
-        const plans = await this.planMembers(
-          source.sourcePath,
-          source.sourceKind,
-          source.buildMode,
-          {
-            sourcePath: source.sourcePath,
-            buildMode: source.buildMode,
-            members: fresh.map((key) => ({ key })),
-            sheetSelector: source.config.sheetSelector,
-            fileSheetOverrides: source.config.fileSheetOverrides,
-            fileRange: source.config.fileRange,
-          },
-          skipped
-        ).catch(() => []);
-        for (const plan of plans) {
-          try {
-            const table = await this.rawTables.importRawTable({
-              filePath: plan.filePath,
-              name: plan.name,
-              sourceKind: plan.sourceKind,
-              config: plan.config,
-              sourceId: source.id,
-              memberKey: plan.memberKey,
-            });
-            result.added.push(table.id);
-          } catch (error) {
-            result.failed.push({ id: plan.memberKey ?? plan.name, error: errorText(error) });
-          }
-        }
+      const toAdd = fresh.filter((key) => !renameTargets.has(key));
+      await this.importNewMembers(source, toAdd, result.added, result.failed);
+      for (const tableId of result.added) {
+        result.addedItems.push(
+          await this.changeItem(await this.rawTableRepo.requireRawTable(tableId))
+        );
       }
     }
     await this.sources.updateSource({
       id: source.id,
-      config: { ...source.config, knownMembers: [...present], lastScannedAt: this.ctx.now() },
+      config: {
+        ...source.config,
+        // Rename targets stay "unknown" so an unresolved rename is detected again next time.
+        knownMembers: [...present].filter((key) => !renameTargets.has(key)),
+        lastScannedAt: this.ctx.now(),
+      },
       at: this.ctx.now(),
     });
     result.source = await this.sources.requireSource(source.id);
     return result;
+  }
+
+  /** Applies the user's rename decisions from the refresh dialog. */
+  async resolveRenames(
+    input: DataResolveRawSourceRenamesInput
+  ): Promise<DataResolveRawSourceRenamesResult> {
+    await this.ctx.ensureReady();
+    const source = await this.sources.requireSource(input.sourceId);
+    const out: DataResolveRawSourceRenamesResult = {
+      source,
+      renamed: [],
+      added: [],
+      missing: [],
+      failed: [],
+    };
+    const asNew: string[] = [];
+    for (const decision of input.decisions) {
+      if (!source.memberIds.includes(decision.tableId)) {
+        out.failed.push({ id: decision.tableId, error: 'Table is not a member of this source' });
+        continue;
+      }
+      const table = await this.rawTableRepo.requireRawTable(decision.tableId);
+      if (decision.action === 'new') {
+        await this.sources.setMemberStatus(table.id, 'missing');
+        out.missing.push(table.id);
+        asNew.push(decision.newKey);
+        continue;
+      }
+      try {
+        const rebound = this.reboundMember(source, table, decision.newKey);
+        await this.rawTables.updateRawTable({
+          id: table.id,
+          filePath: rebound.filePath,
+          config: rebound.config,
+        });
+        await this.sources.setMemberKey(table.id, decision.newKey);
+        await this.sources.setMemberStatus(table.id, 'ok');
+        out.renamed.push(table.id);
+      } catch (error) {
+        out.failed.push({ id: table.id, error: errorText(error) });
+      }
+    }
+    await this.importNewMembers(source, asNew, out.added, out.failed);
+    const decided = new Set(input.decisions.map((d) => d.newKey));
+    await this.sources.updateSource({
+      id: source.id,
+      config: {
+        ...source.config,
+        knownMembers: [...new Set([...(source.config.knownMembers ?? []), ...decided])],
+      },
+      at: this.ctx.now(),
+    });
+    out.source = await this.sources.requireSource(source.id);
+    return out;
+  }
+
+  private reboundMember(
+    source: DataRawSource,
+    table: DataRawTable,
+    newKey: string
+  ): { filePath?: string; config: DataRawTableConfig } {
+    if (source.buildMode === 'folder_per_file') {
+      const filePath = join(source.sourcePath, newKey);
+      if (table.inputConfig.sourceKind === 'excel' && isExcelFile(filePath)) {
+        const sheets = getWorkbookSheetNames(filePath);
+        const sheet =
+          source.config.fileSheetOverrides?.[newKey] ??
+          resolveSheetBySelector(normalizeSheetSelector(source.config.sheetSelector), sheets) ??
+          sheets[0];
+        return { filePath, config: { ...defaultExcelConfig(filePath), sheetName: sheet } };
+      }
+      return { filePath, config: table.inputConfig };
+    }
+    if (table.inputConfig.sourceKind !== 'excel') {
+      throw new Error('Only Excel sheets and folder files can be re-bound');
+    }
+    return { config: { ...table.inputConfig, sheetName: newKey } };
+  }
+
+  private async importNewMembers(
+    source: DataRawSource,
+    keys: string[],
+    added: string[],
+    failed: Array<{ id: string; error: string }>
+  ): Promise<void> {
+    if (keys.length === 0) return;
+    const mode = source.buildMode === 'excel_single' ? 'excel_per_sheet' : source.buildMode;
+    const skipped: DataRawSourceCreateResult['skipped'] = [];
+    const plans = await this.planMembers(
+      source.sourcePath,
+      source.sourceKind,
+      mode,
+      {
+        sourcePath: source.sourcePath,
+        buildMode: mode,
+        members: keys.map((key) => ({ key })),
+        sheetSelector: source.config.sheetSelector,
+        fileSheetOverrides: source.config.fileSheetOverrides,
+        fileRange: source.config.fileRange,
+      },
+      skipped
+    ).catch(() => []);
+    for (const plan of plans) {
+      try {
+        const table = await this.rawTables.importRawTable({
+          filePath: plan.filePath,
+          name: plan.name,
+          sourceKind: plan.sourceKind,
+          config: plan.config,
+          sourceId: source.id,
+          memberKey: plan.memberKey,
+        });
+        added.push(table.id);
+      } catch (error) {
+        failed.push({ id: plan.memberKey ?? plan.name, error: errorText(error) });
+      }
+    }
+  }
+
+  private async changeItem(table: DataRawTable): Promise<DataRawSourceChangeItem> {
+    return {
+      id: table.id,
+      name: table.name,
+      key: table.memberKey ?? null,
+      pipelineNames: await this.pipelinesReferencing(table.id),
+    };
+  }
+
+  /** Pairs each vanished member with the most similar new sheet / file (>= threshold). */
+  private async detectRenames(
+    source: DataRawSource,
+    gone: DataRawTable[],
+    fresh: string[]
+  ): Promise<DataRawSourceRenameCandidate[]> {
+    if (gone.length === 0 || fresh.length === 0) return [];
+    const candidates = new Map<string, Fingerprint | null>();
+    for (const key of fresh) {
+      candidates.set(key, await this.candidateFingerprint(source, key).catch(() => null));
+    }
+    const out: DataRawSourceRenameCandidate[] = [];
+    const taken = new Set<string>();
+    for (const table of gone) {
+      const old = await this.storedFingerprint(table).catch(() => null);
+      if (!old) continue;
+      let best: { key: string; score: number } | null = null;
+      for (const [key, fp] of candidates) {
+        if (!fp || taken.has(key)) continue;
+        const score = fingerprintSimilarity(old, fp);
+        if (!best || score > best.score) best = { key, score };
+      }
+      if (best && best.score >= RENAME_SIMILARITY_THRESHOLD) {
+        taken.add(best.key);
+        out.push({
+          tableId: table.id,
+          tableName: table.name,
+          oldKey: table.memberKey ?? '',
+          newKey: best.key,
+          similarity: Math.round(best.score * 100) / 100,
+        });
+      }
+    }
+    return out;
+  }
+
+  private async storedFingerprint(table: DataRawTable): Promise<Fingerprint> {
+    return this.ctx.runExclusive(async () => {
+      const types = await this.ctx.getTableColumnTypes(table.tableName);
+      const rows = await this.ctx.queryRows<Record<string, unknown>>(
+        `SELECT * FROM ${quoteIdent(table.tableName)} LIMIT ${FINGERPRINT_ROWS}`
+      );
+      return makeFingerprint(types, rows);
+    }, `renameFingerprint:${table.id}`);
+  }
+
+  private async candidateFingerprint(source: DataRawSource, key: string): Promise<Fingerprint> {
+    let filePath = source.sourcePath;
+    let config: DataRawTableConfig;
+    if (source.sourceKind === 'folder') {
+      filePath = join(source.sourcePath, key);
+      if (isExcelFile(filePath)) {
+        const sheets = getWorkbookSheetNames(filePath);
+        const sheet =
+          resolveSheetBySelector(normalizeSheetSelector(source.config.sheetSelector), sheets) ??
+          sheets[0];
+        config = { ...defaultExcelConfig(filePath), sheetName: sheet };
+      } else {
+        config = {
+          sourceKind: 'csv',
+          header: 'auto',
+          dataRegion: 'auto',
+          encoding: 'auto',
+          delimiter: 'auto',
+        };
+      }
+    } else {
+      config = { ...defaultExcelConfig(filePath), sheetName: key };
+    }
+    const tempTable = tableNameFromId('rawSource_fp', uuidv4());
+    return this.ctx.runExclusive(async () => {
+      try {
+        await this.rawTables.createImportTempTable(tempTable, filePath, 0, true, config);
+        const types = await this.ctx.inferTableColumnTypes(tempTable);
+        const rows = await this.ctx.queryRows<Record<string, unknown>>(
+          `SELECT * FROM ${quoteIdent(tempTable)} LIMIT ${FINGERPRINT_ROWS}`
+        );
+        return makeFingerprint(types, rows);
+      } finally {
+        await this.ctx.dropTableIfExists(tempTable).catch(() => undefined);
+      }
+    }, `renameFingerprint:${key}`);
   }
 
   // ---- rebuild / delete ---------------------------------------------------------------------
@@ -600,7 +815,7 @@ function validateBuildMode(
     excel: ['excel_single', 'excel_per_sheet', 'excel_merge_sheets'],
     folder: ['folder_merge', 'folder_per_file'],
     csv: ['single'],
-    cloud: ['single'],
+    cloud: ['cloud_table'],
   };
   if (!allowed[kind].includes(mode)) {
     throw new Error(
@@ -648,6 +863,62 @@ function listFolderEntries(
   };
   visit(folderPath);
   return out;
+}
+
+const RENAME_SIMILARITY_THRESHOLD = 0.8;
+const FINGERPRINT_ROWS = 50;
+
+/** Fingerprint = column names + type families + first 50 rows (normalized text). */
+export interface Fingerprint {
+  columns: string[];
+  families: Record<string, string>;
+  rows: string[];
+}
+
+function typeFamily(type: string): string {
+  const t = type.toUpperCase();
+  if (/INT|DOUBLE|DECIMAL|FLOAT|REAL|NUMERIC|HUGEINT/.test(t)) return 'number';
+  if (/DATE|TIME/.test(t)) return 'date';
+  if (/BOOL/.test(t)) return 'boolean';
+  return 'text';
+}
+
+function normalizeCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  return /^-?\d+\.0+$/.test(text) ? text.replace(/\.0+$/, '') : text;
+}
+
+export function makeFingerprint(
+  types: Array<{ name: string; type: string }>,
+  rows: Array<Record<string, unknown>>
+): Fingerprint {
+  const columns = types.map((column) => column.name).filter((name) => !name.startsWith('_'));
+  return {
+    columns,
+    families: Object.fromEntries(types.map((column) => [column.name, typeFamily(column.type)])),
+    rows: rows.map((row) => columns.map((column) => normalizeCell(row[column])).join('\u0001')),
+  };
+}
+
+/** 0.5 × column-name Jaccard + 0.2 × type agreement + 0.3 × first-rows overlap. */
+export function fingerprintSimilarity(a: Fingerprint, b: Fingerprint): number {
+  const ca = new Set(a.columns);
+  const cb = new Set(b.columns);
+  const shared = [...ca].filter((column) => cb.has(column));
+  const union = new Set([...ca, ...cb]).size || 1;
+  const nameScore = shared.length / union;
+  const typeScore = shared.length
+    ? shared.filter((column) => a.families[column] === b.families[column]).length / shared.length
+    : 0;
+  const rb = new Set(b.rows);
+  const rowBase = Math.max(a.rows.length, b.rows.length);
+  const rowScore = rowBase ? a.rows.filter((row) => rb.has(row)).length / rowBase : 1;
+  return 0.5 * nameScore + 0.2 * typeScore + 0.3 * rowScore;
+}
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
 }
 
 function errorText(error: unknown): string {

@@ -102,6 +102,8 @@ export const dataClient = {
   createRawSource: (...args: Parameters<DataApi['createRawSource']>) =>
     dataApi().createRawSource(...args),
   refreshRawSource: (id: string) => dataApi().refreshRawSource(id),
+  resolveRawSourceRenames: (...args: Parameters<DataApi['resolveRawSourceRenames']>) =>
+    dataApi().resolveRawSourceRenames(...args),
   getRawSourceRebuildImpact: (id: string) => dataApi().getRawSourceRebuildImpact(id),
   rebuildRawSource: (...args: Parameters<DataApi['rebuildRawSource']>) =>
     dataApi().rebuildRawSource(...args),

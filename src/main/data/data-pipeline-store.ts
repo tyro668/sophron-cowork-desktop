@@ -74,6 +74,8 @@ import type {
   DataRawSourceCreateResult,
   DataRawSourceRebuildImpact,
   DataRawSourceRefreshResult,
+  DataResolveRawSourceRenamesInput,
+  DataResolveRawSourceRenamesResult,
   DataRawSourceScan,
   DataRebuildRawSourceInput,
   DataScanRawSourceInput,
@@ -222,6 +224,11 @@ export class DataPipelineStore {
   }
   refreshRawSource(id: string): Promise<DataRawSourceRefreshResult> {
     return this.rawSources.refreshSource(id);
+  }
+  resolveRawSourceRenames(
+    input: DataResolveRawSourceRenamesInput
+  ): Promise<DataResolveRawSourceRenamesResult> {
+    return this.rawSources.resolveRenames(input);
   }
   getRawSourceRebuildImpact(id: string): Promise<DataRawSourceRebuildImpact> {
     return this.rawSources.getRebuildImpact(id);

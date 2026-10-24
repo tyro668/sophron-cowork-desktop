@@ -185,9 +185,9 @@ export class DashboardService {
       ? useGroupedRawTableQuery
         ? await this.ctx.metaQueryRows<DataRawTableRow>(
             `
-              WITH matched AS (
+              WITH filtered AS (
                 SELECT d.*, g.sort_index, g.name AS group_name,
-                  ROW_NUMBER() OVER (PARTITION BY d.group_id ORDER BY d.updated_at DESC, d.created_at DESC) AS group_rn
+                  coalesce(d.source_id, d.id) AS unit_key
                 FROM data_raw_tables d
                 LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
                 WHERE ($query = ''
@@ -199,15 +199,32 @@ export class DashboardService {
                     OR ${storedRawTableSourceKindSql('d')} = $sourceKind
                   )
                   AND ($rawTableGroupIdSet = 0 OR d.group_id IS NOT DISTINCT FROM $rawTableGroupId)
-                ORDER BY d.group_id IS NULL, g.sort_index, g.name,
-                  d.updated_at DESC, d.created_at DESC
+              ),
+              -- A list unit is a source (all its tables) or a table without one; pages are
+              -- counted in units so a source's tables are never split across pages.
+              units AS (
+                SELECT filtered.*,
+                  max(updated_at) OVER (PARTITION BY group_id, unit_key) AS unit_updated,
+                  max(created_at) OVER (PARTITION BY group_id, unit_key) AS unit_created
+                FROM filtered
+              ),
+              matched AS (
+                SELECT units.*,
+                  DENSE_RANK() OVER (
+                    PARTITION BY group_id ORDER BY unit_updated DESC, unit_created DESC, unit_key
+                  ) AS group_rn
+                FROM units
               )
               SELECT
                 matched.*,
                 ${this.ctx.rawTableRelatedPipelineNamesSql('matched')} AS related_pipeline_names
               FROM matched
-              WHERE $rawTableGroupIdSet = 1 OR ($rawTablePerGroupLimit > 0 AND group_rn <= $rawTablePerGroupLimit)
-              LIMIT ${rawTableGroupIdSet ? rawTableWindow.limit : Number.MAX_SAFE_INTEGER} OFFSET ${rawTableGroupIdSet ? rawTableWindow.offset : 0}
+              WHERE ($rawTableGroupIdSet = 1
+                  AND group_rn > ${rawTableGroupIdSet ? rawTableWindow.offset : 0}
+                  AND group_rn <= ${rawTableGroupIdSet ? rawTableWindow.offset + rawTableWindow.limit : Number.MAX_SAFE_INTEGER})
+                OR ($rawTableGroupIdSet = 0 AND $rawTablePerGroupLimit > 0 AND group_rn <= $rawTablePerGroupLimit)
+              ORDER BY group_id IS NULL, sort_index, group_name,
+                unit_updated DESC, unit_created DESC, unit_key, created_at, name
             `,
             {
               query: normalizedQuery,
@@ -251,7 +268,7 @@ export class DashboardService {
         count: number | string;
       }>(
         `
-          SELECT d.group_id, count(*) AS count
+          SELECT d.group_id, count(DISTINCT coalesce(d.source_id, d.id)) AS count
           FROM data_raw_tables d
           LEFT JOIN data_groups g ON g.id = d.group_id AND g.scope = 'input'
           WHERE ($query = ''

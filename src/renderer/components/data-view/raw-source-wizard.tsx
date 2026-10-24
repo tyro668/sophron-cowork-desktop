@@ -287,6 +287,8 @@ export function RawSourceWizard({
               })),
             }
           : null;
+      case 'cloud_table':
+        return null;
     }
   };
 

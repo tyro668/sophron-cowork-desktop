@@ -122,13 +122,15 @@ export class RawTableService {
     }
     const sheet = config.sourceKind === 'excel' ? config.sheetName : null;
     const sourceId = uuidv4();
+    const cloud = isCloudRawTableConfig(config);
     await this.sources.insertSource({
       id: sourceId,
       name,
       sourcePath,
-      sourceKind,
-      buildMode:
-        sourceKind === 'excel'
+      sourceKind: cloud ? 'cloud' : sourceKind,
+      buildMode: cloud
+        ? 'cloud_table'
+        : sourceKind === 'excel'
           ? config.sourceKind === 'excel' && config.mergeSheets
             ? 'excel_merge_sheets'
             : 'excel_single'
@@ -223,6 +225,9 @@ export class RawTableService {
             updatedAt: now,
           }),
       });
+      if (this.sources && isCloudRawTableConfig(prepared.config)) {
+        await this.sources.markCloudSource(rawTable.id);
+      }
       return this.rawTables.requireRawTable(rawTable.id);
     } catch (error) {
       await this.ctx.dropTableIfExists(replacementTable).catch(() => undefined);
@@ -967,4 +972,11 @@ export function findFilledColumns(
       missingInFiles: files.filter((f) => !f.columns.includes(name)).map((f) => f.file),
     }))
     .filter((entry) => entry.missingInFiles.length > 0);
+}
+
+/** Cloud-space mirrors (cloud binding or a cached cloud CSV) form their own source kind. */
+export function isCloudRawTableConfig(config: DataRawTableConfig | null | undefined): boolean {
+  if (!config) return false;
+  if (config.sourceKind === 'cloud') return true;
+  return Boolean((config as { cloudMirror?: unknown }).cloudMirror);
 }

@@ -421,7 +421,9 @@ export type DataRawSourceBuildMode =
   | 'excel_merge_sheets'
   | 'folder_merge'
   | 'folder_per_file'
-  | 'single';
+  | 'single'
+  /** A table mirrored from the cloud space; refreshed by cloud sync, never rebuilt. */
+  | 'cloud_table';
 
 export type DataRawSourceKind = 'excel' | 'csv' | 'folder' | 'cloud';
 
@@ -547,9 +549,44 @@ export interface DataRebuildRawSourceInput extends DataCreateRawSourceInput {
   confirmDeleteExistingTables: boolean;
 }
 
+/** A missing member that looks like a renamed sheet / file (fingerprint match). */
+export interface DataRawSourceRenameCandidate {
+  tableId: string;
+  tableName: string;
+  oldKey: string;
+  newKey: string;
+  /** 0..1 — column names + types + first 50 rows. */
+  similarity: number;
+}
+
+export interface DataRawSourceChangeItem {
+  id: string;
+  name: string;
+  key: string | null;
+  pipelineNames: string[];
+}
+
 export interface DataRawSourceRefreshResult {
   source: DataRawSource;
   refreshed: string[];
+  added: string[];
+  missing: string[];
+  failed: Array<{ id: string; error: string }>;
+  /** Suspected renames; their tables are left untouched until the user decides. */
+  renames: DataRawSourceRenameCandidate[];
+  addedItems: DataRawSourceChangeItem[];
+  missingItems: DataRawSourceChangeItem[];
+  unchangedNames: string[];
+}
+
+export interface DataResolveRawSourceRenamesInput {
+  sourceId: string;
+  decisions: Array<{ tableId: string; newKey: string; action: 'rename' | 'new' }>;
+}
+
+export interface DataResolveRawSourceRenamesResult {
+  source: DataRawSource;
+  renamed: string[];
   added: string[];
   missing: string[];
   failed: Array<{ id: string; error: string }>;
