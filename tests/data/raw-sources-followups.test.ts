@@ -72,7 +72,7 @@ describe('rename detection on refresh (design 4.3)', () => {
       expect.objectContaining({ tableId: target.id, oldKey: '目标', newKey: '9月目标' }),
     ]);
     expect(result.renames[0].similarity).toBeGreaterThanOrEqual(0.8);
-    // Not marked missing and the rename target is not auto-imported as a new table.
+    // Not reported as missing (it is flagged until resolved) and the rename target is not auto-imported as a new table.
     expect(result.missing).toEqual([]);
     expect(result.addedItems.map((item) => item.key)).toEqual(['说明']);
     expect(result.unchangedNames).toEqual([expect.stringContaining('销售')]);

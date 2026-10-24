@@ -513,7 +513,12 @@ export class RawSourceService {
     const renameTargets = new Set(result.renames.map((r) => r.newKey));
 
     for (const member of members) {
-      if (renamedIds.has(member.id)) continue;
+      if (renamedIds.has(member.id)) {
+        // Its sheet / file is gone from the source until the user confirms the rename, so
+        // pipelines must not keep reading the stale import silently (E_SOURCE_MEMBER_MISSING).
+        await this.sources.setMemberStatus(member.id, 'missing');
+        continue;
+      }
       if (tracksMembers && member.memberKey && !present.has(member.memberKey)) {
         await this.sources.setMemberStatus(member.id, 'missing');
         result.missing.push(member.id);
