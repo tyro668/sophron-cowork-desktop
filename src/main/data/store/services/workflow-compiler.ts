@@ -2,7 +2,11 @@
 import { resolveCsvReadPath } from '../csv-encoding';
 import { buildSqlQuery, describeSqlQuery } from '../../operators/sql-query';
 import { SqlQueryConfigSchema } from '../../../../shared/operator-schemas/sql-query';
-import type { DataWorkflowEdge, DataWorkflowNode } from '../../../../shared/contracts';
+import type {
+  DataRawTable,
+  DataWorkflowEdge,
+  DataWorkflowNode,
+} from '../../../../shared/contracts';
 import {
   JoinConfigSchema,
   MAX_PIVOT_VALUES_PER_FIELD,
@@ -102,6 +106,23 @@ export class WorkflowCompiler {
       await this.ctx.dropTableIfExists(schemaTableName).catch(() => undefined);
     }
   }
+  /** E_SOURCE_MEMBER_MISSING (raw 1:N design 4.5): fail instead of silently using stale data. */
+  private async sourceMemberMissingMessage(rawTable: DataRawTable): Promise<string> {
+    let sourceName = '';
+    if (rawTable.sourceId) {
+      const rows = await this.ctx.metaQueryRows<{ name: string }>(
+        'SELECT name FROM data_raw_sources WHERE id = $id',
+        { id: rawTable.sourceId }
+      );
+      sourceName = rows[0]?.name ? String(rows[0].name) : '';
+    }
+    const where = [sourceName, rawTable.memberKey].filter(Boolean).join(' / ');
+    return (
+      `E_SOURCE_MEMBER_MISSING: 原始表“${rawTable.name}”${where ? `（${where}）` : ''}在来源中已不存在。` +
+      '原始表保留着上次导入的数据；请重新指定 Sheet / 文件、换成其他原始表，' +
+      '或在输入节点开启“用上次数据继续”。'
+    );
+  }
   async materializeInputSource(
     node: DataWorkflowNode,
     pipelineSourcePath: string | null,
@@ -121,6 +142,9 @@ export class WorkflowCompiler {
       const rawTable = await this.rawTables.findRawTableByReference(rawTableRef);
       if (!rawTable) {
         throw new Error(`RawTable source not found: ${rawTableRef}`);
+      }
+      if (rawTable.memberStatus === 'missing' && node.config.allowMissingSourceMember !== true) {
+        throw new Error(await this.sourceMemberMissingMessage(rawTable));
       }
       await this.ctx.runSql(
         `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(

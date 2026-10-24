@@ -37,8 +37,8 @@ import { useDataNavigation } from '../hooks/use-data-navigation';
 import type { DataRawSource, DataRawSourceBuildMode, DataRawTable } from '../../../types';
 import { RawSourceWizard } from '../../../components/data-view/raw-source-wizard';
 import { RawSourceDetail } from '../../../components/data-view/raw-source-detail';
+import { useRawSourceRefresh } from '../../../components/data-view/raw-source-refresh-dialog';
 import { useAppStore } from '../../../store';
-import { formatDataErrorMessage } from '../model/errors';
 import { DataPipelineAiGenerateDialog } from '../../../components/data-view/data-pipelines/DataPipelineAiGenerateDialog';
 import type { DataTab } from '../model/types';
 
@@ -103,7 +103,6 @@ export function DataViewPage() {
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
   const [sourceTables, setSourceTables] = useState<DataRawTable[]>([]);
   const [editorInitialTab, setEditorInitialTab] = useState<'data' | undefined>(undefined);
-  const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
   const loadRawSources = useCallback(async () => {
     if (!isDataApiAvailable || !dataClient.has('listRawSources')) return;
     try {
@@ -137,25 +136,13 @@ export function DataViewPage() {
     setEditorInitialTab('data');
     editors.setEditingRawTableId(table.id);
   };
-  const handleRefreshSource = async (source: DataRawSource) => {
-    setRefreshingSourceId(source.id);
-    try {
-      const result = await dataClient.refreshRawSource(source.id);
-      showToast(
-        result.failed.length ? 'error' : 'success',
-        t('data.rawSources.detail.refreshed', {
-          refreshed: result.refreshed.length,
-          added: result.added.length,
-          missing: result.missing.length,
-        })
-      );
-      void loadRawTables({ preserveError: true });
-    } catch (err) {
-      showToast('error', formatDataErrorMessage(err, t));
-    } finally {
-      setRefreshingSourceId(null);
-    }
-  };
+  const sourceRefresh = useRawSourceRefresh(() => {
+    void loadRawTables({ preserveError: true });
+    void loadRawSources();
+  });
+  const handleRefreshSource = (source: DataRawSource) => sourceRefresh.refresh(source.id);
+  const refreshingSourceId = sourceRefresh.refreshingId;
+
   const pipelineGroups = useMemo(
     () => dashboard.dashboard.groups.filter((group) => group.scope === 'pipeline'),
     [dashboard.dashboard.groups]
@@ -271,6 +258,7 @@ export function DataViewPage() {
   return (
     <div className="flex-1 min-h-0 overflow-hidden bg-transparent">
       <div className="flex h-full min-h-0 w-full flex-col">
+        {sourceRefresh.dialog}
         {sourceWizard ? (
           <RawSourceWizard
             key={sourceWizard.rebuild ? `rebuild:${sourceWizard.rebuild.source.id}` : 'new'}

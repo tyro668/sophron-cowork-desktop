@@ -375,6 +375,11 @@ export class DataToolService {
       `Refreshed source ${result.source.name}: ${result.refreshed.length} table(s) re-imported`,
       result.added.length ? `${result.added.length} new table(s) added` : '',
       result.missing.length ? `${result.missing.length} table(s) no longer in the source` : '',
+      result.renames?.length
+        ? `${result.renames.length} suspected rename(s) awaiting the user's decision in the app: ${result.renames
+            .map((item) => `${item.oldKey} → ${item.newKey}`)
+            .join('; ')}`
+        : '',
       result.failed.length
         ? `failed: ${result.failed.map((item) => `${item.id} (${item.error})`).join('; ')}`
         : '',

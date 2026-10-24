@@ -9,6 +9,17 @@ export interface GlassSelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Options sharing a group key render under one header (in first-seen order). */
+  group?: string;
+  groupLabel?: string;
+  /** Short muted text after the group label (e.g. "3" or "合并"). */
+  groupMeta?: string;
+  /** Extra text matched by the search box (e.g. the source name). */
+  searchText?: string;
+  /** Muted text after the label (e.g. "720 行"). */
+  hint?: string;
+  /** Greyed out but still selectable. */
+  muted?: boolean;
 }
 
 interface GlassSelectProps {
@@ -67,7 +78,9 @@ export function GlassSelect({
   const visibleOptions = normalizedSearch
     ? normalizedOptions.filter(
         (option) =>
-          option.value === normalizedValue || option.label.toLowerCase().includes(normalizedSearch)
+          option.value === normalizedValue ||
+          option.label.toLowerCase().includes(normalizedSearch) ||
+          (option.searchText ?? '').toLowerCase().includes(normalizedSearch)
       )
     : normalizedOptions;
   const selectedOption = normalizedOptions.find((option) => option.value === normalizedValue);
@@ -148,21 +161,47 @@ export function GlassSelect({
                 {searchEmptyText}
               </div>
             )}
-            {visibleOptions.map((option) => (
-              <Select.Item
-                key={option.value}
-                value={option.value}
-                disabled={option.disabled}
-                className={cn(selectItemClass, 'min-h-8')}
-              >
-                <Select.ItemText>
-                  <span className="truncate">{option.label}</span>
-                </Select.ItemText>
-                <Select.ItemIndicator className="absolute right-1.5 flex items-center text-accent-text">
-                  <Check className="h-3.5 w-3.5" />
-                </Select.ItemIndicator>
-              </Select.Item>
-            ))}
+            {groupOptions(visibleOptions).map((section) => {
+              const items = section.options.map((option) => (
+                <Select.Item
+                  key={option.value}
+                  value={option.value}
+                  disabled={option.disabled}
+                  className={cn(
+                    selectItemClass,
+                    'min-h-8',
+                    section.key && 'pl-5',
+                    option.muted && 'text-text-muted'
+                  )}
+                >
+                  <Select.ItemText>
+                    <span className="truncate">{option.label}</span>
+                  </Select.ItemText>
+                  {option.hint ? (
+                    <span className="ml-2 flex-shrink-0 truncate pr-5 text-[11.5px] text-text-muted">
+                      {option.hint}
+                    </span>
+                  ) : null}
+                  <Select.ItemIndicator className="absolute right-1.5 flex items-center text-accent-text">
+                    <Check className="h-3.5 w-3.5" />
+                  </Select.ItemIndicator>
+                </Select.Item>
+              ));
+              if (!section.key) return items;
+              return (
+                <Select.Group key={`group:${section.key}`} data-testid="glass-select-group">
+                  <Select.Label className="flex items-center gap-1.5 px-2 pb-0.5 pt-1.5 text-[11.5px] font-medium text-text-secondary">
+                    <span className="truncate">{section.label}</span>
+                    {section.meta ? (
+                      <span className="rounded bg-surface-hover px-1 text-[10.5px] text-text-muted">
+                        {section.meta}
+                      </span>
+                    ) : null}
+                  </Select.Label>
+                  {items}
+                </Select.Group>
+              );
+            })}
           </Select.Viewport>
           {footer ? (
             <div className="flex-shrink-0 border-t border-border-subtle">{footer}</div>
@@ -171,6 +210,40 @@ export function GlassSelect({
       </Select.Portal>
     </Select.Root>
   );
+}
+
+type OptionSection<T extends GlassSelectOption> = {
+  key: string | null;
+  label: string;
+  meta?: string;
+  options: T[];
+};
+
+/** Consecutive ungrouped options stay flat; grouped ones collect under their first header. */
+export function groupOptions<T extends GlassSelectOption>(options: T[]): OptionSection<T>[] {
+  const sections: OptionSection<T>[] = [];
+  const byKey = new Map<string, OptionSection<T>>();
+  for (const option of options) {
+    if (!option.group) {
+      const last = sections[sections.length - 1];
+      if (last && last.key === null) last.options.push(option);
+      else sections.push({ key: null, label: '', options: [option] });
+      continue;
+    }
+    let section = byKey.get(option.group);
+    if (!section) {
+      section = {
+        key: option.group,
+        label: option.groupLabel ?? option.group,
+        meta: option.groupMeta,
+        options: [],
+      };
+      byKey.set(option.group, section);
+      sections.push(section);
+    }
+    section.options.push(option);
+  }
+  return sections;
 }
 
 function normalizeSelectValue(value: string): string {

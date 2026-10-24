@@ -114,6 +114,22 @@ export class RawSourceRepository {
     );
   }
 
+  /** Re-labels the (single-member) source of a table that became a cloud mirror. */
+  async markCloudSource(rawTableId: string): Promise<void> {
+    await this.ctx.metaRunSql(
+      `UPDATE data_raw_sources SET source_kind = 'cloud', build_mode = 'cloud_table'
+        WHERE id = (SELECT source_id FROM data_raw_tables WHERE id = $id)`,
+      { id: rawTableId }
+    );
+  }
+
+  async setMemberKey(rawTableId: string, memberKey: string): Promise<void> {
+    await this.ctx.metaRunSql('UPDATE data_raw_tables SET member_key = $key WHERE id = $id', {
+      id: rawTableId,
+      key: memberKey,
+    });
+  }
+
   async setMemberStatus(rawTableId: string, status: DataRawSourceMemberStatus): Promise<void> {
     await this.ctx.metaRunSql('UPDATE data_raw_tables SET member_status = $status WHERE id = $id', {
       id: rawTableId,

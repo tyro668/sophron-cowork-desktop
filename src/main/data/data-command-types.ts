@@ -7,6 +7,7 @@ import type {
   DataRawTable,
   DataRawSheetSelector,
   DataRawSource,
+  DataRawSourceRefreshResult,
   DataDeleteRawTableNormalizerVersionInput,
   DataDeleteRawTableNormalizerVersionResult,
   DataGenerateRawTableNormalizerDraftInput,
@@ -168,13 +169,7 @@ export interface RefreshRawSourceCommand {
   id: string;
 }
 
-export interface RefreshRawSourceResult {
-  source: DataRawSource;
-  refreshed: string[];
-  added: string[];
-  missing: string[];
-  failed: Array<{ id: string; error: string }>;
-}
+export type RefreshRawSourceResult = DataRawSourceRefreshResult;
 
 export type SummarizeRawTableSourceCommand = DataSummarizeRawTableSourceInput;
 

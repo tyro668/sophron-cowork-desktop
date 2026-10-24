@@ -239,6 +239,7 @@ const RAW_SOURCE_BUILD_MODES: ReadonlySet<string> = new Set([
   'folder_merge',
   'folder_per_file',
   'single',
+  'cloud_table',
 ]);
 
 export function mapRawSourceRow(row: DataRawSourceRow): DataRawSource {

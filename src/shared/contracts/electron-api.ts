@@ -61,6 +61,8 @@ import type {
   DataCreateRawSourceInput,
   DataRawSourceCreateResult,
   DataRawSourceRefreshResult,
+  DataResolveRawSourceRenamesInput,
+  DataResolveRawSourceRenamesResult,
   DataRawSourceRebuildImpact,
   DataRebuildRawSourceInput,
   DataRawTableSourceKind,
@@ -237,6 +239,9 @@ export interface ElectronApi {
     scanRawSource: (payload: DataScanRawSourceInput) => Promise<DataRawSourceScan>;
     createRawSource: (payload: DataCreateRawSourceInput) => Promise<DataRawSourceCreateResult>;
     refreshRawSource: (id: string) => Promise<DataRawSourceRefreshResult>;
+    resolveRawSourceRenames: (
+      input: DataResolveRawSourceRenamesInput
+    ) => Promise<DataResolveRawSourceRenamesResult>;
     getRawSourceRebuildImpact: (id: string) => Promise<DataRawSourceRebuildImpact>;
     rebuildRawSource: (payload: DataRebuildRawSourceInput) => Promise<DataRawSourceCreateResult>;
     deleteRawSource: (id: string) => Promise<boolean>;

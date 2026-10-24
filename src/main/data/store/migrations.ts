@@ -1039,6 +1039,11 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'raw_table_sources',
     up: (ctx) => migrateRawTableSources(ctx),
   },
+  {
+    version: 30,
+    name: 'cloud_raw_sources',
+    up: (ctx) => migrateCloudRawSources(ctx),
+  },
 ];
 
 /** Raw-table 1:N model: every input table belongs to a source (file / folder / cloud table).
@@ -1488,5 +1493,26 @@ async function migrateCompositeLayout(ctx: DataStoreContext): Promise<void> {
         );
       }
     }
+  }
+}
+
+/** Cloud-space tables get their own source kind instead of a plain single-table source. */
+async function migrateCloudRawSources(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{ source_id: string; config_json: string | null }>(
+    `SELECT source_id, config_json FROM data_raw_tables WHERE source_id IS NOT NULL`
+  );
+  for (const row of rows) {
+    let config: Record<string, unknown> = {};
+    try {
+      config = JSON.parse(row.config_json || '{}') as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (config.sourceKind !== 'cloud' && !config.cloudMirror) continue;
+    await ctx.metaRunSql(
+      `UPDATE data_raw_sources SET source_kind = 'cloud', build_mode = 'cloud_table'
+        WHERE id = $id`,
+      { id: row.source_id }
+    );
   }
 }
