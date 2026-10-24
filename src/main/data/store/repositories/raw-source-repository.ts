@@ -36,7 +36,7 @@ export class RawSourceRepository {
 
   async requireSource(id: string): Promise<DataRawSource> {
     const source = await this.getSource(id);
-    if (!source) throw new Error(`Raw table source not found: ${id}`);
+    if (!source) throw new Error(`E_RAW_SOURCE_NOT_FOUND: 数据源不存在或已删除（${id}）`);
     return source;
   }
 

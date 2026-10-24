@@ -740,7 +740,13 @@ export class RawTableService {
       const types = await this.ctx.inferTableColumnTypes(tempTable);
       await this.castTempTableToVarchar(tempTable);
       if (folderConfig.keepSourceFileName) {
-        await this.appendConstantColumn(tempTable, SOURCE_FILE_SYSTEM_COLUMN, basename(filePath));
+        // Relative to the source folder (posix separators) so same-named files in
+        // different sub-folders stay distinguishable.
+        await this.appendConstantColumn(
+          tempTable,
+          SOURCE_FILE_SYSTEM_COLUMN,
+          file.split(/[\\/]/).join('/')
+        );
       }
       perFile.push({ file, table: tempTable, types });
     }

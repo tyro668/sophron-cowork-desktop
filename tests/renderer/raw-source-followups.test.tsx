@@ -123,6 +123,20 @@ describe('input picker grouped by source (4.4)', () => {
 });
 
 describe('expandable merged sources', () => {
+  it('marks merged sheets that were missing at the last refresh', () => {
+    const merged = table('月报（合并）', {
+      inputConfig: {
+        sourceKind: 'excel',
+        mergeSheets: ['一月', '二月'],
+        missingMergeSheets: ['二月'],
+      },
+    });
+    expect(mergeParts(merged as never)).toEqual([
+      { name: '一月', included: true },
+      { name: '二月', included: false, reason: 'missing_sheet' },
+    ]);
+  });
+
   it('lists included and excluded files of a folder merge when expanded', () => {
     const merged = table('门店（合并）', {
       inputConfig: {

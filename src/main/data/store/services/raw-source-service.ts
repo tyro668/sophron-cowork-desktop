@@ -55,6 +55,19 @@ const MULTI_TABLE_MODES: ReadonlySet<DataRawSourceBuildMode> = new Set([
   'folder_per_file',
 ]);
 
+const SKIP_REASON_TEXT: Record<string, string> = {
+  missing_sheet: '缺少 Sheet',
+  temp_file: '临时文件',
+  type_conflict: '类型冲突',
+  unreadable: '无法读取',
+  skipped: '已跳过',
+};
+
+function skipReasonText(reason: string): string {
+  if (SKIP_REASON_TEXT[reason]) return SKIP_REASON_TEXT[reason];
+  return /E_NO_HEADER_ROW|no header row/i.test(reason) ? '没有表头（空表）' : reason;
+}
+
 function stem(path: string): string {
   return rawTableNameFromPath(path);
 }
@@ -264,8 +277,10 @@ export class RawSourceService {
       }
       if (tables.length === 0) {
         throw new Error(
-          `No table could be created from ${sourceName}${
-            skipped.length ? `: ${skipped.map((s) => `${s.key} (${s.reason})`).join('; ')}` : ''
+          `E_NO_TABLE_CREATED: “${sourceName}”中没有可导入的表${
+            skipped.length
+              ? `：${skipped.map((s) => `${s.key}（${skipReasonText(s.reason)}）`).join('；')}`
+              : ''
           }`
         );
       }
@@ -317,12 +332,12 @@ export class RawSourceService {
           ? [{ key: sheetNames[0] }]
           : sheetNames.map((key) => ({ key }));
       if (buildMode === 'excel_single' && members.length !== 1) {
-        throw new Error('excel_single builds exactly one table; pick one sheet');
+        throw new Error('E_SINGLE_SHEET_REQUIRED: “单个 Sheet”模式只能选择一个 Sheet');
       }
       return members.map((member) => {
         if (!sheetNames.includes(member.key)) {
           throw new Error(
-            `Sheet "${member.key}" not found in ${basename(sourcePath)}. Available sheets: ${sheetNames.join(', ')}`
+            `E_SHEET_NOT_FOUND: “${basename(sourcePath)}”中没有 Sheet“${member.key}”。现有 Sheet：${sheetNames.join('、')}`
           );
         }
         return {
@@ -345,7 +360,8 @@ export class RawSourceService {
     if (buildMode === 'excel_merge_sheets') {
       const sheetNames = getWorkbookSheetNames(sourcePath);
       const sheets = (input.sheets ?? []).filter((sheet) => sheetNames.includes(sheet));
-      if (sheets.length < 2) throw new Error('Pick at least two sheets to merge into one table');
+      if (sheets.length < 2)
+        throw new Error('E_MERGE_NEEDS_TWO_SHEETS: 合并为一张表至少需要选择两个 Sheet');
       return [
         {
           filePath: sourcePath,
@@ -460,9 +476,7 @@ export class RawSourceService {
       unchangedNames: [],
     };
     if (source.sourceKind === 'cloud') {
-      throw new Error(
-        'E_CLOUD_SOURCE_REFRESH: cloud tables are refreshed by cloud sync, not from a local path'
-      );
+      throw new Error('E_CLOUD_SOURCE_REFRESH: 云端表由云空间同步更新，不能从本地刷新');
     }
     const members = await Promise.all(
       source.memberIds.map((m) => this.rawTableRepo.requireRawTable(m))
@@ -507,6 +521,9 @@ export class RawSourceService {
         continue;
       }
       const lostSheets = this.lostMergeSheets(source, member);
+      if (source.buildMode === 'excel_merge_sheets') {
+        await this.rawTableRepo.setMissingMergeSheets(member.id, lostSheets);
+      }
       if (lostSheets.length) {
         // Re-importing would silently drop those sheets' rows; keep the last import instead.
         result.failed.push({
@@ -547,6 +564,47 @@ export class RawSourceService {
     return result;
   }
 
+  /** After a confirmed rename the display name follows the new sheet / file name. The id is
+   *  unchanged; workflow inputs that referenced the table by its old name are re-bound by id. */
+  private async renameForNewKey(
+    source: DataRawSource,
+    table: { id: string; name: string; memberKey?: string | null },
+    newKey: string
+  ): Promise<void> {
+    const oldKey = table.memberKey ?? '';
+    const fileStem = stem(source.sourcePath);
+    const label = (key: string) => (source.buildMode === 'folder_per_file' ? stem(key) : key);
+    let next: string | null = null;
+    if (table.name === `${fileStem} / ${label(oldKey)}`) next = `${fileStem} / ${label(newKey)}`;
+    else if (oldKey && table.name.includes(label(oldKey)))
+      next = table.name.replace(label(oldKey), label(newKey));
+    if (!next || next === table.name) return;
+    try {
+      await this.rawTables.updateRawTable({ id: table.id, name: next });
+    } catch {
+      return; // name taken: keep the old display name, the rebind itself already succeeded
+    }
+    const nodes = await this.ctx.metaQueryRows<{ id: string; config_json: string | null }>(
+      `SELECT id, config_json FROM data_workflow_nodes WHERE config_json LIKE $pattern`,
+      { pattern: `%${table.name}%` }
+    );
+    for (const node of nodes) {
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(node.config_json || '{}') as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      if (config.rawTableId !== table.name && config.name !== table.name) continue;
+      config.rawTableId = table.id;
+      if (config.name === table.name) config.name = next;
+      await this.ctx.metaRunSql(
+        'UPDATE data_workflow_nodes SET config_json = $config WHERE id = $id',
+        { config: JSON.stringify(config), id: node.id }
+      );
+    }
+  }
+
   /** Merge-sheets member: configured sheets that are no longer in the workbook. */
   private lostMergeSheets(source: DataRawSource, member: { inputConfig?: unknown }): string[] {
     if (source.buildMode !== 'excel_merge_sheets') return [];
@@ -577,7 +635,7 @@ export class RawSourceService {
     const asNew: string[] = [];
     for (const decision of input.decisions) {
       if (!source.memberIds.includes(decision.tableId)) {
-        out.failed.push({ id: decision.tableId, error: 'Table is not a member of this source' });
+        out.failed.push({ id: decision.tableId, error: '该原始表不属于此数据源' });
         continue;
       }
       const table = await this.rawTableRepo.requireRawTable(decision.tableId);
@@ -596,6 +654,7 @@ export class RawSourceService {
         });
         await this.sources.setMemberKey(table.id, decision.newKey);
         await this.sources.setMemberStatus(table.id, 'ok');
+        await this.renameForNewKey(source, table, decision.newKey);
         out.renamed.push(table.id);
       } catch (error) {
         out.failed.push({ id: table.id, error: errorText(error) });
@@ -633,7 +692,7 @@ export class RawSourceService {
       return { filePath, config: table.inputConfig };
     }
     if (table.inputConfig.sourceKind !== 'excel') {
-      throw new Error('Only Excel sheets and folder files can be re-bound');
+      throw new Error('E_REBIND_UNSUPPORTED: 只有 Excel Sheet 和文件夹中的文件可以重新绑定');
     }
     return { config: { ...table.inputConfig, sheetName: newKey } };
   }
@@ -792,9 +851,7 @@ export class RawSourceService {
   /** Changing the build mode deletes the source's tables and creates them again. */
   async rebuildSource(input: DataRebuildRawSourceInput): Promise<DataRawSourceCreateResult> {
     if (input.confirmDeleteExistingTables !== true) {
-      throw new Error(
-        'E_REBUILD_NOT_CONFIRMED: changing the build mode deletes the existing tables; confirm first'
-      );
+      throw new Error('E_REBUILD_NOT_CONFIRMED: 修改构建方式会删除现有原始表，请先确认');
     }
     const source = await this.sources.requireSource(input.sourceId);
     for (const memberId of source.memberIds) {
@@ -842,7 +899,7 @@ function validateBuildMode(
   };
   if (!allowed[kind].includes(mode)) {
     throw new Error(
-      `Build mode ${mode} does not apply to a ${kind} source; use one of: ${allowed[kind].join(', ')}`
+      `E_BUILD_MODE_INVALID: 构建方式 ${mode} 不适用于此类来源（${kind}），可用：${allowed[kind].join('、')}`
     );
   }
   return mode;

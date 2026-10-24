@@ -444,7 +444,7 @@ describe('metadata migrations', () => {
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-      27, 28, 29, 30,
+      27, 28, 29, 30, 31,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -477,6 +477,7 @@ describe('metadata migrations', () => {
       'conditional_if_only',
       'raw_table_sources',
       'cloud_raw_sources',
+      'source_file_relative_paths',
     ]);
     // v29: one source per legacy input table.
     expect(tableNames(raw)).toContain('data_raw_sources');

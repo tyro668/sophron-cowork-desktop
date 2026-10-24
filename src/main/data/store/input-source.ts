@@ -410,6 +410,9 @@ export function normalizeStoredRawTableConfig(
       ...(config?.sourceKind === 'excel'
         ? normalizeMergeSheets(config.mergeSheets, sheetNames)
         : {}),
+      ...(config?.sourceKind === 'excel' && Array.isArray(config.missingMergeSheets)
+        ? { missingMergeSheets: config.missingMergeSheets.filter((v) => typeof v === 'string') }
+        : {}),
     };
   }
 
@@ -972,7 +975,7 @@ export function parseWorkbookRows(
       ? Math.max(0, config.headerRow - 1)
       : matrix.findIndex((row) => row.some(hasCellValue));
   if (headerIndex < 0) {
-    throw new Error(`Excel workbook has no header row: ${filePath}`);
+    throw new Error(`E_NO_HEADER_ROW: Excel 工作表没有表头（空表）：${filePath}`);
   }
 
   const headerRow = matrix[headerIndex];
