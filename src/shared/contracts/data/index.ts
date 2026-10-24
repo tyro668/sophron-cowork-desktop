@@ -574,7 +574,7 @@ export interface DataRawSourceRefreshResult {
   added: string[];
   missing: string[];
   failed: Array<{ id: string; error: string }>;
-  /** Suspected renames; their tables are left untouched until the user decides. */
+  /** Suspected renames; their tables keep the last import but are flagged missing until the user decides. */
   renames: DataRawSourceRenameCandidate[];
   addedItems: DataRawSourceChangeItem[];
   missingItems: DataRawSourceChangeItem[];

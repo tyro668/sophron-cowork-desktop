@@ -1,5 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { DATA_OBJECT_ICONS, extractDataObjects } from './message/DataObjectCards';
+import {
+  DATA_OBJECT_ICONS,
+  dataObjectKey,
+  extractDataObjects,
+  useDeletedDataObjects,
+} from './message/DataObjectCards';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
 import { resolveArtifactPath } from '../utils/artifact-path';
@@ -97,6 +102,7 @@ export function ContextPanel() {
       ),
     [messages]
   );
+  const deletedDataObjects = useDeletedDataObjects(sessionDataObjects, messageCount);
   const toolCallCount = steps.filter((s) => s.type === 'tool_call').length;
   const modelName = activeSession?.model || appConfig?.model || '—';
 
@@ -397,17 +403,27 @@ export function ContextPanel() {
             </div>
             {sessionDataObjects.map((object) => {
               const Icon = DATA_OBJECT_ICONS[object.kind];
+              const isDeleted = deletedDataObjects.has(dataObjectKey(object));
               return (
                 <button
                   key={`${object.kind}:${object.id}`}
                   type="button"
+                  disabled={isDeleted}
+                  data-deleted={isDeleted || undefined}
+                  title={isDeleted ? t('messageCard.dataObjectDeleted') : undefined}
                   onClick={() => navigateToDataElement({ kind: object.kind, id: object.id })}
                   className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-text-secondary transition-colors hover:bg-surface-hover"
                 >
                   <Icon className="h-3.5 w-3.5 shrink-0 text-accent" />
-                  <span className="min-w-0 flex-1 truncate">{object.name}</span>
+                  <span
+                    className={`min-w-0 flex-1 truncate ${isDeleted ? 'line-through opacity-60' : ''}`}
+                  >
+                    {object.name}
+                  </span>
                   <span className="shrink-0 text-[11px] text-text-muted">
-                    {t(`messageCard.dataObjectKind.${object.kind}`)}
+                    {isDeleted
+                      ? t('messageCard.dataObjectDeleted')
+                      : t(`messageCard.dataObjectKind.${object.kind}`)}
                   </span>
                 </button>
               );

@@ -3399,6 +3399,7 @@
       "raw_table": "Raw table",
       "result_table": "Result table"
     },
+    "dataObjectDeleted": "Deleted",
     "openDataObject": "Open",
     "viewReason": "View reason"
   },

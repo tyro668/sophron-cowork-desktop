@@ -3399,6 +3399,7 @@
       "raw_table": "原始表",
       "result_table": "结果表"
     },
+    "dataObjectDeleted": "已删除",
     "openDataObject": "打开",
     "viewReason": "查看原因"
   },

@@ -1,4 +1,5 @@
 import { markPersonalAnalysisKeyDisconnected } from '../features/data/cloud-connection-state';
+import { createRawTableReimporter } from '../automation/raw-table-reimport';
 import { setSkillUsageSink } from '../skills/skill-usage';
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import * as fs from 'fs';
@@ -315,14 +316,7 @@ export async function bootstrap(): Promise<void> {
       }
       return targets;
     },
-    reimportRawTable: async (rawTableId) => {
-      const record = await initializedDataPipelineStore.getRawTableRecord(rawTableId);
-      if (!record?.sourcePath) return;
-      await initializedDataPipelineStore.updateRawTable({
-        id: rawTableId,
-        filePath: record.sourcePath,
-      });
-    },
+    reimportRawTable: createRawTableReimporter(initializedDataPipelineStore),
   });
   appContext.automationScheduler.start();
   const automationToolService = new AutomationToolService({
