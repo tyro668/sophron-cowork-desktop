@@ -2155,7 +2155,7 @@
         "createMerged": "创建 1 张合并表"
       },
       "folder": {
-        "strategy": "sheet 选择策略",
+        "strategy": "Sheet 选择",
         "byName": "按 sheet 名",
         "byIndex": "按 sheet 序号",
         "namePlaceholder": "如 明细",

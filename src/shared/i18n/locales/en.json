@@ -2155,7 +2155,7 @@
         "createMerged": "Create 1 merged table"
       },
       "folder": {
-        "strategy": "Sheet selection",
+        "strategy": "Sheet",
         "byName": "By sheet name",
         "byIndex": "By sheet position",
         "namePlaceholder": "e.g. Details",

@@ -215,7 +215,9 @@ describe('RawSourceWizard', () => {
     // Index stepper never goes below 1.
     fireEvent.change(screen.getByTestId('raw-source-selector-index'), { target: { value: '0' } });
     expect((screen.getByTestId('raw-source-selector-index') as HTMLInputElement).value).toBe('1');
-    fireEvent.click(screen.getByTestId('raw-source-selector-by-name'));
+    fireEvent.change(screen.getByTestId('raw-source-selector-by'), { target: { value: 'name' } });
+    expect(screen.queryByTestId('raw-source-selector-index')).toBeNull();
+    expect(screen.getByTestId('raw-source-selector-by').tagName).toBe('SELECT');
     fireEvent.change(screen.getByTestId('raw-source-selector-name'), { target: { value: '明细' } });
     await act(async () => {
       fireEvent.click(screen.getByTestId('raw-source-create'));

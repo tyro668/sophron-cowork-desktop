@@ -590,23 +590,25 @@ export function RawSourceWizard({
           {scan.kind === 'folder' && (
             <section className={groupClass}>
               <div className="ui-group-title">{tr('config.importGroup')}</div>
-              <div className="flex flex-col gap-3 p-2">
-                <SheetStrategyRow
-                  tr={tr}
-                  files={files}
-                  by={selectorBy}
-                  setBy={setSelectorBy}
-                  name={selectorName}
-                  setName={setSelectorName}
-                  index={selectorIndex}
-                  setIndex={setSelectorIndex}
-                />
-                <div className="flex items-center gap-3 text-[12.5px] text-text-secondary">
-                  <span>{tr('mode.fileType')}</span>
+              <SheetStrategyRow
+                tr={tr}
+                files={files}
+                by={selectorBy}
+                setBy={setSelectorBy}
+                name={selectorName}
+                setName={setSelectorName}
+                index={selectorIndex}
+                setIndex={setSelectorIndex}
+              />
+              <div className="ui-form-row">
+                <div className="ui-form-label items-center">{tr('mode.fileType')}</div>
+                <div className="ui-form-value !flex-row items-stretch">
                   <select
                     value={fileRange}
                     onChange={(event) => setFileRange(event.target.value as FileRange)}
-                    className="h-7 rounded-md border border-border-subtle bg-surface px-2"
+                    className={`${cellSelectClass} w-[220px] flex-none`}
+                    style={{ backgroundImage: SELECT_CHEVRON }}
+                    data-testid="raw-source-file-range"
                   >
                     {(['excel_csv', 'excel', 'csv'] as const).map((value) => (
                       <option key={value} value={value}>
@@ -614,15 +616,18 @@ export function RawSourceWizard({
                       </option>
                     ))}
                   </select>
-                  <span className="ml-auto" />
                   {effectiveMode === 'folder_per_file' && (
-                    <Toggle
-                      on={autoInclude}
-                      onChange={setAutoInclude}
-                      label={tr('mode.autoIncludeFiles')}
-                    />
+                    <div className="ml-auto flex items-center px-2.5">
+                      <Toggle
+                        on={autoInclude}
+                        onChange={setAutoInclude}
+                        label={tr('mode.autoIncludeFiles')}
+                      />
+                    </div>
                   )}
                 </div>
+              </div>
+              <div className="flex flex-col gap-3 border-t border-border-subtle p-2">
                 {effectiveMode === 'folder_merge' ? (
                   <FolderMergeTable
                     tr={tr}
@@ -726,6 +731,7 @@ const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface';
 /** Borderless control filling its table / form cell; focus draws an inner outline. */
 const cellInputClass =
   'h-full min-h-[35px] w-full border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)] disabled:text-text-muted';
+const cellSelectClass = `${'h-full min-h-[35px] border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)]'} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7 hover:bg-surface-hover`;
 const titleCellClass =
   'inline-flex h-full items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle px-4 text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -1253,74 +1259,72 @@ function SheetStrategyRow(props: {
   const ready = files.filter((file) => file.status === 'ready' || file.status === 'type_conflict');
   const missing = files.filter((file) => file.status === 'missing_sheet');
   return (
-    <div
-      className="flex flex-wrap items-center gap-3 rounded-lg border border-border-subtle px-4 py-2.5 text-[12.5px]"
-      data-testid="raw-source-sheet-strategy"
-    >
-      <span className="font-medium text-text-primary">{tr('folder.strategy')}</span>
-      <label className="flex items-center gap-1.5">
-        <input
-          type="radio"
-          checked={by === 'name'}
-          onChange={() => props.setBy('name')}
-          data-testid="raw-source-selector-by-name"
-        />
-        {tr('folder.byName')}
-      </label>
-      <input
-        value={props.name}
-        disabled={by !== 'name'}
-        placeholder={tr('folder.namePlaceholder')}
-        onChange={(event) => props.setName(event.target.value)}
-        data-testid="raw-source-selector-name"
-        className="h-7 w-28 rounded-md border border-border-subtle bg-surface px-2 disabled:opacity-50"
-      />
-      <label className="ml-2 flex items-center gap-1.5">
-        <input
-          type="radio"
-          checked={by === 'index'}
-          onChange={() => props.setBy('index')}
-          data-testid="raw-source-selector-by-index"
-        />
-        {tr('folder.byIndex')}
-      </label>
-      <span
-        className={`inline-flex h-7 items-center rounded-md border border-border-subtle ${by !== 'index' ? 'opacity-50' : ''}`}
-      >
-        <button
-          type="button"
-          disabled={by !== 'index' || props.index <= 1}
-          onClick={() => props.setIndex(Math.max(1, props.index - 1))}
-          className="px-1.5 disabled:opacity-40"
-          aria-label="-"
+    <div className="ui-form-row" data-testid="raw-source-sheet-strategy">
+      <div className="ui-form-label items-center">{tr('folder.strategy')}</div>
+      <div className="ui-form-value !flex-row items-stretch text-[12.5px]">
+        <select
+          value={by}
+          onChange={(event) => props.setBy(event.target.value as 'name' | 'index')}
+          aria-label={tr('folder.strategy')}
+          className={`${cellSelectClass} w-[140px] flex-none border-r border-border-subtle`}
+          style={{ backgroundImage: SELECT_CHEVRON }}
+          data-testid="raw-source-selector-by"
         >
-          <Minus className="h-3 w-3" />
-        </button>
-        <input
-          value={props.index}
-          disabled={by !== 'index'}
-          inputMode="numeric"
-          onChange={(event) => {
-            const value = Number.parseInt(event.target.value.replace(/\D/g, ''), 10);
-            props.setIndex(Number.isFinite(value) && value >= 1 ? value : 1);
-          }}
-          data-testid="raw-source-selector-index"
-          className="h-6 w-8 bg-transparent text-center tabular-nums"
-        />
-        <button
-          type="button"
-          disabled={by !== 'index'}
-          onClick={() => props.setIndex(props.index + 1)}
-          className="px-1.5"
-          aria-label="+"
+          <option value="name">{tr('folder.byName')}</option>
+          <option value="index">{tr('folder.byIndex')}</option>
+        </select>
+        {by === 'name' ? (
+          <input
+            value={props.name}
+            placeholder={tr('folder.namePlaceholder')}
+            onChange={(event) => props.setName(event.target.value)}
+            aria-label={tr('folder.byName')}
+            data-testid="raw-source-selector-name"
+            className={`${cellInputClass} !w-[200px] flex-none border-r border-border-subtle`}
+          />
+        ) : (
+          <span className="flex flex-none items-stretch border-r border-border-subtle">
+            <button
+              type="button"
+              disabled={props.index <= 1}
+              onClick={() => props.setIndex(Math.max(1, props.index - 1))}
+              className="px-2.5 text-text-secondary hover:bg-surface-hover disabled:opacity-40"
+              aria-label="-"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <input
+              value={props.index}
+              inputMode="numeric"
+              aria-label={tr('folder.byIndex')}
+              onChange={(event) => {
+                const value = Number.parseInt(event.target.value.replace(/\D/g, ''), 10);
+                props.setIndex(Number.isFinite(value) && value >= 1 ? value : 1);
+              }}
+              data-testid="raw-source-selector-index"
+              className={`${cellInputClass} !w-12 !px-0 text-center tabular-nums`}
+            />
+            <button
+              type="button"
+              onClick={() => props.setIndex(props.index + 1)}
+              className="px-2.5 text-text-secondary hover:bg-surface-hover"
+              aria-label="+"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </span>
+        )}
+        {by === 'index' && (
+          <span className="flex items-center px-2.5 text-[11.5px] text-text-muted">
+            {tr('folder.minOne')}
+          </span>
+        )}
+        <span
+          className={`ml-auto flex items-center whitespace-nowrap px-2.5 ${missing.length ? 'text-warning' : 'text-success'}`}
         >
-          <Plus className="h-3 w-3" />
-        </button>
-      </span>
-      <span className="text-[11.5px] text-text-muted">{tr('folder.minOne')}</span>
-      <span className={`ml-auto ${missing.length ? 'text-warning' : 'text-success'}`}>
-        {tr('folder.matchSummary', { ready: ready.length, missing: missing.length })}
-      </span>
+          {tr('folder.matchSummary', { ready: ready.length, missing: missing.length })}
+        </span>
+      </div>
     </div>
   );
 }
