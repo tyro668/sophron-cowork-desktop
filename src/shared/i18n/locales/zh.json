@@ -1996,7 +1996,8 @@
       "zoomIn": "放大",
       "fitView": "适应画布",
       "toggleMinimap": "小地图",
-      "runningShort": "运行中…"
+      "runningShort": "运行中…",
+      "rawTableDeleted": "原始表已删除，请重新选择"
     },
     "relative": {
       "today": "今天",

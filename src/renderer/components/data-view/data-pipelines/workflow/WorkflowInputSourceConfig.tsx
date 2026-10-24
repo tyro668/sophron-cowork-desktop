@@ -161,7 +161,10 @@ export function WorkflowInputSourceConfig({
                 ? [
                     {
                       value: selectedRawTableId,
-                      label: selectedRawTableName || selectedRawTableId,
+                      label:
+                        selectedRawTableName ||
+                        (isLoading ? selectedRawTableId : t('data.workflow.rawTableDeleted')),
+                      muted: !selectedRawTableName && !isLoading,
                     },
                   ]
                 : []),
