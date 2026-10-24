@@ -73,7 +73,10 @@ describe('refresh result dialog (4.3)', () => {
     );
     expect(screen.getByText(/目标 → 9月目标/)).toBeTruthy();
     expect(screen.getByText(/96%/)).toBeTruthy();
-    expect(screen.getByText(/月报/)).toBeTruthy();
+    expect(screen.getByTitle('月报')).toBeTruthy();
+    expect(screen.queryByText(/销售流水/)).toBeNull();
+    fireEvent.click(screen.getByTestId('raw-source-refresh-unchanged'));
+    expect(screen.getByText(/销售流水/)).toBeTruthy();
     fireEvent.click(screen.getByTestId('raw-source-refresh-apply'));
     expect(onApply).toHaveBeenLastCalledWith([
       { tableId: 't1', newKey: '9月目标', action: 'rename' },

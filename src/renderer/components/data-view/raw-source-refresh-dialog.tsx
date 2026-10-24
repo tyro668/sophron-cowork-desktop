@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, X } from 'lucide-react';
+import { ArrowRightLeft, ChevronRight, Plus, RefreshCw, TriangleAlert, X } from 'lucide-react';
 import type { DataRawSourceRefreshResult } from '../../types';
 import { Dialog } from '../ui/dialog';
 import { dataClient } from '../../features/data/api/data-client';
@@ -39,123 +39,120 @@ export function RawSourceRefreshDialog({
   const [choices, setChoices] = useState<Record<string, 'rename' | 'new'>>(() =>
     Object.fromEntries(result.renames.map((rename) => [rename.tableId, 'rename']))
   );
-  const kindLabel = result.source.sourceKind === 'folder' ? tr('colFile') : tr('colSheet');
-  const pill = (tone: string, text: string) => (
-    <span className={`rounded-full px-2 py-0.5 text-[12px] ${tone}`}>{text}</span>
-  );
+  const [showUnchanged, setShowUnchanged] = useState(false);
+  const chips = [
+    ['bg-success/10 text-success', 'added', result.addedItems.length],
+    ['bg-accent-muted text-accent', 'renamed', result.renames.length],
+    ['bg-warning/10 text-warning', 'missing', result.missingItems.length],
+  ] as const;
+  const row = 'flex h-10 items-center gap-2.5 px-5';
   return (
     <Dialog
       open
       onOpenChange={(next) => !next && onLater()}
       busy={busy}
       ariaLabel={tr('title', { name: result.source.name })}
-      className="w-full max-w-2xl p-0"
+      className="w-full max-w-md p-0"
     >
       <div data-testid="raw-source-refresh-dialog">
-        <div className="flex items-center gap-2 border-b border-border-subtle px-5 py-3">
+        <div className="flex items-center gap-2 px-5 pb-2 pt-4">
           <RefreshCw className="h-4 w-4 text-accent" />
-          <span className="text-[14px] font-medium text-text-primary">
+          <span className="truncate text-[14px] font-medium text-text-primary">
             {tr('title', { name: result.source.name })}
           </span>
           <button type="button" className="ml-auto text-text-muted" onClick={onLater}>
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="flex flex-wrap gap-2 px-5 pt-3">
-          {pill('bg-success/10 text-success', tr('added', { count: result.addedItems.length }))}
-          {pill('bg-accent-muted text-accent', tr('renamed', { count: result.renames.length }))}
-          {pill('bg-warning/10 text-warning', tr('missing', { count: result.missingItems.length }))}
-          {pill(
-            'bg-surface-hover text-text-secondary',
-            tr('unchanged', { count: result.unchangedNames.length })
+        <div className="flex flex-wrap gap-1.5 px-5 pb-2">
+          {chips
+            .filter(([, , count]) => count > 0)
+            .map(([tone, key, count]) => (
+              <span key={key} className={`rounded-full px-2 py-0.5 text-[11.5px] ${tone}`}>
+                {tr(key, { count })}
+              </span>
+            ))}
+        </div>
+        <div className="border-y border-border-subtle text-[13px]">
+          {result.renames.map((rename) => (
+            <div key={rename.tableId} className={row} data-testid="raw-source-rename-row">
+              <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-accent" />
+              <span className="min-w-0 truncate text-text-primary">
+                {rename.oldKey} → {rename.newKey}
+              </span>
+              <span
+                className="shrink-0 rounded bg-surface-hover px-1 text-[11px] text-text-muted"
+                title={tr('similarityTip')}
+              >
+                {Math.round(rename.similarity * 100)}%
+              </span>
+              <div className="ml-auto flex shrink-0 rounded-md border border-border-subtle p-0.5">
+                {(['rename', 'new'] as const).map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    onClick={() => setChoices({ ...choices, [rename.tableId]: action })}
+                    data-testid={`raw-source-rename-${action}`}
+                    title={tr(action === 'rename' ? 'sameTip' : 'newTip')}
+                    className={`h-6 rounded px-2 text-[12px] ${
+                      choices[rename.tableId] === action
+                        ? 'bg-accent/[0.1] text-accent'
+                        : 'text-text-secondary'
+                    }`}
+                  >
+                    {tr(action === 'rename' ? 'confirmSame' : 'asNew')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {result.addedItems.map((item) => (
+            <div key={item.id} className={row} title={item.name}>
+              <Plus className="h-3.5 w-3.5 shrink-0 text-success" />
+              <span className="min-w-0 truncate text-text-primary">{item.key ?? item.name}</span>
+              <span className="ml-auto shrink-0 text-[12px] text-text-muted">
+                {tr('addedAction')}
+              </span>
+            </div>
+          ))}
+          {result.missingItems.map((item) => (
+            <div key={item.id} className={row}>
+              <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-warning" />
+              <span className="min-w-0 truncate text-text-primary">{item.key ?? item.name}</span>
+              <span
+                className={`ml-auto shrink-0 text-[12px] ${
+                  item.pipelineNames.length ? 'text-warning' : 'text-text-muted'
+                }`}
+                title={item.pipelineNames.join('、') || undefined}
+              >
+                {item.pipelineNames.length
+                  ? tr('missingUsed', { count: item.pipelineNames.length })
+                  : tr('missingKept')}
+              </span>
+            </div>
+          ))}
+          {result.unchangedNames.length > 0 && (
+            <button
+              type="button"
+              className={`${row} w-full text-[12px] text-text-muted`}
+              onClick={() => setShowUnchanged(!showUnchanged)}
+              data-testid="raw-source-refresh-unchanged"
+            >
+              <ChevronRight
+                className={`h-3.5 w-3.5 transition-transform ${showUnchanged ? 'rotate-90' : ''}`}
+              />
+              {tr('unchanged', { count: result.unchangedNames.length })}
+              {showUnchanged && (
+                <span className="min-w-0 truncate">· {result.unchangedNames.join('、')}</span>
+              )}
+            </button>
           )}
         </div>
-        <table className="mt-3 w-full border-collapse text-left text-[12.5px]">
-          <thead>
-            <tr className="h-8 border-y border-border-subtle bg-[var(--data-grid-header-surface)] text-text-muted">
-              <th className="w-28 px-5 font-medium">{tr('colChange')}</th>
-              <th className="px-2 font-medium">{kindLabel}</th>
-              <th className="px-2 font-medium">{tr('colAction')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.addedItems.map((item) => (
-              <tr key={item.id} className="h-9 border-b border-dashed border-border-muted">
-                <td className="px-5 text-success">＋ {tr('addedRow')}</td>
-                <td className="px-2 text-text-primary">{item.key ?? item.name}</td>
-                <td className="px-2 text-text-secondary">
-                  {tr('addedAction', { name: item.name })}
-                </td>
-              </tr>
-            ))}
-            {result.renames.map((rename) => (
-              <tr
-                key={rename.tableId}
-                className="border-b border-dashed border-border-muted"
-                data-testid="raw-source-rename-row"
-              >
-                <td className="px-5 py-2 text-accent">↻ {tr('renamedRow')}</td>
-                <td className="px-2 py-2">
-                  <div className="text-text-primary">
-                    {rename.oldKey} → {rename.newKey}
-                  </div>
-                  <div className="text-[11.5px] text-text-muted">
-                    {tr('similarity', { percent: Math.round(rename.similarity * 100) })}
-                  </div>
-                </td>
-                <td className="px-2 py-2">
-                  <div className="flex gap-1.5">
-                    {(['rename', 'new'] as const).map((action) => (
-                      <button
-                        key={action}
-                        type="button"
-                        onClick={() => setChoices({ ...choices, [rename.tableId]: action })}
-                        data-testid={`raw-source-rename-${action}`}
-                        className={`h-7 rounded-md border px-2 text-[12px] ${
-                          choices[rename.tableId] === action
-                            ? 'border-accent bg-accent/[0.08] text-accent'
-                            : 'border-border-subtle text-text-secondary'
-                        }`}
-                      >
-                        {action === 'rename' ? tr('confirmSame') : tr('asNew')}
-                      </button>
-                    ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {result.missingItems.map((item) => (
-              <tr key={item.id} className="h-9 border-b border-dashed border-border-muted">
-                <td className="px-5 text-warning">● {tr('missingRow')}</td>
-                <td className="px-2 text-text-primary">{item.key ?? item.name}</td>
-                <td className="px-2 text-text-secondary">
-                  {item.pipelineNames.length
-                    ? tr('missingUsed', {
-                        count: item.pipelineNames.length,
-                        names: item.pipelineNames.join('、'),
-                      })
-                    : tr('missingKept')}
-                </td>
-              </tr>
-            ))}
-            {result.unchangedNames.length > 0 && (
-              <tr className="h-9 border-b border-dashed border-border-muted text-text-muted">
-                <td className="px-5">{tr('unchangedRow')}</td>
-                <td className="px-2">{result.unchangedNames.join('、')}</td>
-                <td className="px-2">—</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        {result.renames.length > 0 && (
-          <div className="px-5 pt-3 text-[12px] leading-5 text-text-muted">{tr('explain')}</div>
-        )}
-        <div className="flex items-center gap-2 px-5 py-4">
-          <span className="text-[11.5px] text-text-muted">{tr('fingerprint')}</span>
+        <div className="flex justify-end gap-2 px-5 py-3">
           <button
             type="button"
             onClick={onLater}
-            className="ml-auto h-8 rounded-md border border-border-subtle px-3 text-[13px]"
+            className="h-8 rounded-md border border-border-subtle px-3 text-[13px]"
             data-testid="raw-source-refresh-later"
           >
             {tr('later')}
