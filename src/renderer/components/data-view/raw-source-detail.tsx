@@ -22,12 +22,14 @@ import {
 import type {
   DataRawSource,
   DataRawSourceBuildMode,
+  DataRawSourceCreateResult,
   DataRawTable,
   DataRawTablePreview,
 } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { useRawSourceRefresh } from './raw-source-refresh-dialog';
+import { useInlineModeChange } from './raw-source-mode-change';
 import {
   SELECT_CHEVRON,
   Toggle,
@@ -92,14 +94,15 @@ export function RawSourceDetail({
   rawTables,
   onBack,
   onOpenTable,
-  onChangeMode,
+  onRebuilt,
   onChanged,
 }: {
   source: DataRawSource;
   rawTables: DataRawTable[];
   onBack: () => void;
   onOpenTable: (table: DataRawTable) => void;
-  onChangeMode: (source: DataRawSource, mode: DataRawSourceBuildMode) => void;
+  /** After an inline 组织方式 change was saved (tables were rebuilt). */
+  onRebuilt?: (result: DataRawSourceCreateResult) => void;
   onChanged: () => void;
 }) {
   const { t } = useTranslation();
@@ -117,6 +120,11 @@ export function RawSourceDetail({
   const merge = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
 
   const [tab, setTab] = useState<'config' | 'data'>('config');
+  const modeChange = useInlineModeChange(source, (result) => {
+    onChanged();
+    onRebuilt?.(result);
+  });
+  const changingMode = modeChange.pending !== null;
   const [selectedId, setSelectedId] = useState<string | null>(members[0]?.id ?? null);
   const selected = members.find((m) => m.id === selectedId) ?? members[0] ?? null;
 
@@ -186,7 +194,8 @@ export function RawSourceDetail({
           </div>
         </div>
         <div className="flex items-stretch">
-          {!isCloud && (
+          {modeChange.actions}
+          {!isCloud && !changingMode && (
             <button
               type="button"
               disabled={refreshing}
@@ -245,11 +254,10 @@ export function RawSourceDetail({
               <div className={label}>{tr('detail.buildMode')}</div>
               <div className="ui-form-value !flex-row items-stretch">
                 <select
-                  value={source.buildMode}
-                  onChange={(event) => {
-                    const next = event.target.value as DataRawSourceBuildMode;
-                    if (next !== source.buildMode) onChangeMode(source, next);
-                  }}
+                  value={modeChange.value}
+                  onChange={(event) =>
+                    modeChange.choose(event.target.value as DataRawSourceBuildMode)
+                  }
                   disabled={modesForSource(source).length < 2}
                   data-testid="raw-source-build-mode"
                   className={`${cellSelectClass} min-w-0 flex-1 disabled:cursor-default disabled:hover:bg-transparent`}
@@ -270,7 +278,7 @@ export function RawSourceDetail({
                 )}
               </div>
             </div>
-            {!isCloud && (
+            {!isCloud && !changingMode && (
               <div className="ui-form-row">
                 <div className={label}>{tr('detail.autoIncludeLabel')}</div>
                 <div className="ui-form-value">
@@ -311,130 +319,134 @@ export function RawSourceDetail({
             </div>
           </section>
 
-          <section className={groupClass} data-testid="raw-source-detail-tables">
-            <div className="ui-group-title">
-              {tr('detail.tables')}
-              <span className="ml-2 text-[12px] font-normal text-text-muted">
-                {tr('detail.tablesCount', { count: members.length })}
-              </span>
-            </div>
-            <table className="w-full table-fixed border-collapse text-[12.5px]">
-              <colgroup>
-                <col />
-                <col className="w-[24%]" />
-                <col className="w-[96px]" />
-                <col className="w-[20%]" />
-                <col className="w-[80px]" />
-                <col className="w-[68px]" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th className={th}>{tr('detail.colTable')}</th>
-                  <th className={th}>{merge ? tr('detail.mergedFrom') : memberLabel}</th>
-                  <th className={`${th} text-right`}>{tr('detail.colSize')}</th>
-                  <th className={th}>{tr('detail.colPipelines')}</th>
-                  <th className={th}>{tr('detail.colStatus')}</th>
-                  <th className={`${th} border-r-0`} />
-                </tr>
-              </thead>
-              <tbody>
-                {members.map((table) => {
-                  const parts = merge ? mergedParts(table) : [];
-                  const missingRow = table.memberStatus === 'missing';
-                  const active = selected?.id === table.id;
-                  return (
-                    <Fragment key={table.id}>
-                      <tr
-                        data-testid="raw-source-member-row"
-                        onClick={() => setSelectedId(table.id)}
-                        onDoubleClick={() => openRow(table)}
-                        className={`group cursor-default ${active ? 'bg-accent-muted/40' : 'hover:bg-surface-hover'}`}
-                      >
-                        <td className={td}>
-                          <span className="flex min-w-0 items-center gap-1.5 text-text-primary">
-                            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                            <span className="truncate" title={table.name}>
-                              {memberShortName(table, source)}
-                            </span>
-                          </span>
-                        </td>
-                        <td className={`${td} truncate text-text-secondary`}>
-                          {merge
-                            ? tr('detail.mergedFiles', { count: parts.length })
-                            : (table.memberKey ?? baseName(table.sourcePath))}
-                        </td>
-                        <td className={`${td} text-right tabular-nums text-text-secondary`}>
-                          {table.rowCount} × {table.columnCount}
-                        </td>
-                        <td className={`${td} truncate text-text-secondary`}>
-                          {table.relatedPipelineNames.join('、') || '—'}
-                        </td>
-                        <td className={td}>
-                          <span
-                            className={`inline-flex items-center gap-1.5 ${missingRow ? 'text-warning' : 'text-text-primary'}`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${missingRow ? 'bg-warning' : 'bg-success'}`}
-                            />
-                            {missingRow ? tr('list.memberMissing') : tr('statusOk')}
-                          </span>
-                        </td>
-                        <td className={`${td} border-r-0`}>
-                          <span
-                            className={`flex items-center justify-center gap-2.5 ${active ? '' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
-                          >
-                            <button
-                              type="button"
-                              title={tr('detail.preview')}
-                              aria-label={tr('detail.preview')}
-                              data-testid="raw-source-member-preview"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                previewRow(table);
-                              }}
-                              className="text-text-muted hover:text-accent"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              title={tr('detail.open')}
-                              aria-label={tr('detail.open')}
-                              data-testid="raw-source-member-open"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openRow(table);
-                              }}
-                              className="text-text-muted hover:text-accent"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </button>
-                          </span>
-                        </td>
-                      </tr>
-                      {parts.map((part) => (
-                        <tr key={`${table.id}:${part}`} data-testid="raw-source-merged-part">
-                          <td className={`${td} pl-8 text-text-muted`} colSpan={2}>
-                            <span className="flex min-w-0 items-center gap-1.5">
-                              {isFolder ? (
-                                <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
-                              ) : (
-                                <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
-                              )}
-                              <span className="truncate" title={part}>
-                                {part}
+          {changingMode ? (
+            modeChange.editor
+          ) : (
+            <section className={groupClass} data-testid="raw-source-detail-tables">
+              <div className="ui-group-title">
+                {tr('detail.tables')}
+                <span className="ml-2 text-[12px] font-normal text-text-muted">
+                  {tr('detail.tablesCount', { count: members.length })}
+                </span>
+              </div>
+              <table className="w-full table-fixed border-collapse text-[12.5px]">
+                <colgroup>
+                  <col />
+                  <col className="w-[24%]" />
+                  <col className="w-[96px]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[80px]" />
+                  <col className="w-[68px]" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th className={th}>{tr('detail.colTable')}</th>
+                    <th className={th}>{merge ? tr('detail.mergedFrom') : memberLabel}</th>
+                    <th className={`${th} text-right`}>{tr('detail.colSize')}</th>
+                    <th className={th}>{tr('detail.colPipelines')}</th>
+                    <th className={th}>{tr('detail.colStatus')}</th>
+                    <th className={`${th} border-r-0`} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map((table) => {
+                    const parts = merge ? mergedParts(table) : [];
+                    const missingRow = table.memberStatus === 'missing';
+                    const active = selected?.id === table.id;
+                    return (
+                      <Fragment key={table.id}>
+                        <tr
+                          data-testid="raw-source-member-row"
+                          onClick={() => setSelectedId(table.id)}
+                          onDoubleClick={() => openRow(table)}
+                          className={`group cursor-default ${active ? 'bg-accent-muted/40' : 'hover:bg-surface-hover'}`}
+                        >
+                          <td className={td}>
+                            <span className="flex min-w-0 items-center gap-1.5 text-text-primary">
+                              <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                              <span className="truncate" title={table.name}>
+                                {memberShortName(table, source)}
                               </span>
                             </span>
                           </td>
-                          <td className={td} colSpan={4} />
+                          <td className={`${td} truncate text-text-secondary`}>
+                            {merge
+                              ? tr('detail.mergedFiles', { count: parts.length })
+                              : (table.memberKey ?? baseName(table.sourcePath))}
+                          </td>
+                          <td className={`${td} text-right tabular-nums text-text-secondary`}>
+                            {table.rowCount} × {table.columnCount}
+                          </td>
+                          <td className={`${td} truncate text-text-secondary`}>
+                            {table.relatedPipelineNames.join('、') || '—'}
+                          </td>
+                          <td className={td}>
+                            <span
+                              className={`inline-flex items-center gap-1.5 ${missingRow ? 'text-warning' : 'text-text-primary'}`}
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${missingRow ? 'bg-warning' : 'bg-success'}`}
+                              />
+                              {missingRow ? tr('list.memberMissing') : tr('statusOk')}
+                            </span>
+                          </td>
+                          <td className={`${td} border-r-0`}>
+                            <span
+                              className={`flex items-center justify-center gap-2.5 ${active ? '' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                            >
+                              <button
+                                type="button"
+                                title={tr('detail.preview')}
+                                aria-label={tr('detail.preview')}
+                                data-testid="raw-source-member-preview"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  previewRow(table);
+                                }}
+                                className="text-text-muted hover:text-accent"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                title={tr('detail.open')}
+                                aria-label={tr('detail.open')}
+                                data-testid="raw-source-member-open"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openRow(table);
+                                }}
+                                className="text-text-muted hover:text-accent"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </button>
+                            </span>
+                          </td>
                         </tr>
-                      ))}
-                    </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </section>
+                        {parts.map((part) => (
+                          <tr key={`${table.id}:${part}`} data-testid="raw-source-merged-part">
+                            <td className={`${td} pl-8 text-text-muted`} colSpan={2}>
+                              <span className="flex min-w-0 items-center gap-1.5">
+                                {isFolder ? (
+                                  <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
+                                ) : (
+                                  <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                )}
+                                <span className="truncate" title={part}>
+                                  {part}
+                                </span>
+                              </span>
+                            </td>
+                            <td className={td} colSpan={4} />
+                          </tr>
+                        ))}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </section>
+          )}
         </div>
       ) : (
         <MemberDataTab table={selected} tr={tr} />
@@ -451,7 +463,8 @@ export function RawSourceDetail({
               data-state={tab === key ? 'active' : 'inactive'}
               data-testid={`raw-source-detail-tab-${key}`}
               onClick={() => setTab(key)}
-              className={`${bottomTabTriggerClass} inline-flex items-center`}
+              disabled={changingMode && key === 'data'}
+              className={`${bottomTabTriggerClass} inline-flex items-center disabled:cursor-not-allowed disabled:opacity-45`}
             >
               {key === 'config' ? tr('config.tabConfig') : tr('config.tabData')}
             </button>

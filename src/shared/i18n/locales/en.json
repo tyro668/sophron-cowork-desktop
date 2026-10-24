@@ -2346,6 +2346,9 @@
         "sizeCompact": "{{rows}} × {{cols}}",
         "rechooseMode": "Change build mode",
         "selectAll": "Select all"
+      },
+      "modeChange": {
+        "hint": "Build mode will change from \"{{from}}\" to \"{{to}}\". Saving deletes the current tables and rebuilds them; cancel keeps everything as is."
       }
     }
   },
