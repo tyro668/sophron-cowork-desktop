@@ -1996,7 +1996,8 @@
       "zoomIn": "Zoom in",
       "fitView": "Fit view",
       "toggleMinimap": "Minimap",
-      "runningShort": "Running…"
+      "runningShort": "Running…",
+      "rawTableDeleted": "Raw table was deleted; pick another"
     },
     "relative": {
       "today": "Today",

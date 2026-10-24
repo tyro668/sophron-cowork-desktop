@@ -170,4 +170,29 @@ describe('WorkflowInputSourceConfig', () => {
     expect(bound.host.textContent).toContain('inputTableInfo');
     await bound.cleanup();
   });
+
+  it('labels an input bound to a deleted raw table instead of showing its id', async () => {
+    const { WorkflowInputSourceConfig } =
+      await import('../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowInputSourceConfig');
+    const view = await render(
+      createElement(WorkflowInputSourceConfig, {
+        node: { id: 'i', type: 'input', config: { rawTableId: '8e3b7d7a-gone', alias: 'src' } },
+        rawTables: [
+          {
+            id: 'rt1',
+            name: '销售订单',
+            sourceKind: 'excel',
+            rowCount: 1,
+            columnCount: 1,
+            updatedAt: 1,
+          },
+        ],
+        isLoading: false,
+        onNodeChange: () => undefined,
+      } as never)
+    );
+    expect(view.host.textContent).toContain('rawTableDeleted');
+    expect(view.host.textContent).not.toContain('8e3b7d7a-gone');
+    await view.cleanup();
+  });
 });
