@@ -12,7 +12,7 @@ import type {
   DataUpdateRawTableInput,
   DataUpdateResultTableInput,
 } from '../../../../shared/contracts';
-import { normalizeCsvEncoding, resolveCsvReadPath } from '../csv-encoding';
+import { normalizeCsvEncoding, withCsvReadPath } from '../csv-encoding';
 import { duckDbTypeForDataFieldType } from '../../../../shared/data-field-types';
 import { quoteIdentifier, toNumber, quoteValueIdentifier } from '../../operators';
 import { DataStoreContext } from '../data-store-context';
@@ -829,13 +829,14 @@ export class RawTableService {
       castClauses.length > 0
         ? `SELECT * REPLACE (${castClauses.join(', ')}) FROM ${relation}`
         : `SELECT * FROM ${relation}`;
-    const readPath = resolveCsvReadPath(
+    await withCsvReadPath(
       filePath,
-      config.sourceKind === 'csv' ? normalizeCsvEncoding(config.encoding) : 'auto'
+      config.sourceKind === 'csv' ? normalizeCsvEncoding(config.encoding) : 'auto',
+      (readPath) =>
+        this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS ${selectSql}`, {
+          [parameterName]: readPath,
+        })
     );
-    await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS ${selectSql}`, {
-      [parameterName]: readPath,
-    });
   }
   async appendSourceFileNameColumn(tableName: string, filePath: string): Promise<void> {
     const existingColumns = new Set(

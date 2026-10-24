@@ -1,4 +1,4 @@
-import { resolveCsvReadPath } from '../csv-encoding';
+import { withCsvReadPath } from '../csv-encoding';
 import { resolveSqlQuerySchemas } from '../../workflow/sql-query-schemas';
 /** Node-level previews: rows, columns, column types, distinct values. */
 import type {
@@ -327,12 +327,15 @@ export class WorkflowNodePreviewService {
       if (!filePath) {
         return [];
       }
-      tableName = tableNameFromId('workflow_preview_values', node.id);
-      await this.ctx.dropTableIfExists(tableName);
+      const previewTable = tableNameFromId('workflow_preview_values', node.id);
+      tableName = previewTable;
+      await this.ctx.dropTableIfExists(previewTable);
       const relation = readRelationForPath(filePath, 'sourcePath');
-      await this.ctx.runSql(
-        `CREATE TEMP TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${relation}`,
-        { sourcePath: resolveCsvReadPath(filePath) }
+      await withCsvReadPath(filePath, 'auto', (readPath) =>
+        this.ctx.runSql(
+          `CREATE TEMP TABLE ${quoteIdentifier(previewTable)} AS SELECT * FROM ${relation}`,
+          { sourcePath: readPath }
+        )
       );
     }
 
