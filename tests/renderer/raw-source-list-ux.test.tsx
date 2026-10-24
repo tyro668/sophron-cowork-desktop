@@ -70,6 +70,7 @@ describe('raw source rows', () => {
     );
     const row = screen.getByTestId('raw-source-group-row');
     expect(row.textContent).not.toContain('/data/经营.xlsx');
+    expect(row.querySelector('[data-testid=excel-multi-sheet-icon]')).not.toBeNull();
     fireEvent.click(screen.getByText('经营.xlsx'));
     expect(onOpenSource).not.toHaveBeenCalled();
     expect(row.getAttribute('aria-selected')).toBe('true');
