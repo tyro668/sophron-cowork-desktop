@@ -73,7 +73,14 @@ describe('raw source rows', () => {
     fireEvent.click(screen.getByText('经营.xlsx'));
     expect(onOpenSource).not.toHaveBeenCalled();
     expect(row.getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('raw-source-toggle')).toBeNull();
+    // First click selected and collapsed; a second click expands again.
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryAllByTestId('raw-source-child-row')).toHaveLength(0);
+    fireEvent.click(row);
+    expect(row.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getAllByTestId('raw-source-child-row')).toHaveLength(2);
+    expect(window.localStorage.getItem('sophron.rawSources.collapsed')).toBe('[]');
     const edit = screen
       .getAllByRole('button')
       .find((button) => /^(Edit|编辑)$/.test(button.getAttribute('title') ?? ''))!;
