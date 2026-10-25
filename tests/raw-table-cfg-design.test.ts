@@ -27,8 +27,9 @@ describe('raw table editor matches config design c05–c08', () => {
     expect(automations).toContain('grid-cols-[104px_minmax(0,1fr)_40px_40px_104px]');
     expect(automations).toContain("t('data.resultTables.automation.addLinkShort')");
   });
-  it('data grid has a flush toolbar and pager', () => {
-    expect(grid).toContain('data-testid="grid-toolbar"');
+  it('data grid has a pager and no toolbar above it (no filter / search / export)', () => {
+    expect(grid).not.toContain('grid-toolbar');
+    expect(grid).not.toMatch(/enableFilters|onExport|searchLoaded/);
     expect(grid).toContain('data-testid="grid-pager"');
   });
 });

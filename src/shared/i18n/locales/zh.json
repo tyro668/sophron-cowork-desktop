@@ -2025,25 +2025,7 @@
     },
     "preview": {
       "loadFailed": "读取失败",
-      "retry": "重试",
-      "filter": "筛选",
-      "removeFilter": "移除筛选",
-      "filterContains": "包含",
-      "loadedScopeNote": "排序 / 筛选仅作用于已加载行",
-      "filterScope": "本页 {{shown}} / {{total}} 行",
-      "filterColumn": "列",
-      "filterOperator": "条件",
-      "filterValue": "值",
-      "addFilter": "添加",
-      "filterColumnLabel": "列",
-      "filterOpLabel": "条件",
-      "filterValueLabel": "值",
-      "filterTitle": "添加筛选",
-      "searchLoaded": "在已加载行中搜索…",
-      "columnCount": "列 {{count}}",
-      "export": "导出",
-      "loadedRows": "已加载 {{count}} 行（排序 / 筛选仅作用于已加载行）",
-      "allLoaded": "已全部加载"
+      "retry": "重试"
     },
     "pipelineList": {
       "io": "输入 → 输出",

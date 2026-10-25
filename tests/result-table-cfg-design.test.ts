@@ -19,7 +19,8 @@ describe('result table editor matches config design c09–c12', () => {
     expect(src).toContain('resultTableDeleteImpact(resultTable, t)');
   });
   it('data and automation tabs reuse the flush grid', () => {
-    expect(src).toContain('onExport={canExport');
+    // The data tab is just the grid: no filter / search / column count / export bar.
+    expect(src).not.toMatch(/enableFilters|onExport=/);
     expect(src).toMatch(/<ResultTableAutomations[\s\S]*?grid\s*\/>/);
   });
 });

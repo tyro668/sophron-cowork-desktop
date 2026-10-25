@@ -54,7 +54,6 @@ import { LlmPromptComposer } from '../LlmPromptComposer';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
-import { showToast } from '../../utils/toast';
 import {
   RAW_TABLE_PREVIEW_PAGE_SIZE,
   RawTableCheckbox,
@@ -182,23 +181,6 @@ export function RawTableEditorWorkbench({
   const [localConfig, setLocalConfig] = useState<DataRawTableConfig>(initialConfig);
 
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [exportBusy, setExportBusy] = useState(false);
-  const exportRaw = async (id: string, format: 'csv' | 'xlsx') => {
-    if (exportBusy) return;
-    setExportBusy(true);
-    try {
-      const result = await dataClient.exportTable({ tableKind: 'raw', id, format });
-      if (result.success) {
-        showToast('success', t('data.resultTables.editor.exportDone', { path: result.path }));
-      } else if (result.error && result.error !== 'cancelled') {
-        showToast('error', result.error);
-      }
-    } catch (err) {
-      showToast('error', err instanceof Error ? err.message : String(err));
-    } finally {
-      setExportBusy(false);
-    }
-  };
   const modeChange = useInlineModeChange(rawSource, (result) => onBuildModeRebuilt?.(result));
   const changingMode = modeChange.pending !== null;
   const [activeViewTab, setActiveViewTab] = useState<'config' | 'data' | 'automation'>(
@@ -1822,13 +1804,6 @@ export function RawTableEditorWorkbench({
           </TabsContent>
           <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
             <GlassDataGridPreview
-              enableFilters
-              onExport={
-                rawTable && dataClient.has('exportTable')
-                  ? (format) => void exportRaw(rawTable.id, format)
-                  : undefined
-              }
-              exportBusy={exportBusy}
               preview={previewData}
               isLoading={previewLoading}
               error={previewError}
