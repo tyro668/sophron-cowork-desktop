@@ -13,16 +13,7 @@ import DataEditor, {
   type Theme,
 } from '@glideapps/glide-data-grid';
 import '@glideapps/glide-data-grid/dist/index.css';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Filter,
-  Loader2,
-  RefreshCw,
-  Search,
-  X,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DataRawTablePreview } from '../types';
 import {
@@ -62,25 +53,6 @@ export interface GlassDataGridPreviewProps {
   /** Pager height; defaults to 36px (h-9). */
   footerClassName?: string;
   onRetry?: () => void;
-  /** Show the column filter bar (filters apply to the loaded page). */
-  enableFilters?: boolean;
-  /** Toolbar 导出 cell (c06/c11); omitted when export is unavailable. */
-  onExport?: (format: 'csv' | 'xlsx') => void;
-  exportBusy?: boolean;
-}
-
-type FilterOp = 'eq' | 'neq' | 'contains';
-interface ColumnFilter {
-  column: string;
-  op: FilterOp;
-  value: string;
-}
-
-function matchesFilter(cell: PreviewCellValue, filter: ColumnFilter): boolean {
-  const text = cell === null || cell === undefined ? '' : String(cell);
-  if (filter.op === 'contains') return text.toLowerCase().includes(filter.value.toLowerCase());
-  const equal = text === filter.value;
-  return filter.op === 'eq' ? equal : !equal;
 }
 
 export function GlassDataGridPreview({
@@ -100,16 +72,8 @@ export function GlassDataGridPreview({
   onPageSizeChange,
   footerClassName,
   onRetry,
-  enableFilters = false,
-  onExport,
-  exportBusy = false,
 }: GlassDataGridPreviewProps) {
   const { t } = useTranslation();
-  const [search, setSearch] = useState('');
-  const [exportOpen, setExportOpen] = useState(false);
-  const [filters, setFilters] = useState<ColumnFilter[]>([]);
-  const [filterFormOpen, setFilterFormOpen] = useState(false);
-  const [filterDraft, setFilterDraft] = useState<ColumnFilter>({ column: '', op: 'eq', value: '' });
   const theme = useGlassDataGridTheme();
   const columns = preview?.columns ?? EMPTY_COLUMNS;
   const [sort, setSort] = useState<{ column: string; dir: 'asc' | 'desc' } | null>(null);
@@ -128,30 +92,11 @@ export function GlassDataGridPreview({
     [preview?.columnTypes]
   );
   const rawRows = preview?.rows ?? EMPTY_ROWS;
-  const activeFilters = useMemo(
-    () => filters.filter((filter) => columns.includes(filter.column)),
-    [filters, columns]
-  );
   const rows = useMemo(() => {
-    const filtered =
-      activeFilters.length === 0 && !search.trim()
-        ? rawRows
-        : rawRows.filter(
-            (row) =>
-              activeFilters.every((filter) => matchesFilter(row[filter.column], filter)) &&
-              (!search.trim() ||
-                columns.some((column) =>
-                  String(row[column] ?? '')
-                    .toLowerCase()
-                    .includes(search.trim().toLowerCase())
-                ))
-          );
-    if (!sort || !columns.includes(sort.column)) return filtered;
+    if (!sort || !columns.includes(sort.column)) return rawRows;
     const factor = sort.dir === 'asc' ? 1 : -1;
-    return [...filtered].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
-  }, [rawRows, sort, columns, activeFilters, search]);
-  const opLabel = (op: FilterOp) =>
-    op === 'eq' ? '=' : op === 'neq' ? '≠' : t('data.preview.filterContains');
+    return [...rawRows].sort((a, b) => compareCells(a[sort.column], b[sort.column]) * factor);
+  }, [rawRows, sort, columns]);
   const totalRows = preview?.totalRows ?? 0;
   const pageSize = preview?.limit ?? rows.length;
   const pageCount = Math.max(1, Math.ceil(totalRows / Math.max(1, pageSize || 1)));
@@ -197,208 +142,6 @@ export function GlassDataGridPreview({
 
   return (
     <div className={containerClassName}>
-      {enableFilters && hasColumns && (
-        <div
-          className="relative flex min-h-9 flex-shrink-0 flex-wrap items-stretch border-b"
-          style={{ borderColor: 'var(--data-grid-border)' }}
-          data-testid="grid-toolbar"
-        >
-          <button
-            type="button"
-            onClick={() => {
-              setFilterDraft((current) => ({ ...current, column: current.column || columns[0] }));
-              setFilterFormOpen((open) => !open);
-            }}
-            className={`inline-flex min-h-9 w-[138px] flex-shrink-0 items-center gap-1.5 border-r px-3 text-xs font-medium transition-colors ${
-              activeFilters.length > 0
-                ? 'bg-accent-muted text-accent-text'
-                : 'text-text-secondary hover:bg-surface-hover'
-            }`}
-            style={{ borderColor: 'var(--data-grid-border)' }}
-          >
-            <Filter className="h-3.5 w-3.5" />
-            {t('data.preview.filter')}
-            {activeFilters.length > 0 && ` · ${activeFilters.length}`}
-          </button>
-          <label
-            className="flex min-w-0 flex-1 items-center gap-2 px-3 text-text-muted focus-within:bg-surface-hover"
-            style={{ borderColor: 'var(--data-grid-border)' }}
-          >
-            <Search className="h-3.5 w-3.5 flex-shrink-0" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={t('data.preview.searchLoaded')}
-              aria-label={t('data.preview.searchLoaded')}
-              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-text-primary outline-none placeholder:text-text-muted"
-            />
-          </label>
-          <span
-            className="flex w-[80px] flex-shrink-0 items-center border-l px-3 text-[12px] text-text-muted"
-            style={{ borderColor: 'var(--data-grid-border)' }}
-          >
-            {t('data.preview.columnCount', { count: columns.length })}
-          </span>
-          {onExport ? (
-            <div className="relative flex">
-              <button
-                type="button"
-                disabled={exportBusy}
-                onClick={() => setExportOpen((open) => !open)}
-                className="inline-flex w-[92px] items-center justify-center gap-1.5 border-l text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:opacity-50"
-                style={{ borderColor: 'var(--data-grid-border)' }}
-              >
-                <Download className="h-3.5 w-3.5" />
-                {t('data.preview.export')}
-              </button>
-              {exportOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1 w-32 overflow-hidden rounded-lg border border-border-subtle bg-surface py-1 shadow-elevated">
-                  {(['csv', 'xlsx'] as const).map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      onClick={() => {
-                        setExportOpen(false);
-                        onExport(format);
-                      }}
-                      className="flex h-8 w-full items-center px-3 text-[12.5px] text-text-primary hover:bg-surface-hover"
-                    >
-                      {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-          {activeFilters.length > 0 && <div className="basis-full" />}
-          {activeFilters.map((filter, index) => (
-            <span
-              key={`${filter.column}:${filter.op}:${filter.value}:${index}`}
-              className="my-1.5 ml-2 inline-flex h-6 items-center gap-1 rounded-md border border-accent/25 bg-accent-muted px-2 text-[12px] text-accent-text"
-            >
-              {filter.column} {opLabel(filter.op)} {filter.value || '""'}
-              <button
-                type="button"
-                aria-label={t('data.preview.removeFilter')}
-                onClick={() => setFilters((current) => current.filter((item) => item !== filter))}
-                className="text-text-muted hover:text-text-primary"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          {activeFilters.length > 0 && (
-            <span className="ml-auto self-center pr-3 text-[11.5px] text-text-muted">
-              {t('data.preview.filterScope', { shown: rows.length, total: rawRows.length })}
-            </span>
-          )}
-          {filterFormOpen && (
-            <form
-              className="absolute left-3 top-full z-30 mt-1 w-72 overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-elevated"
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!filterDraft.column) return;
-                setFilters((current) => [...current, filterDraft]);
-                setFilterDraft((current) => ({ ...current, value: '' }));
-                setFilterFormOpen(false);
-              }}
-            >
-              <div className="flex h-9 items-center border-b border-border-subtle px-3 text-[13px] font-semibold text-text-primary">
-                {t('data.preview.filterTitle')}
-              </div>
-              <div className="p-2.5">
-                <div className="ui-group bg-surface" style={{ margin: 0 }}>
-                  <div
-                    className="ui-form-row"
-                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
-                  >
-                    <span className="ui-form-label items-center">
-                      {t('data.preview.filterColumnLabel', '列')}
-                    </span>
-                    <div className="ui-form-value">
-                      <select
-                        aria-label={t('data.preview.filterColumn')}
-                        value={filterDraft.column}
-                        onChange={(event) =>
-                          setFilterDraft((current) => ({ ...current, column: event.target.value }))
-                        }
-                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-1.5 text-xs"
-                      >
-                        {columns.map((column) => (
-                          <option key={column} value={column}>
-                            {column}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                  <div
-                    className="ui-form-row"
-                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
-                  >
-                    <span className="ui-form-label items-center">
-                      {t('data.preview.filterOpLabel', '条件')}
-                    </span>
-                    <div className="ui-form-value">
-                      <select
-                        aria-label={t('data.preview.filterOperator')}
-                        value={filterDraft.op}
-                        onChange={(event) =>
-                          setFilterDraft((current) => ({
-                            ...current,
-                            op: event.target.value as FilterOp,
-                          }))
-                        }
-                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-1.5 text-xs"
-                      >
-                        <option value="eq">=</option>
-                        <option value="neq">≠</option>
-                        <option value="contains">{t('data.preview.filterContains')}</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div
-                    className="ui-form-row"
-                    style={{ gridTemplateColumns: '64px minmax(0, 1fr)' }}
-                  >
-                    <span className="ui-form-label items-center">
-                      {t('data.preview.filterValueLabel', '值')}
-                    </span>
-                    <div className="ui-form-value">
-                      <input
-                        autoFocus
-                        aria-label={t('data.preview.filterValue')}
-                        value={filterDraft.value}
-                        onChange={(event) =>
-                          setFilterDraft((current) => ({ ...current, value: event.target.value }))
-                        }
-                        onKeyDown={(event) => {
-                          if (event.key === 'Escape') setFilterFormOpen(false);
-                        }}
-                        placeholder={t('data.preview.filterValue')}
-                        className="h-7 w-full rounded-md border border-border-muted bg-surface px-2 text-xs outline-none focus:border-accent/50"
-                      />
-                    </div>
-                  </div>
-                </div>
-                <div className="ui-footer-split">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setFilterFormOpen(false)}
-                  >
-                    {t('common.cancel')}
-                  </Button>
-                  <Button type="submit" size="sm" variant="primary">
-                    {t('data.preview.addFilter')}
-                  </Button>
-                </div>
-              </div>
-            </form>
-          )}
-        </div>
-      )}
       <div ref={gridHostRef} className="relative min-h-0 flex-1 overflow-hidden">
         {isLoading ? (
           showSkeleton ? (
@@ -485,13 +228,6 @@ export function GlassDataGridPreview({
             style={{ color: 'var(--data-grid-text-secondary)' }}
           >
             {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
-            {preview && enableFilters && hasColumns
-              ? ` · ${
-                  rawRows.length >= totalRows
-                    ? t('data.preview.allLoaded')
-                    : t('data.preview.loadedRows', { count: rawRows.length })
-                }`
-              : ''}
           </span>
         </div>
         {pageSizeOptions && onPageSizeChange ? (

@@ -2025,25 +2025,7 @@
     },
     "preview": {
       "loadFailed": "Failed to load data",
-      "retry": "Retry",
-      "filter": "Filter",
-      "removeFilter": "Remove filter",
-      "filterContains": "contains",
-      "loadedScopeNote": "Sort / filter apply to loaded rows only",
-      "filterScope": "{{shown}} / {{total}} rows on this page",
-      "filterColumn": "Column",
-      "filterOperator": "Operator",
-      "filterValue": "Value",
-      "addFilter": "Add",
-      "filterColumnLabel": "Column",
-      "filterOpLabel": "Condition",
-      "filterValueLabel": "Value",
-      "filterTitle": "Add filter",
-      "searchLoaded": "Search loaded rows…",
-      "columnCount": "{{count}} cols",
-      "export": "Export",
-      "loadedRows": "{{count}} rows loaded (sort / filter apply to loaded rows)",
-      "allLoaded": "All rows loaded"
+      "retry": "Retry"
     },
     "pipelineList": {
       "io": "Input → Output",

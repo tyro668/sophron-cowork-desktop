@@ -1108,9 +1108,6 @@ export function ResultTableEditor({
         </TabsContent>
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
           <GlassDataGridPreview
-            enableFilters
-            onExport={canExport ? (format) => void handleExport(format) : undefined}
-            exportBusy={exportDisabled}
             preview={preview}
             isLoading={previewLoading}
             error={previewError}

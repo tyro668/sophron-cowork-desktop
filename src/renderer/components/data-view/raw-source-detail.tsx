@@ -522,7 +522,6 @@ function MemberDataTab({
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="raw-source-detail-data">
       <GlassDataGridPreview
-        enableFilters
         preview={preview}
         isLoading={loading}
         error={error}
