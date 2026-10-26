@@ -1,5 +1,5 @@
 import { useAppStore } from '../../store';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
@@ -112,12 +112,14 @@ export function RawTablesPanel({
   actionId: string | null;
   /** Raw-table sources; multi-member sources render as a header row with child rows (layout A). */
   sources?: DataRawSource[];
-  onOpenSource?: (source: DataRawSource) => void;
+  /** `tableId`: the child last selected under this source, to preview first. */
+  onOpenSource?: (source: DataRawSource, tableId?: string) => void;
   onRefreshSource?: (source: DataRawSource) => void;
 }) {
   const { t } = useTranslation();
   const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const [selectedRawTableId, setSelectedRawTableId] = useState<string | null>(null);
+  const lastChildBySource = useRef(new Map<string, string>());
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
@@ -259,6 +261,8 @@ export function RawTablesPanel({
         data-merge-row={parts ? 'true' : undefined}
         onClick={() => {
           setSelectedRawTableId(row.id);
+          if (isChild && rawTable?.sourceId)
+            lastChildBySource.current.set(rawTable.sourceId, rawTable.id);
           if (parts && rawTable) toggleMerge(rawTable.id);
         }}
         onDoubleClick={() => {
@@ -384,7 +388,7 @@ export function RawTablesPanel({
           setSelectedRawTableId(`source:${source.id}`);
           toggleSource(source.id);
         }}
-        onDoubleClick={() => onOpenSource?.(source)}
+        onDoubleClick={() => onOpenSource?.(source, lastChildBySource.current.get(source.id))}
         className={`h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 ${
           selected
             ? 'bg-accent-muted'
@@ -496,7 +500,10 @@ export function RawTablesPanel({
                   if (selectedDraft) {
                     onEditDraft(selectedDraft.id);
                   } else if (selectedSource) {
-                    onOpenSource?.(selectedSource);
+                    onOpenSource?.(
+                      selectedSource,
+                      lastChildBySource.current.get(selectedSource.id)
+                    );
                   } else if (selectedRawTable) {
                     onEditRawTable(selectedRawTable.id);
                   }

@@ -106,6 +106,7 @@ export function DataViewPage() {
   } | null>(null);
   const [rawSources, setRawSources] = useState<DataRawSource[]>([]);
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
+  const [openSourceTableId, setOpenSourceTableId] = useState<string | null>(null);
   const [sourceTables, setSourceTables] = useState<DataRawTable[]>([]);
   const [editorInitialTab, setEditorInitialTab] = useState<'data' | undefined>(undefined);
   const loadRawSources = useCallback(async () => {
@@ -272,6 +273,7 @@ export function DataViewPage() {
       editors.setEditingRawTableId(only.id);
     } else {
       editors.setEditingRawTableId(null);
+      setOpenSourceTableId(null);
       setOpenSourceId(result.source.id);
     }
   };
@@ -350,6 +352,8 @@ export function DataViewPage() {
           />
         ) : openSource ? (
           <RawSourceDetail
+            key={openSource.id}
+            initialTableId={openSourceTableId ?? undefined}
             source={openSource}
             rawTables={sourceTables}
             onBack={() => setOpenSourceId(null)}
@@ -460,7 +464,10 @@ export function DataViewPage() {
                           : actions.handleCreateRawTableDraft()
                       }
                       sources={rawSources}
-                      onOpenSource={(source) => setOpenSourceId(source.id)}
+                      onOpenSource={(source, tableId) => {
+                        setOpenSourceTableId(tableId ?? null);
+                        setOpenSourceId(source.id);
+                      }}
                       onRefreshSource={(source) => void handleRefreshSource(source)}
                       onRefresh={() => rawTables.loadRawTables({ preserveError: true })}
                       onPreviewRawTable={preview.previewRawTable}

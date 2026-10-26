@@ -2246,9 +2246,9 @@
         "lastScanAt": "上次扫描 {{time}}",
         "dataEmpty": "暂无数据",
         "dataLoading": "正在加载数据…",
-        "dataOf": "预览：{{name}}",
         "autoIncludeLabel": "自动纳入",
-        "scanSummary": "{{count}}，{{state}}"
+        "scanSummary": "{{count}}，{{state}}",
+        "lastImported": "上次导入的数据"
       },
       "modes": {
         "excel_single": "选择一个 Sheet，单张表",
