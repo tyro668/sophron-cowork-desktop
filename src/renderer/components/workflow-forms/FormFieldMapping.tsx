@@ -11,7 +11,7 @@ import {
   GlassCommitTextInput,
   GridRow,
   RowActionsCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { useGridRowDrag } from './shared/useGridRowDrag';
 import { FIELD_MAPPING_GRID_COLUMNS } from './shared/gridColumns';
@@ -146,9 +146,7 @@ export default function FormFieldMapping({
     <FormScroll>
       <FormGrid columns={FIELD_MAPPING_GRID_COLUMNS} testId="field-mapping-form-grid">
         <Cell v={['th']}>{tr('fieldMappingSourceField')}</Cell>
-        <Cell span={3} v={['th']}>
-          {tr('fieldMappingModeHeader')}
-        </Cell>
+        <Cell v={['th']}>{tr('fieldMappingModeHeader')}</Cell>
         <Cell v={['th']}>{tr('fieldMappingValue')}</Cell>
         <Cell v={['th']}>{tr('fieldMappingResultField')}</Cell>
         <Cell v={['th']} />
@@ -173,7 +171,8 @@ export default function FormFieldMapping({
                     className="w-full"
                   />
                 </Cell>
-                <SegmentCells
+                <SelectCell
+                  span={1}
                   value={item.targetMode}
                   options={targetModeOptions}
                   onChange={(v) => updateMapping(i, { targetMode: v })}
@@ -212,7 +211,7 @@ export default function FormFieldMapping({
                 />
               </GridRow>
               {issue ? (
-                <ErrorRow span={7}>
+                <ErrorRow span={5}>
                   <b>{tr('rowPrefix', { index: i + 1 })}</b>
                   {tr(issue.key, issue.params)}
                 </ErrorRow>
@@ -221,7 +220,7 @@ export default function FormFieldMapping({
           );
         })}
         <AddRow
-          span={7}
+          span={5}
           label={tr('fieldMappingAdd')}
           onClick={() => addMappingAfter(activeMappings.length - 1)}
           disabled={!canAdd}

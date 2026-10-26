@@ -1,7 +1,15 @@
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import { GlassFieldSingleSelect } from './GlassFieldSingleSelect';
-import { AddRow, Cell, GridRow, HintRow, RowActionsCell, SegmentCells } from './FormGrid';
+import {
+  AddRow,
+  Cell,
+  GridRow,
+  HintRow,
+  RowActionsCell,
+  SegmentCells,
+  SelectCell,
+} from './FormGrid';
 import { useGridRowDrag } from './useGridRowDrag';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
 import { computeUsedFields } from '../../../../shared/collections/used-fields';
@@ -173,7 +181,7 @@ export function SortKeysEditor({
               onChange={(v) => updateKey(i, { direction: v })}
               ariaLabel={tr('sortDirectionHeader')}
             />
-            <SegmentCells
+            <SelectCell
               value={(key.nulls ?? 'default') as 'default' | 'first' | 'last'}
               options={[
                 { value: 'default', label: tr('sortNullsDefault') },

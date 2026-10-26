@@ -15,7 +15,7 @@ import {
   HintRow,
   LabelCell,
   RowActionsCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { MISSING_VALUE_GRID_COLUMNS } from './shared/gridColumns';
 import { useGridRowDrag } from './shared/useGridRowDrag';
@@ -314,11 +314,15 @@ export default function FormMissingValue({
     <FormScroll>
       <FormGrid columns={MISSING_VALUE_GRID_COLUMNS} testId="missing-value-form-grid">
         <LabelCell>{tr('missingProcessMode')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={tabMode}
           options={[
-            { value: 'row', label: tr('rowProcess'), title: tr('missingRowProcessTip') },
-            { value: 'column', label: tr('colProcess'), title: tr('missingColumnProcessTip') },
+            { value: 'row', label: tr('rowProcess'), description: tr('missingRowProcessTip') },
+            {
+              value: 'column',
+              label: tr('colProcess'),
+              description: tr('missingColumnProcessTip'),
+            },
           ]}
           onChange={(v) => {
             if (v === 'row') setRowMode('any_null');
@@ -326,14 +330,12 @@ export default function FormMissingValue({
           }}
           ariaLabel={tr('missingProcessMode')}
         />
-        <Cell span={3} v={['muted']}>
-          {tabMode === 'row' ? tr('missingRowProcessTip') : tr('missingColumnProcessTip')}
-        </Cell>
+        <Cell span={3} v={['blank']} />
 
         {tabMode === 'row' ? (
           <>
             <LabelCell>{tr('missingTriggerCondition')}</LabelCell>
-            <SegmentCells
+            <SelectCell
               value={rowCondition as 'any_null' | 'all_null'}
               options={[
                 { value: 'any_null', label: tr('anyNull') },

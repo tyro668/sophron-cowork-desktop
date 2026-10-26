@@ -51,18 +51,22 @@ describe('VennDiagramIcon', () => {
   });
 
   it('maps every set operation and uses the same icon size as join modes', () => {
-    const html = renderToStaticMarkup(
-      createElement(FormSetOp, {
-        node: { config: {} },
-        otherNodes: [],
-        sourceNode: undefined,
-        onNodeChange: () => undefined,
-      } as unknown as ComponentProps<typeof FormSetOp>)
-    );
+    const render = (operation: string) =>
+      renderToStaticMarkup(
+        createElement(FormSetOp, {
+          node: { config: { operation } },
+          otherNodes: [],
+          sourceNode: undefined,
+          onNodeChange: () => undefined,
+        } as unknown as ComponentProps<typeof FormSetOp>)
+      );
 
-    expect(html).toContain('data-venn-region="both"');
-    expect(html).toContain('data-venn-region="overlap"');
-    expect(html).toContain('data-venn-region="left-only"');
-    expect(html.match(/class="h-4 w-6 shrink-0"/g)).toHaveLength(3);
+    // The operation dropdown trigger shows the selected operation's icon.
+    const expected = { union: 'both', intersect: 'overlap', except: 'left-only' } as const;
+    for (const [operation, region] of Object.entries(expected)) {
+      const html = render(operation);
+      expect(html).toContain(`data-venn-region="${region}"`);
+      expect(html.match(/class="h-4 w-6 shrink-0"/g)).toHaveLength(1);
+    }
   });
 });

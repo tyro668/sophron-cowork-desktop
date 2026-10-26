@@ -10,7 +10,7 @@ import {
   GlassCommitTextInput,
   HintRow,
   LabelCell,
-  SegmentCells,
+  SelectCell,
 } from '../../../workflow-forms/shared/FormGrid';
 import { GlassOptionMultiSelect } from '../../../workflow-forms/shared/GlassOptionMultiSelect';
 import { OUTPUT_GRID_COLUMNS } from '../../../workflow-forms/shared/gridColumns';
@@ -196,18 +196,18 @@ export function WorkflowOutputConfig({
     <FormScroll>
       <FormGrid columns={OUTPUT_GRID_COLUMNS} testId="output-form-grid">
         <LabelCell>{t('data.workflow.outputStrategy')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={strategy}
           onChange={handleStrategyChange}
-          options={[
-            { value: 'auto', label: t('data.workflow.values.outputStrategies.auto') },
-            { value: 'existing', label: t('data.workflow.values.outputStrategies.existing') },
-          ]}
+          span={2}
+          options={(['auto', 'existing'] as const).map((value) => ({
+            value,
+            label: t(`data.workflow.values.outputStrategies.${value}`),
+            description: t(`data.workflow.outputStrategyTips.${value}`),
+          }))}
           ariaLabel={t('data.workflow.outputStrategy')}
         />
-        <Cell span={3} v={['muted']}>
-          <span className="truncate">{t(`data.workflow.outputStrategyTips.${strategy}`)}</span>
-        </Cell>
+        <Cell span={3} v={['blank']} />
 
         {strategy === 'auto' ? (
           <>
@@ -261,21 +261,18 @@ export function WorkflowOutputConfig({
         )}
 
         <LabelCell>{t('data.workflow.outputMode')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={mode}
           onChange={handleModeChange}
-          options={[
-            { value: 'replace', label: t('data.workflow.values.outputModes.replace') },
-            { value: 'append', label: t('data.workflow.values.outputModes.append') },
-            {
-              value: 'error_if_exists',
-              label: t('data.workflow.values.outputModes.error_if_exists'),
-            },
-            { value: 'merge', label: t('data.workflow.values.outputModes.merge') },
-          ]}
+          span={2}
+          options={(['replace', 'append', 'error_if_exists', 'merge'] as const).map((value) => ({
+            value,
+            label: t(`data.workflow.values.outputModes.${value}`),
+            description: t(`data.workflow.outputModeTips.${value}`),
+          }))}
           ariaLabel={t('data.workflow.outputMode')}
         />
-        <Cell v={['blank']} />
+        <Cell span={3} v={['blank']} />
 
         {mode === 'merge' ? (
           <>
@@ -295,21 +292,18 @@ export function WorkflowOutputConfig({
         {showSchemaPolicy ? (
           <>
             <LabelCell>{t('data.workflow.schemaPolicy')}</LabelCell>
-            <SegmentCells
+            <SelectCell
               value={schemaPolicy}
               onChange={handleSchemaPolicyChange}
-              options={[
-                { value: 'extend', label: t('data.workflow.values.schemaPolicies.extend') },
-                { value: 'strict', label: t('data.workflow.values.schemaPolicies.strict') },
-                { value: 'ignore', label: t('data.workflow.values.schemaPolicies.ignore') },
-              ]}
+              span={2}
+              options={(['extend', 'strict', 'ignore'] as const).map((value) => ({
+                value,
+                label: t(`data.workflow.values.schemaPolicies.${value}`),
+                description: t(`data.workflow.schemaPolicyTips.${value}`),
+              }))}
               ariaLabel={t('data.workflow.schemaPolicy')}
             />
-            <Cell span={2} v={['muted']}>
-              <span className="truncate">
-                {t(`data.workflow.schemaPolicyTips.${schemaPolicy}`)}
-              </span>
-            </Cell>
+            <Cell span={3} v={['blank']} />
           </>
         ) : null}
 

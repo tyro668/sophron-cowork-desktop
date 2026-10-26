@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { AlertCircle, Copy, GripVertical, Plus, Trash2 } from 'lucide-react';
+import { GlassOptionSingleSelect } from './GlassOptionSingleSelect';
 import './form-grid.css';
 
 /**
@@ -158,6 +159,70 @@ export function SegmentCells<T extends string>({
         );
       })}
     </>
+  );
+}
+
+export interface SelectCellOption<T extends string> {
+  value: T;
+  label: string;
+  /** Short secondary line shown under the label in the open list. */
+  description?: string;
+  icon?: ReactNode;
+  title?: string;
+  /** Legacy SegmentCells column width; summed for the default cell span. */
+  span?: number;
+}
+
+/**
+ * Dropdown filling grid cells flush (the enum counterpart of SegmentCells).
+ * Default span equals the option count, so it drops into a SegmentCells slot
+ * without shifting the grid.
+ */
+export function SelectCell<T extends string>({
+  value,
+  options,
+  onChange,
+  disabled,
+  ariaLabel,
+  span,
+  highlight,
+  testId,
+}: {
+  value: T;
+  options: Array<SelectCellOption<T>>;
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+  span?: number;
+  highlight?: boolean;
+  testId?: string;
+}) {
+  const cellSpan = span ?? options.reduce((sum, option) => sum + (option.span ?? 1), 0);
+  return (
+    <Cell span={cellSpan} v={['ctl', highlight && 'hl']}>
+      <GlassOptionSingleSelect
+        value={value}
+        groups={[
+          {
+            key: 'options',
+            items: options.map((option) => ({
+              value: option.value,
+              label: option.label,
+              description: option.description,
+              icon: option.icon,
+              title: option.title,
+            })),
+          },
+        ]}
+        onChange={(next) => {
+          if (next !== value) onChange(next as T);
+        }}
+        disabled={disabled}
+        ariaLabel={ariaLabel}
+        testId={testId}
+        className="w-full"
+      />
+    </Cell>
   );
 }
 

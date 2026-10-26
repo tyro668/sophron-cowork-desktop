@@ -9,6 +9,7 @@ import {
   GlassCommitTextInput,
   LabelCell,
   SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { UNNEST_GRID_COLUMNS } from './shared/gridColumns';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -44,18 +45,24 @@ export default function FormUnnest({
     <FormScroll>
       <FormGrid columns={UNNEST_GRID_COLUMNS} testId="unnest-form-grid">
         <LabelCell>{tr('unnestSourceType')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={sourceKind}
           ariaLabel={tr('unnestSourceType')}
           options={[
-            { value: 'list', label: tr('unnestSourceTypeList') },
-            { value: 'json', label: tr('unnestSourceTypeObject') },
+            {
+              value: 'list',
+              label: tr('unnestSourceTypeList'),
+              description: tr('unnestSourceTypeListTip'),
+            },
+            {
+              value: 'json',
+              label: tr('unnestSourceTypeObject'),
+              description: tr('unnestSourceTypeJsonTip'),
+            },
           ]}
           onChange={(value) => updateConfig((cfg) => ({ ...cfg, sourceKind: value }))}
         />
-        <Cell v={['muted']}>
-          {isListMode ? tr('unnestSourceTypeListTip') : tr('unnestSourceTypeJsonTip')}
-        </Cell>
+        <Cell v={['blank']} />
 
         <LabelCell required>{tr('unnestSourceField')}</LabelCell>
         <Cell span={3} v={['ctl']}>

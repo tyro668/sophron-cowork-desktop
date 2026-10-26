@@ -9,7 +9,7 @@ import {
   FormGrid,
   FormScroll,
   LabelCell,
-  SegmentCells,
+  SelectCell,
   WarningRow,
 } from './shared/FormGrid';
 import { SET_OP_GRID_COLUMNS } from './shared/gridColumns';
@@ -134,31 +134,29 @@ export default function FormSetOp({
   const RightIcon = rightNode
     ? (OPERATOR_ICONS[rightNode.type as keyof typeof OPERATOR_ICONS] ?? Table2)
     : null;
-  const currentOp = operationOptions.find((o) => o.value === operation) ?? operationOptions[0];
   const isUnion = operation === 'union';
 
   return (
     <FormScroll>
       <FormGrid columns={SET_OP_GRID_COLUMNS}>
         <LabelCell>{tr('setOpConnection')}</LabelCell>
-        <SegmentCells
+        <SelectCell
+          span={2}
           value={operation}
           ariaLabel={tr('setOpConnection')}
           options={operationOptions.map((item) => ({
             value: item.value,
-            title: item.tip,
-            label: (
-              <>
-                <VennDiagramIcon
-                  region={SET_OPERATION_REGIONS[item.value]}
-                  className="h-4 w-6 shrink-0"
-                  fillOpacity={0.55}
-                  outlineOpacity={0.35}
-                  outlineWidth={1.4}
-                  showOutlines={item.value !== 'union'}
-                />
-                <span>{item.label}</span>
-              </>
+            label: item.label,
+            description: item.tip,
+            icon: (
+              <VennDiagramIcon
+                region={SET_OPERATION_REGIONS[item.value]}
+                className="h-4 w-6 shrink-0"
+                fillOpacity={0.55}
+                outlineOpacity={0.35}
+                outlineWidth={1.4}
+                showOutlines={item.value !== 'union'}
+              />
             ),
           }))}
           onChange={(value) =>
@@ -169,11 +167,7 @@ export default function FormSetOp({
             }))
           }
         />
-        <Cell v={['muted']}>
-          <span className="truncate" title={currentOp.tip}>
-            {currentOp.tip}
-          </span>
-        </Cell>
+        <Cell span={2} v={['blank']} />
 
         <LabelCell>{tr('inputTables')}</LabelCell>
         <Cell span={2} v={['ro']} testId="setop-left-source">
@@ -200,40 +194,34 @@ export default function FormSetOp({
         </Cell>
 
         <LabelCell>{tr('setOpDedupMode')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={mode}
           ariaLabel={tr('setOpDedupMode')}
           options={[
-            { value: 'all', label: tr('setOpAll'), title: modeTips.all },
-            { value: 'distinct', label: tr('setOpDistinct'), title: modeTips.distinct },
+            { value: 'all', label: tr('setOpAll'), description: modeTips.all },
+            { value: 'distinct', label: tr('setOpDistinct'), description: modeTips.distinct },
           ]}
           onChange={(value) => updateConfig((config) => ({ ...config, quantifier: value }))}
         />
-        <Cell span={2} v={['muted']}>
-          <span className="truncate">{mode === 'distinct' ? modeTips.distinct : modeTips.all}</span>
-        </Cell>
+        <Cell span={2} v={['blank']} />
 
         {isUnion ? (
           <>
             <LabelCell>{tr('setOpMatchMode')}</LabelCell>
-            <SegmentCells
+            <SelectCell
               value={match}
               ariaLabel={tr('setOpMatchMode')}
               options={[
-                { value: 'by_name', label: tr('setOpByName'), title: tr('setOpByNameTip') },
+                { value: 'by_name', label: tr('setOpByName'), description: tr('setOpByNameTip') },
                 {
                   value: 'by_position',
                   label: tr('setOpByPosition'),
-                  title: tr('setOpByPositionTip'),
+                  description: tr('setOpByPositionTip'),
                 },
               ]}
               onChange={(value) => updateConfig((config) => ({ ...config, match: value }))}
             />
-            <Cell span={2} v={['muted']}>
-              <span className="truncate">
-                {match === 'by_position' ? tr('setOpByPositionTip') : tr('setOpByNameTip')}
-              </span>
-            </Cell>
+            <Cell span={2} v={['blank']} />
           </>
         ) : null}
 

@@ -11,7 +11,7 @@ import {
   GlassCommitTextInput,
   HintRow,
   LabelCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { UNPIVOT_GRID_COLUMNS } from './shared/gridColumns';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -117,16 +117,24 @@ export default function FormUnpivot({
         )}
 
         <LabelCell>{tr('unpivotNullsLabel')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={includeNulls ? 'include' : 'skip'}
           options={[
-            { value: 'skip', label: tr('unpivotSkipNulls') },
-            { value: 'include', label: tr('unpivotIncludeNulls') },
+            {
+              value: 'skip',
+              label: tr('unpivotSkipNulls'),
+              description: tr('unpivotSkipNullsTip'),
+            },
+            {
+              value: 'include',
+              label: tr('unpivotIncludeNulls'),
+              description: tr('unpivotIncludeNullsTip'),
+            },
           ]}
           onChange={(v) => updateConfig((cfg) => ({ ...cfg, includeNulls: v === 'include' }))}
           ariaLabel={tr('unpivotNullsLabel')}
         />
-        <Cell v={['muted']}>{tr('unpivotIncludeNullsTip')}</Cell>
+        <Cell v={['blank']} />
 
         <HintRow span={4}>
           <Info className="opg-ic h-3.5 w-3.5" />
