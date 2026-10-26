@@ -9,6 +9,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
+  ChevronDown,
   Cloud,
   ExternalLink,
   Eye,
@@ -17,6 +18,7 @@ import {
   Folder,
   FolderOpen,
   RefreshCw,
+  Search,
   Table2,
 } from 'lucide-react';
 import type {
@@ -96,7 +98,10 @@ export function RawSourceDetail({
   onOpenTable,
   onRebuilt,
   onChanged,
+  initialTableId,
 }: {
+  /** Child table to show first (selected in the list before opening). */
+  initialTableId?: string;
   source: DataRawSource;
   rawTables: DataRawTable[];
   onBack: () => void;
@@ -125,8 +130,21 @@ export function RawSourceDetail({
     onRebuilt?.(result);
   });
   const changingMode = modeChange.pending !== null;
-  const [selectedId, setSelectedId] = useState<string | null>(members[0]?.id ?? null);
+  // Default: the child picked in the list, else the one last viewed this session, else first.
+  const [selectedId, setSelectedIdState] = useState<string | null>(
+    () =>
+      [initialTableId, lastViewedTable.get(source.id)].find(
+        (id) => id && members.some((m) => m.id === id)
+      ) ??
+      members[0]?.id ??
+      null
+  );
+  const setSelectedId = (id: string) => {
+    lastViewedTable.set(source.id, id);
+    setSelectedIdState(id);
+  };
   const selected = members.find((m) => m.id === selectedId) ?? members[0] ?? null;
+  const switchable = multi && members.length > 1;
 
   const [autoInclude, setAutoInclude] = useState(!!source.config.autoInclude);
   const [autoBusy, setAutoBusy] = useState(false);
@@ -191,6 +209,14 @@ export function RawSourceDetail({
             >
               {source.name}
             </span>
+            {switchable && selected && (
+              <span
+                className="truncate text-[14px] text-text-muted"
+                data-testid="raw-source-detail-current"
+              >
+                / {memberShortName(selected, source)}
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-stretch">
@@ -449,7 +475,18 @@ export function RawSourceDetail({
           )}
         </div>
       ) : (
-        <MemberDataTab table={selected} tr={tr} />
+        <div className="flex min-h-0 flex-1 flex-col">
+          {switchable && selected && (
+            <TableSwitcher
+              tables={members}
+              selectedId={selected.id}
+              nameOf={(table) => memberShortName(table, source)}
+              onSelect={setSelectedId}
+              tr={tr}
+            />
+          )}
+          <MemberDataTab table={selected} tr={tr} />
+        </div>
       )}
 
       <div className={`${bottomTabBarClass} justify-between`}>
@@ -471,12 +508,139 @@ export function RawSourceDetail({
           ))}
         </div>
         <div className="flex items-center px-4 text-xs text-text-muted">
-          {tab === 'data' && selected
-            ? tr('detail.dataOf', { name: memberShortName(selected, source) })
-            : tr('detail.lastScanAt', { time: formatDateTime(lastScan) })}
+          {tr('detail.lastScanAt', { time: formatDateTime(lastScan) })}
         </div>
       </div>
       {dialog}
+    </div>
+  );
+}
+
+/** Session memory: sourceId → table last previewed in its 数据 tab. */
+const lastViewedTable = new Map<string, string>();
+const SWITCHER_TAB_LIMIT = 5;
+
+/** Flush bar above the grid: name tabs (≤ 5 tables) or a searchable dropdown. */
+function TableSwitcher({
+  tables,
+  selectedId,
+  nameOf,
+  onSelect,
+  tr,
+}: {
+  tables: DataRawTable[];
+  selectedId: string;
+  nameOf: (table: DataRawTable) => string;
+  onSelect: (id: string) => void;
+  tr: (key: string, options?: Record<string, unknown>) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const current = tables.find((table) => table.id === selectedId) ?? tables[0];
+  const missing = (table: DataRawTable) => table.memberStatus === 'missing';
+  const label = (table: DataRawTable) => (
+    <>
+      <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+      <span className="truncate">{nameOf(table)}</span>
+      <span className="flex-shrink-0 tabular-nums text-text-muted">{table.rowCount}</span>
+    </>
+  );
+  const hint = missing(current) && (
+    <span
+      className="ml-auto flex items-center px-3 text-[12px] text-warning"
+      data-testid="raw-source-switcher-missing"
+    >
+      {tr('detail.lastImported')}
+    </span>
+  );
+  const bar = 'flex h-9 flex-shrink-0 items-stretch border-b border-border-subtle bg-surface';
+  if (tables.length <= SWITCHER_TAB_LIMIT) {
+    return (
+      <div className={bar} role="tablist" data-testid="raw-source-switcher">
+        {tables.map((table) => {
+          const active = table.id === current.id;
+          return (
+            <button
+              key={table.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              title={missing(table) ? tr('detail.lastImported') : table.name}
+              onClick={() => onSelect(table.id)}
+              data-testid="raw-source-switcher-tab"
+              className={`relative inline-flex min-w-0 max-w-[220px] items-center gap-1.5 border-r border-border-subtle px-3 text-[12.5px] transition-colors ${
+                active ? 'bg-accent-muted font-medium' : 'hover:bg-surface-hover'
+              } ${missing(table) ? 'text-warning' : active ? 'text-accent' : 'text-text-secondary'}`}
+            >
+              {label(table)}
+              {active && <span className="absolute inset-x-0 bottom-0 h-0.5 bg-accent" />}
+            </button>
+          );
+        })}
+        {hint}
+      </div>
+    );
+  }
+  const q = query.trim().toLowerCase();
+  const shown = q ? tables.filter((table) => nameOf(table).toLowerCase().includes(q)) : tables;
+  return (
+    <div className={`${bar} relative`} data-testid="raw-source-switcher">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        data-testid="raw-source-switcher-trigger"
+        className={`inline-flex w-[280px] min-w-0 items-center gap-1.5 border-r border-border-subtle px-3 text-[12.5px] hover:bg-surface-hover ${
+          missing(current) ? 'text-warning' : 'text-text-primary'
+        }`}
+      >
+        {label(current)}
+        <ChevronDown className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+      </button>
+      <span className="flex items-center px-3 text-[12px] text-text-muted">
+        {tr('detail.tablesCount', { count: tables.length })}
+      </span>
+      {hint}
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 w-[320px] overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-elevated">
+          <div className="flex h-9 items-center gap-2 border-b border-border-subtle px-3">
+            <Search className="h-3.5 w-3.5 text-text-muted" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setOpen(false);
+              }}
+              data-testid="raw-source-switcher-search"
+              className="h-full min-w-0 flex-1 border-0 bg-transparent text-[12.5px] outline-none"
+            />
+          </div>
+          <div className="max-h-72 overflow-auto py-1">
+            {shown.map((table) => (
+              <button
+                key={table.id}
+                type="button"
+                onClick={() => {
+                  onSelect(table.id);
+                  setOpen(false);
+                  setQuery('');
+                }}
+                data-testid="raw-source-switcher-option"
+                className={`flex h-8 w-full items-center gap-1.5 px-3 text-left text-[12.5px] hover:bg-surface-hover ${
+                  missing(table)
+                    ? 'text-warning'
+                    : table.id === current.id
+                      ? 'text-accent'
+                      : 'text-text-primary'
+                }`}
+              >
+                {label(table)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

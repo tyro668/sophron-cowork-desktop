@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import i18n from './i18n-test';
 
 const client = vi.hoisted(() => ({
@@ -48,7 +48,11 @@ const table = (id: string, patch: Record<string, unknown> = {}) =>
     ...patch,
   }) as never;
 
-function renderDetail(src = source(), tables = [table('客户主数据'), table('关联说明')]) {
+function renderDetail(
+  src = source(),
+  tables = [table('客户主数据'), table('关联说明')],
+  extra: Record<string, unknown> = {}
+) {
   const fixed = {
     ...(src as object),
     memberIds: (tables as Array<{ id: string }>).map((t) => t.id),
@@ -59,7 +63,7 @@ function renderDetail(src = source(), tables = [table('客户主数据'), table(
     onRebuilt: vi.fn(),
     onChanged: vi.fn(),
   };
-  render(<RawSourceDetail source={fixed as never} rawTables={tables} {...handlers} />);
+  render(<RawSourceDetail source={fixed as never} rawTables={tables} {...handlers} {...extra} />);
   return handlers;
 }
 
@@ -225,6 +229,71 @@ describe('RawSourceDetail (方案 A)', () => {
       await waitFor(() => expect(h.onRebuilt).toHaveBeenCalledWith(result));
       expect(h.onChanged).toHaveBeenCalled();
       expect(screen.queryByTestId('raw-source-mode-change')).toBeNull();
+    });
+  });
+
+  describe('数据 tab table switcher', () => {
+    const three = () => [table('客户'), table('商品'), table('订单', { rowCount: 180 })];
+    const lastPreviewId = () => client.previewRawTable.mock.calls.at(-1)?.[0].id;
+
+    it('defaults to the first table, switches via tabs, and keeps config / title in sync', async () => {
+      renderDetail(source({ id: 'sw1' }), three());
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      const tabs = screen.getAllByTestId('raw-source-switcher-tab');
+      expect(tabs).toHaveLength(3);
+      expect(tabs[2].textContent).toContain('180');
+      await waitFor(() => expect(lastPreviewId()).toBe('客户'));
+      expect(screen.getByTestId('raw-source-detail-current').textContent).toBe('/ 客户');
+      fireEvent.click(tabs[2]);
+      await waitFor(() => expect(lastPreviewId()).toBe('订单'));
+      expect(screen.getByTestId('raw-source-detail-current').textContent).toBe('/ 订单');
+      expect(screen.queryByText(/预览：/)).toBeNull();
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-config'));
+      const rows = screen.getAllByTestId('raw-source-member-row');
+      expect(rows[2].className).toContain('bg-accent-muted');
+      fireEvent.click(rows[1]);
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      await waitFor(() => expect(lastPreviewId()).toBe('商品'));
+    });
+
+    it('opens on the child picked in the list, else the last viewed table', async () => {
+      renderDetail(source({ id: 'sw2' }), three(), { initialTableId: '订单' });
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      await waitFor(() => expect(lastPreviewId()).toBe('订单'));
+      fireEvent.click(screen.getAllByTestId('raw-source-switcher-tab')[1]);
+      await waitFor(() => expect(lastPreviewId()).toBe('商品'));
+      cleanup();
+      renderDetail(source({ id: 'sw2' }), three());
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      await waitFor(() => expect(lastPreviewId()).toBe('商品'));
+    });
+
+    it('uses a searchable dropdown for many tables and marks missing ones', async () => {
+      const many = ['a1', 'a2', 'a3', 'a4', 'a5', 'b6'].map((id) =>
+        table(id, id === 'b6' ? { memberStatus: 'missing' } : {})
+      );
+      renderDetail(source({ id: 'sw3' }), many);
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      expect(screen.queryAllByTestId('raw-source-switcher-tab')).toHaveLength(0);
+      fireEvent.click(screen.getByTestId('raw-source-switcher-trigger'));
+      fireEvent.change(screen.getByTestId('raw-source-switcher-search'), {
+        target: { value: 'b' },
+      });
+      const options = screen.getAllByTestId('raw-source-switcher-option');
+      expect(options).toHaveLength(1);
+      expect(options[0].className).toContain('text-warning');
+      fireEvent.click(options[0]);
+      await waitFor(() => expect(lastPreviewId()).toBe('b6'));
+      expect(screen.getByTestId('raw-source-switcher-missing').textContent).toBe('上次导入的数据');
+    });
+
+    it('has no switcher for single-table or merged sources', () => {
+      renderDetail(source({ id: 'sw4', sourceKind: 'folder', buildMode: 'folder_merge' }), [
+        table('m1'),
+      ]);
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      expect(screen.queryByTestId('raw-source-switcher')).toBeNull();
+      expect(screen.queryByTestId('raw-source-detail-current')).toBeNull();
     });
   });
 });

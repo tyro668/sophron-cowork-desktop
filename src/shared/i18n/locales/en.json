@@ -2246,9 +2246,9 @@
         "lastScanAt": "Last scan {{time}}",
         "dataEmpty": "No data",
         "dataLoading": "Loading data…",
-        "dataOf": "Preview: {{name}}",
         "autoIncludeLabel": "Auto include",
-        "scanSummary": "{{count}}, {{state}}"
+        "scanSummary": "{{count}}, {{state}}",
+        "lastImported": "Last imported data"
       },
       "modes": {
         "excel_single": "One sheet, single table",

@@ -86,6 +86,6 @@ describe('raw source rows', () => {
       .getAllByRole('button')
       .find((button) => /^(Edit|编辑)$/.test(button.getAttribute('title') ?? ''))!;
     fireEvent.click(edit);
-    expect(onOpenSource).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
+    expect(onOpenSource).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }), undefined);
   });
 });
