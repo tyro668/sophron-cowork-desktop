@@ -14,7 +14,7 @@ import {
   FormScroll,
   GridRow,
   RowActionsCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { TYPE_CONVERT_GRID_COLUMNS } from './shared/gridColumns';
 import { useGridRowDrag } from './shared/useGridRowDrag';
@@ -155,9 +155,7 @@ export default function FormTypeConvert({
         <Cell v={['th']}>{tr('typeConvertSourceField')}</Cell>
         <Cell v={['th']}>{tr('typeConvertTargetType')}</Cell>
         <Cell v={['th']}>{tr('typeConvertTypeSettings')}</Cell>
-        <Cell span={3} v={['th']}>
-          {tr('typeConvertOnFailure')}
-        </Cell>
+        <Cell v={['th']}>{tr('typeConvertOnFailure')}</Cell>
         <Cell v={['th']} />
         {activeConversions.map((conv, i) => {
           const disabledFields = new Set(usedFields);
@@ -245,7 +243,8 @@ export default function FormTypeConvert({
               ) : (
                 <Cell v={['muted']}>{tr('typeConvertNoSettings')}</Cell>
               )}
-              <SegmentCells
+              <SelectCell
+                span={1}
                 value={(conv.onError ?? 'null') as 'null' | 'fail' | 'keep'}
                 options={
                   onErrorOptions as Array<{ value: 'null' | 'fail' | 'keep'; label: string }>
@@ -269,7 +268,7 @@ export default function FormTypeConvert({
           );
         })}
         <AddRow
-          span={7}
+          span={5}
           label={tr('typeConvertAdd')}
           onClick={() => addConversionAfter(activeConversions.length - 1)}
           disabled={!canAdd}

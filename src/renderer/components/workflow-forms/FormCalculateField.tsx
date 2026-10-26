@@ -12,7 +12,7 @@ import {
   GridRow,
   HintRow,
   RowActionsCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { describeWindowValue } from '../../../shared/expression/window-suggest';
 
@@ -148,9 +148,7 @@ export default function FormCalculateField({
   return (
     <FormScroll>
       <FormGrid columns={CALCULATE_FIELD_GRID_COLUMNS} testId="calculate-field-form-grid">
-        <Cell span={2} v={['th']}>
-          {tr('calcFieldActionHeader')}
-        </Cell>
+        <Cell v={['th']}>{tr('calcFieldActionHeader')}</Cell>
         <Cell v={['th']}>{tr('calcFieldTargetField')}</Cell>
         <Cell v={['th']}>{tr('calcFieldExpressionLabel')}</Cell>
         <Cell v={['th']} />
@@ -172,7 +170,8 @@ export default function FormCalculateField({
           return (
             <Fragment key={calculation.id}>
               <GridRow {...rowProps(index)} testId={`calculate-field-row-${index}`}>
-                <SegmentCells
+                <SelectCell
+                  span={1}
                   value={calculation.action === 'replace' ? 'replace' : 'add'}
                   options={[
                     { value: 'add', label: tr('calcFieldActionAdd') },
@@ -225,13 +224,13 @@ export default function FormCalculateField({
                 />
               </GridRow>
               {messages.length > 0 ? (
-                <ErrorRow span={5}>
+                <ErrorRow span={4}>
                   <b>{tr('rowPrefix', { index: index + 1 })}</b>
                   {messages.join(tr('calcFieldMessageSeparator')) + tr('calcFieldMessageEnd')}
                 </ErrorRow>
               ) : null}
               {windowValueLabel(calculation.expression) && (
-                <HintRow span={5}>
+                <HintRow span={4}>
                   <span data-testid={`calc-window-label-${index}`}>
                     {tr('calcFieldWindowValueLabel', {
                       field: calculation.field || tr('rowPrefix', { index: index + 1 }),
@@ -244,7 +243,7 @@ export default function FormCalculateField({
           );
         })}
         <AddRow
-          span={5}
+          span={4}
           label={tr('calcFieldAddRow')}
           onClick={() => addCalculation(activeCalculations.length - 1)}
           disabled={!canAdd}

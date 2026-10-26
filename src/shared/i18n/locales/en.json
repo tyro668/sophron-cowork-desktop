@@ -1077,7 +1077,8 @@
           "unpivotValueCol": "Value column",
           "unpivotValueColPlaceholder": "Enter field name, default Value",
           "unpivotIncludeNulls": "Include null rows",
-          "unpivotIncludeNullsTip": "With Include nulls, null values also produce rows",
+          "unpivotSkipNullsTip": "Null values produce no rows",
+          "unpivotIncludeNullsTip": "Null values produce rows too",
           "unpivotNullsLabel": "Nulls",
           "unpivotNameColTip": "Holds the original field name; default Name",
           "unpivotValueColTip": "Holds the original value; default Value",
@@ -1965,10 +1966,16 @@
         "auto": "Create and maintain the result table automatically",
         "existing": "Write into the selected result table"
       },
+      "outputModeTips": {
+        "replace": "Clear the result table, then write",
+        "append": "Keep existing rows and append new ones",
+        "error_if_exists": "Stop with an error if the table has data",
+        "merge": "Update rows by business keys, insert new ones"
+      },
       "schemaPolicyTips": {
-        "extend": "When upstream adds columns: add them to the result table",
-        "strict": "When upstream adds columns: stop and report an error",
-        "ignore": "When upstream adds columns: drop them, write existing columns only"
+        "extend": "Add new columns to the result table",
+        "strict": "Stop with an error on new columns",
+        "ignore": "Drop new columns, write existing ones only"
       },
       "outputSummary": {
         "prefix": "Writes to DuckDB table ",

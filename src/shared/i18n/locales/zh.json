@@ -1077,7 +1077,8 @@
           "unpivotValueCol": "值列",
           "unpivotValueColPlaceholder": "请输入字段名，默认为 Value",
           "unpivotIncludeNulls": "包含空值行",
-          "unpivotIncludeNullsTip": "勾选「包含空值行」时空值也会生成对应行",
+          "unpivotSkipNullsTip": "空值不生成行",
+          "unpivotIncludeNullsTip": "空值也生成对应行",
           "unpivotNullsLabel": "空值处理",
           "unpivotNameColTip": "存放原字段名，默认 Name",
           "unpivotValueColTip": "存放原字段值，默认 Value",
@@ -1965,10 +1966,16 @@
         "auto": "自动创建并维护结果表",
         "existing": "写入已选的结果表"
       },
+      "outputModeTips": {
+        "replace": "清空结果表后重新写入",
+        "append": "保留已有数据，追加新行",
+        "error_if_exists": "结果表已有数据时停止并报错",
+        "merge": "按业务键更新已有行，插入新行"
+      },
       "schemaPolicyTips": {
-        "extend": "上游出现新列时：自动添加到结果表",
-        "strict": "上游出现新列时：停止写入并报错",
-        "ignore": "上游出现新列时：丢弃新列，只写已有列"
+        "extend": "新列自动添加到结果表",
+        "strict": "出现新列时停止写入并报错",
+        "ignore": "丢弃新列，只写已有列"
       },
       "outputSummary": {
         "prefix": "将写入 DuckDB 表 ",

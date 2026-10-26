@@ -25,6 +25,8 @@ interface GlassOptionItem {
   label: string;
   title?: string;
   icon?: ReactNode;
+  /** Short secondary line shown under the label in the open list. */
+  description?: string;
 }
 
 interface GlassOptionSingleSelectProps {
@@ -37,6 +39,8 @@ interface GlassOptionSingleSelectProps {
   variant?: 'default' | 'highlight' | 'muted';
   /** Icon shown in the trigger instead of the selected item's own icon. */
   triggerIcon?: ReactNode;
+  ariaLabel?: string;
+  testId?: string;
 }
 
 export function GlassOptionSingleSelect({
@@ -48,6 +52,8 @@ export function GlassOptionSingleSelect({
   placeholder,
   variant = 'default',
   triggerIcon,
+  ariaLabel,
+  testId,
 }: GlassOptionSingleSelectProps) {
   const {
     open,
@@ -77,7 +83,14 @@ export function GlassOptionSingleSelect({
   const updatePosition = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const contentWidth = measureMaxTextWidth(flattenedItems.map((item) => item.label));
+    const hasIcon = flattenedItems.some((item) => item.icon);
+    const contentWidth = Math.max(
+      measureMaxTextWidth(flattenedItems.map((item) => item.label)) + (hasIcon ? 32 : 0),
+      measureMaxTextWidth(
+        flattenedItems.flatMap((item) => (item.description ? [item.description] : [])),
+        11.5
+      ) + (hasIcon ? 32 : 0)
+    );
     const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
     const placement = computeDropdownPlacement(rect);
     setMaxHeight(placement.maxHeight);
@@ -179,6 +192,9 @@ export function GlassOptionSingleSelect({
         disabled={disabled}
         onClick={toggleOpen}
         onKeyDown={handleTriggerKeyDown}
+        aria-label={ariaLabel}
+        title={selectedItem?.description}
+        data-testid={testId}
         className={`flex min-h-8 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
           variant === 'highlight'
             ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
@@ -257,10 +273,24 @@ export function GlassOptionSingleSelect({
                       }}
                       onMouseEnter={() => setHighlightedIndex(globalIdx)}
                     >
-                      {o.icon && (
-                        <span className="mr-2 inline-flex shrink-0 align-middle">{o.icon}</span>
+                      {o.description ? (
+                        <span className="flex min-w-0 items-start gap-2">
+                          {o.icon && <span className="mt-px inline-flex shrink-0">{o.icon}</span>}
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate">{o.label}</span>
+                            <span className="whitespace-normal text-[11.5px] font-normal leading-4 text-text-muted">
+                              {o.description}
+                            </span>
+                          </span>
+                        </span>
+                      ) : (
+                        <>
+                          {o.icon && (
+                            <span className="mr-2 inline-flex shrink-0 align-middle">{o.icon}</span>
+                          )}
+                          {o.label}
+                        </>
                       )}
-                      {o.label}
                     </button>
                   );
                 })}

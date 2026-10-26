@@ -8,7 +8,7 @@ import {
   FormScroll,
   GlassCommitTextInput,
   LabelCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { LIMIT_GRID_COLUMNS } from './shared/gridColumns';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -171,18 +171,20 @@ export default function FormLimit({
     <FormScroll>
       <FormGrid columns={LIMIT_GRID_COLUMNS} testId="limit-form-grid">
         <LabelCell>{tr('limitMode')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={isRandomMode ? 'random' : 'fixed'}
           options={[
-            { value: 'fixed', label: tr('limitFixedMode') },
-            { value: 'random', label: tr('limitRandomMode') },
+            { value: 'fixed', label: tr('limitFixedMode'), description: tr('limitFixedModeTip') },
+            {
+              value: 'random',
+              label: tr('limitRandomMode'),
+              description: tr('limitRandomModeTip'),
+            },
           ]}
           onChange={setMode}
           ariaLabel={tr('limitMode')}
         />
-        <Cell span={7} v={['muted']}>
-          {isRandomMode ? tr('limitRandomModeTip') : tr('limitFixedModeTip')}
-        </Cell>
+        <Cell span={7} v={['blank']} />
 
         <LabelCell required>{isRandomMode ? tr('limitSampleSize') : tr('limitCount')}</LabelCell>
         <Cell v={['ctl', 'num', countError && 'err']}>
@@ -195,7 +197,7 @@ export default function FormLimit({
             ariaInvalid={Boolean(countError)}
           />
         </Cell>
-        <SegmentCells
+        <SelectCell
           value={isRows ? 'rows' : 'percent'}
           options={[
             { value: 'rows', label: tr('limitUnitRows') },
@@ -245,7 +247,7 @@ export default function FormLimit({
               />
             </Cell>
             {!isRows ? (
-              <SegmentCells
+              <SelectCell
                 value={method === 'bernoulli' ? 'bernoulli' : 'system'}
                 options={[
                   { value: 'bernoulli', label: tr('limitSampleBernoulli') },

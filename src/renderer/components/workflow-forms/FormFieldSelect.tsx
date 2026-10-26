@@ -2,7 +2,7 @@ import { FieldPatternCells } from './shared/FieldPatternCells';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowUpToLine, GripVertical, Search } from 'lucide-react';
 import type { OperatorFormProps } from './types';
-import { Cell, FormGrid, FormScroll, GridRow, SegmentCells } from './shared/FormGrid';
+import { Cell, FormGrid, FormScroll, GridRow, SelectCell } from './shared/FormGrid';
 import { FIELD_SELECT_GRID_COLUMNS } from './shared/gridColumns';
 import { DataTypeIcon } from './shared/DataTypeIcon';
 import { useDataFieldTypeLabel } from '../../hooks/useDataFieldTypeLabel';
@@ -140,12 +140,12 @@ export default function FormFieldSelect({
             className="opg-cbx"
           />
         </Cell>
-        <SegmentCells
+        <SelectCell
           value={mode}
           options={modeOptions.map((option) => ({
             value: option.value,
             label: option.label,
-            title: option.tip,
+            description: option.tip,
           }))}
           onChange={(value) => updateConfig((cfg) => ({ ...cfg, selection: value }))}
           ariaLabel={tr('fieldSelectMode')}

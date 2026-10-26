@@ -14,7 +14,7 @@ import {
   FormScroll,
   GlassCommitTextInput,
   LabelCell,
-  SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { EXPECT_GRID_COLUMNS } from './shared/gridColumns';
 import { useFormTranslation } from '../../hooks/useFormTranslation';
@@ -122,7 +122,8 @@ export default function FormExpect({
     <FormScroll>
       <FormGrid columns={EXPECT_GRID_COLUMNS} testId="expect-form-grid">
         <LabelCell>{tr('expect.kind.label')}</LabelCell>
-        <SegmentCells
+        <SelectCell
+          span={2}
           value={kind}
           options={[
             { value: 'expression', label: tr('expect.kind.expression') },
@@ -132,7 +133,7 @@ export default function FormExpect({
           onChange={setKind}
           ariaLabel={tr('expect.kind.label')}
         />
-        <Cell span={2} v={['blank']} />
+        <Cell span={3} v={['blank']} />
 
         {kind === 'expression' && builderParses && (
           <>

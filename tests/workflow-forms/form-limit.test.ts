@@ -203,8 +203,9 @@ describe('FormLimit — UI source structure', () => {
     expect(limitSource).not.toContain('w-[180px]');
   });
 
-  it('uses a segmented control for the mode row', () => {
-    expect(limitSource).toContain('<SegmentCells');
+  it('uses a dropdown for the mode row', () => {
+    expect(limitSource).toContain('<SelectCell');
+    expect(limitSource).not.toContain('<SegmentCells');
     expect(limitSource).toContain("'limitMode'");
     expect(limitSource).toContain('onChange={setMode}');
   });

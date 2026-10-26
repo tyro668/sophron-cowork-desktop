@@ -12,6 +12,7 @@ import {
   HintRow,
   LabelCell,
   SegmentCells,
+  SelectCell,
 } from './shared/FormGrid';
 import { DEDUPE_GRID_COLUMNS } from './shared/gridColumns';
 import { isTemporalDataFieldType } from '../../../shared/data-field-types';
@@ -118,7 +119,7 @@ export default function FormDeduplicate({
     <FormScroll>
       <FormGrid columns={DEDUPE_GRID_COLUMNS} testId="dedupe-form-grid">
         <LabelCell>{tr('dedupBasis')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={strategy}
           options={[
             { value: 'by_columns', label: tr('dedupByFields') },
@@ -151,7 +152,7 @@ export default function FormDeduplicate({
         ) : null}
 
         <LabelCell>{tr('dedupKeepWhich')}</LabelCell>
-        <SegmentCells
+        <SelectCell
           value={keep}
           options={[
             { value: 'first', label: tr('dedupKeepFirst') },
