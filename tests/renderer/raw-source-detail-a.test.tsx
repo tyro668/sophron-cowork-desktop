@@ -232,67 +232,72 @@ describe('RawSourceDetail (方案 A)', () => {
     });
   });
 
-  describe('数据 tab table switcher', () => {
+  describe('title-bar table switcher', () => {
     const three = () => [table('客户'), table('商品'), table('订单', { rowCount: 180 })];
     const lastPreviewId = () => client.previewRawTable.mock.calls.at(-1)?.[0].id;
+    const current = () => screen.getByTestId('raw-source-detail-current');
+    const openMenu = () => fireEvent.click(current());
 
-    it('defaults to the first table, switches via tabs, and keeps config / title in sync', async () => {
+    it('the title name opens a checked list; switching drives data and config tabs', async () => {
       renderDetail(source({ id: 'sw1' }), three());
-      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
-      const tabs = screen.getAllByTestId('raw-source-switcher-tab');
-      expect(tabs).toHaveLength(3);
-      expect(tabs[2].textContent).toContain('180');
-      await waitFor(() => expect(lastPreviewId()).toBe('客户'));
-      expect(screen.getByTestId('raw-source-detail-current').textContent).toBe('/ 客户');
-      fireEvent.click(tabs[2]);
-      await waitFor(() => expect(lastPreviewId()).toBe('订单'));
-      expect(screen.getByTestId('raw-source-detail-current').textContent).toBe('/ 订单');
-      expect(screen.queryByText(/预览：/)).toBeNull();
-      fireEvent.click(screen.getByTestId('raw-source-detail-tab-config'));
+      expect(current().textContent).toContain('客户');
+      expect(screen.queryByTestId('raw-source-switcher')).toBeNull();
+      openMenu();
+      const options = screen.getAllByTestId('raw-source-switcher-option');
+      expect(options).toHaveLength(3);
+      expect(options[0].getAttribute('aria-selected')).toBe('true');
+      expect(options[2].textContent).toContain('180');
+      expect(screen.queryByTestId('raw-source-switcher-search')).toBeNull();
+      fireEvent.click(options[2]);
+      expect(screen.queryByTestId('raw-source-switcher')).toBeNull();
+      expect(current().textContent).toContain('订单');
       const rows = screen.getAllByTestId('raw-source-member-row');
       expect(rows[2].className).toContain('bg-accent-muted');
-      fireEvent.click(rows[1]);
       fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
+      await waitFor(() => expect(lastPreviewId()).toBe('订单'));
+      openMenu();
+      fireEvent.click(screen.getAllByTestId('raw-source-switcher-option')[1]);
       await waitFor(() => expect(lastPreviewId()).toBe('商品'));
+      expect(screen.queryByText(/预览：/)).toBeNull();
+      fireEvent.click(screen.getByTestId('raw-source-detail-tab-config'));
+      fireEvent.click(screen.getAllByTestId('raw-source-member-row')[0]);
+      expect(current().textContent).toContain('客户');
     });
 
     it('opens on the child picked in the list, else the last viewed table', async () => {
       renderDetail(source({ id: 'sw2' }), three(), { initialTableId: '订单' });
-      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
-      await waitFor(() => expect(lastPreviewId()).toBe('订单'));
-      fireEvent.click(screen.getAllByTestId('raw-source-switcher-tab')[1]);
-      await waitFor(() => expect(lastPreviewId()).toBe('商品'));
+      expect(current().textContent).toContain('订单');
+      openMenu();
+      fireEvent.click(screen.getAllByTestId('raw-source-switcher-option')[1]);
       cleanup();
       renderDetail(source({ id: 'sw2' }), three());
+      expect(current().textContent).toContain('商品');
       fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
       await waitFor(() => expect(lastPreviewId()).toBe('商品'));
     });
 
-    it('uses a searchable dropdown for many tables and marks missing ones', async () => {
+    it('adds search for many tables and marks missing ones', async () => {
       const many = ['a1', 'a2', 'a3', 'a4', 'a5', 'b6'].map((id) =>
         table(id, id === 'b6' ? { memberStatus: 'missing' } : {})
       );
       renderDetail(source({ id: 'sw3' }), many);
-      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
-      expect(screen.queryAllByTestId('raw-source-switcher-tab')).toHaveLength(0);
-      fireEvent.click(screen.getByTestId('raw-source-switcher-trigger'));
+      openMenu();
       fireEvent.change(screen.getByTestId('raw-source-switcher-search'), {
         target: { value: 'b' },
       });
       const options = screen.getAllByTestId('raw-source-switcher-option');
       expect(options).toHaveLength(1);
       expect(options[0].className).toContain('text-warning');
+      expect(options[0].textContent).toContain('上次导入的数据');
       fireEvent.click(options[0]);
-      await waitFor(() => expect(lastPreviewId()).toBe('b6'));
-      expect(screen.getByTestId('raw-source-switcher-missing').textContent).toBe('上次导入的数据');
+      expect(current().className).toContain('text-warning');
+      expect(current().getAttribute('title')).toBe('上次导入的数据');
     });
 
     it('has no switcher for single-table or merged sources', () => {
       renderDetail(source({ id: 'sw4', sourceKind: 'folder', buildMode: 'folder_merge' }), [
         table('m1'),
       ]);
-      fireEvent.click(screen.getByTestId('raw-source-detail-tab-data'));
-      expect(screen.queryByTestId('raw-source-switcher')).toBeNull();
       expect(screen.queryByTestId('raw-source-detail-current')).toBeNull();
     });
   });
