@@ -294,6 +294,10 @@ export const TOOL_SCHEMA_COPY = {
     dataPipelineId:
       'Existing saved data pipeline id. Resolve names with data_list_pipelines. For a new pipeline, first finish data_generate_pipeline_from_requirement and use its returned pipeline id.',
     conversationPrompt: 'The complete instruction that each scheduled conversation should execute.',
+    scriptPackageId:
+      'Saved script package id (from script_package_save / script_package_list). The automation runs it with no model call and imports its output into a raw table.',
+    scriptOnError:
+      'What to do when the script fails: notify (default, keep old data) or ai_repair (let the AI fix a pending copy for the user to confirm).',
     query: 'Search automation name or description.',
     serializedObject:
       'Compatibility fallback for models that accidentally serialize this object as JSON. Prefer passing an object.',

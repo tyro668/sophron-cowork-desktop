@@ -133,6 +133,12 @@ function createServiceFixture(options: { now?: () => number } = {}) {
     now: options.now,
     systemTimezone: () => systemTimezone,
     onAutomationsChanged,
+    scriptPackages: {
+      summary: vi.fn(async (id: string) => {
+        if (id !== 'fx_rates') throw new Error('not found');
+        return { id, name: '汇率同步' } as never;
+      }),
+    },
   });
   return {
     service,
@@ -290,6 +296,37 @@ describe('automation conversation tools', () => {
         schedule: JSON.stringify({ kind: 'daily', times: ['10:00'] }),
       })
     ).toBe(true);
+  });
+
+  it('prepares a script package action that runs without the model', async () => {
+    const { service, create } = createServiceFixture();
+    const prepared = await service.prepare(
+      {
+        name: '每日汇率',
+        schedule: { kind: 'daily', times: ['09:00'] },
+        action: { kind: 'script', packageId: 'fx_rates', timeoutSeconds: 60 },
+      },
+      { sessionId: 'session-1' }
+    );
+    expect(prepared.content[0]?.text).toContain('执行脚本 汇率同步 (fx_rates)');
+    await service.create(
+      { draftId: (prepared.details as { draftId: string }).draftId, confirmed: true },
+      { sessionId: 'session-1' }
+    );
+    expect(create.mock.calls[0]?.[0].actionGraph.nodes[0]).toMatchObject({
+      type: 'script.run',
+      config: { packageId: 'fx_rates', timeoutMs: 60_000, onScriptError: 'notify' },
+    });
+    await expect(
+      service.prepare(
+        {
+          name: 'x',
+          schedule: { kind: 'daily', times: ['09:00'] },
+          action: { kind: 'script', packageId: 'missing' },
+        },
+        { sessionId: 'session-1' }
+      )
+    ).rejects.toThrow('Script package not found');
   });
 
   it('prepares a saved data pipeline and creates it idempotently', async () => {
