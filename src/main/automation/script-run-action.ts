@@ -133,8 +133,10 @@ function availableName(taken: string[], base: string): string {
 }
 
 /**
- * Ask the AI to fix a copy of the package, then dry-run that copy. The active version is
- * never replaced here: the result stays "待确认" until the user adopts it in the editor.
+ * Ask the AI to fix the package in its own folder (the published version is checked out
+ * there first), then dry-run the result. A passing fix is committed as the 「AI 修复」 draft —
+ * repeated failures overwrite that same draft. The published version keeps running until
+ * the user reviews and publishes the draft.
  */
 async function repairWithAi(
   options: ScriptRunActionOptions,
@@ -144,14 +146,16 @@ async function repairWithAi(
   context: AutomationRunContext
 ): Promise<string> {
   if (!options.sessionManager) return ' · AI 重新生成不可用';
+  let started = false;
   try {
-    const pendingDir = await options.scripts.preparePending(config.packageId, reason);
-    const prompt = buildRepairPrompt(name, config.packageId, pendingDir, reason, config.timeoutMs);
+    const dir = await options.scripts.beginRepair(config.packageId);
+    started = true;
+    const prompt = buildRepairPrompt(name, config.packageId, dir, reason, config.timeoutMs);
     const permissionPolicy = 'auto_review' as const;
     const session = await options.sessionManager.startSession(
       `修复脚本：${name}`,
       prompt,
-      pendingDir,
+      dir,
       undefined,
       undefined,
       undefined,
@@ -179,17 +183,24 @@ async function repairWithAi(
     await waitForSession(options.sessionManager, session.id, REPAIR_TIMEOUT_MS, options.now);
     const test = await options.scripts.testRun(config.packageId, {
       timeoutMs: config.timeoutMs,
-      pending: true,
+      target: 'working',
     });
-    if (!test.ok) return ` · AI 重新生成未通过试运行：${test.error ?? ''}`;
-    await options.scripts.markPending(config.packageId, {
-      createdAt: options.now(),
-      rows: test.rows ?? 0,
-      sessionId: session.id,
+    const saved = await options.scripts.finishRepair(config.packageId, {
+      ok: test.ok,
       reason,
+      rows: test.rows,
+      sessionId: session.id,
+      automationId: context.automationId,
     });
-    return ` · 脚本已重新生成（试运行 ${test.rows ?? 0} 行），待确认`;
+    started = false;
+    if (!test.ok || !saved) return ` · AI 重新生成未通过试运行：${test.error ?? ''}`;
+    return ` · 脚本已重新生成为 v${saved.version.version} 草稿（试运行 ${test.rows ?? 0} 行），待发布`;
   } catch (error) {
+    if (started) {
+      await options.scripts
+        .finishRepair(config.packageId, { ok: false, reason })
+        .catch(() => undefined);
+    }
     return ` · AI 重新生成失败：${error instanceof Error ? error.message : String(error)}`;
   }
 }
@@ -204,15 +215,16 @@ export function buildRepairPrompt(
   return [
     `自动化里的脚本包「${name}」运行失败，请修复它。`,
     '',
-    `脚本包副本目录（当前工作目录）：${dir}`,
+    `脚本包目录（当前工作目录，已检出正在运行的已发布版本）：${dir}`,
     `失败原因：${reason}`,
     '',
     '要求：',
     '- 只修改这个目录里的文件；不要改动其他目录。',
     '- 保持 manifest.json 的约定：入口脚本必须把结果写到环境变量 SOPHRON_OUTPUT 指定的路径（CSV 带表头，或 manifest 声明的 JSON 对象数组），输出列保持不变。',
     '- 依赖写在 requirements.txt（Python）或 package.json（Node）。',
-    `- 用 script_package_test（id="${packageId}"，pending=true）试运行这个副本：它会安装依赖、运行入口，并返回行数、输出预览和日志。需要时用 webfetch 查看接口/网页的实际返回。这是无人值守的后台任务，需要确认的操作会被直接拒绝。`,
+    `- 用 script_package_test（id="${packageId}"）试运行这个目录的当前代码：它会安装依赖、运行入口，并返回行数、输出预览和日志。需要时用 webfetch 查看接口/网页的实际返回。这是无人值守的后台任务，需要确认的操作会被直接拒绝。`,
     `- 试运行必须成功，且运行时间在 ${formatTimeout(timeoutMs)} 内。`,
-    '- 完成后用一两句话说明改了什么。新版本会等用户确认后才启用。',
+    '- 不要提交 git、不要调用 script_package_save；结束后应用会把这个目录保存为「AI 修复」草稿版本。',
+    '- 完成后用一两句话说明改了什么。草稿要等用户发布后自动化才会运行。',
   ].join('\n');
 }

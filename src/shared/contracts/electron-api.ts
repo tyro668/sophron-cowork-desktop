@@ -1,5 +1,14 @@
 import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
-import type { ScriptPackageSummary, ScriptTestRunResult } from '../automation/script-package';
+import type {
+  ScriptGenerateDraftInput,
+  ScriptGenerateDraftResult,
+  ScriptGenerateProgressEvent,
+  ScriptPackageEditorState,
+  ScriptPackageSummary,
+  ScriptPackageVersion,
+  ScriptPackageVersionDetail,
+  ScriptTestRunResult,
+} from '../automation/script-package';
 import type { RemoteQrSetupState, RemoteQrChannel } from './remote/qr-setup';
 /**
  * @module shared/contracts/electron-api
@@ -546,10 +555,30 @@ export interface ElectronApi {
     listActionDefinitions: () => Promise<AutomationActionDefinitionSummary[]>;
     scripts: {
       list: () => Promise<ScriptPackageSummary[]>;
-      open: (id: string, pending?: boolean) => Promise<void>;
-      testRun: (id: string, timeoutMs: number, pending?: boolean) => Promise<ScriptTestRunResult>;
-      confirmPending: (id: string) => Promise<ScriptPackageSummary>;
-      discardPending: (id: string) => Promise<void>;
+      get: (id: string) => Promise<ScriptPackageSummary>;
+      open: (id: string) => Promise<void>;
+      /** target: version number, 'published' (default) or 'working' (the folder as it is). */
+      testRun: (
+        id: string,
+        timeoutMs: number,
+        target?: number | 'published' | 'working'
+      ) => Promise<ScriptTestRunResult>;
+      versions: (id: string) => Promise<ScriptPackageVersion[]>;
+      versionDetail: (id: string, version: number) => Promise<ScriptPackageVersionDetail>;
+      publish: (id: string, version: number) => Promise<ScriptPackageSummary>;
+      deleteVersion: (id: string, version: number) => Promise<void>;
+      setMeta: (
+        id: string,
+        patch: { displayName?: string; editor?: ScriptPackageEditorState }
+      ) => Promise<ScriptPackageSummary>;
+      editorState: (id: string) => Promise<ScriptPackageEditorState | undefined>;
+      lastOutput: (id: string) => Promise<{
+        columns: string[];
+        rows: Array<Record<string, string>>;
+        total: number;
+      } | null>;
+      generateDraft: (input: ScriptGenerateDraftInput) => Promise<ScriptGenerateDraftResult>;
+      onGenerateProgress: (callback: (event: ScriptGenerateProgressEvent) => void) => () => void;
     };
     groups: {
       list: () => Promise<AutomationGroup[]>;

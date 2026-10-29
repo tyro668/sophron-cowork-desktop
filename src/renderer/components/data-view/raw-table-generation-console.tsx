@@ -34,7 +34,15 @@ function tailStreamLines(stream: string, count: number): string {
   return lines.slice(Math.max(0, lines.length - count)).join('\n');
 }
 
-function GenerationStepView({ step, t }: { step: NormalizerGenerationStep; t: TranslateFn }) {
+function GenerationStepView({
+  step,
+  t,
+  title,
+}: {
+  step: NormalizerGenerationStep;
+  t: TranslateFn;
+  title?: string;
+}) {
   const [collapsedOverride, setCollapsedOverride] = useState<boolean | null>(null);
   const hasStream = step.stream.length > 0;
   const expanded = collapsedOverride ?? step.status === 'active';
@@ -57,7 +65,7 @@ function GenerationStepView({ step, t }: { step: NormalizerGenerationStep; t: Tr
           className="min-w-0 truncate text-[13px] font-medium"
           style={{ color: 'var(--code-preview-text)' }}
         >
-          {t(STEP_TITLE_KEYS[step.phase])}
+          {title ?? t(STEP_TITLE_KEYS[step.phase])}
         </span>
         {hasStream ? (
           <span
@@ -137,9 +145,12 @@ export function RawTableGenerationConsole({
   isStreaming,
   errorMessage,
   modelLabel,
+  stepTitles,
   t,
 }: {
   log: NormalizerGenerationLog | null;
+  /** Override step titles (script packages use their own phases). */
+  stepTitles?: Partial<Record<NormalizerGenerationStepPhase, string>>;
   isStreaming: boolean;
   /** Error raised outside the log (e.g. request failure); rendered as the final log line. */
   errorMessage?: string | null;
@@ -273,7 +284,12 @@ export function RawTableGenerationConsole({
             {log && log.steps.length > 0 ? (
               <div className="flex flex-col gap-0.5">
                 {log.steps.map((step) => (
-                  <GenerationStepView key={`${log.startedAt}:${step.phase}`} step={step} t={t} />
+                  <GenerationStepView
+                    key={`${log.startedAt}:${step.phase}`}
+                    step={step}
+                    t={t}
+                    title={stepTitles?.[step.phase]}
+                  />
                 ))}
               </div>
             ) : null}

@@ -391,7 +391,8 @@
         "ruleLabel": "Rules",
         "examplesLabel": "Examples",
         "copyShort": "Copy",
-        "copiedShort": "Copied"
+        "copiedShort": "Copied",
+        "versionsColumnSource": "Source"
       },
       "status": {
         "available": "Available",
@@ -3445,7 +3446,15 @@
     },
     "dataObjectDeleted": "Deleted",
     "openDataObject": "Open",
-    "viewReason": "View reason"
+    "viewReason": "View reason",
+    "scriptPackageKind": "Script package",
+    "scriptDraft": "draft v{{version}}",
+    "scriptPublishedSuffix": "published v{{version}}",
+    "scriptNotPublished": "not published",
+    "scriptPublish": "Publish",
+    "scriptPublished": "Published",
+    "scriptOpenEditor": "Open in editor",
+    "scriptArchived": "v{{version}} archived"
   },
   "schedule": {
     "executionSummary": "{{executed}} executed, {{skipped}} skipped (trigger condition or prerequisite not met)",
@@ -3958,12 +3967,15 @@
       "depsReady": "Dependencies ready",
       "depsOnFirstRun": "Dependencies install on first run",
       "lastSuccess": "last success {{count}} rows",
-      "pending": "New version",
-      "pendingText": "AI regenerated · test run {{count}} rows, needs confirmation",
-      "view": "View",
-      "adopt": "Adopt",
-      "discard": "Discard",
-      "required": "Select a script package"
+      "required": "Select a script package",
+      "version": "Version",
+      "editScript": "Edit script",
+      "viewDraft": "View draft",
+      "newPackage": "New script package",
+      "versionPublished": "v{{version}} published · {{time}}",
+      "draftPending": "v{{version}} draft to publish ({{source}})",
+      "noPublished": "Not published",
+      "optionVersion": "v{{version}}"
     }
   },
   "remote": {
@@ -4443,5 +4455,67 @@
   "composer": {
     "shortcutSend": "to send",
     "shortcutNewline": "for a new line"
+  },
+  "scripts": {
+    "source": {
+      "chat": "Chat",
+      "rule": "Rule",
+      "ai_repair": "AI repair",
+      "manual": "Manual edit"
+    },
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived"
+    },
+    "editor": {
+      "newName": "New script package",
+      "name": "Package name",
+      "folder": "Folder",
+      "folderPending": "Created after generation",
+      "openFolder": "Open folder",
+      "ruleLabel": "Rule",
+      "rulePlaceholder": "Describe where the script fetches data, which fields, paging / dedupe / retry, and the output columns.",
+      "base": "Based on",
+      "basePublished": "v{{version}} (published)",
+      "baseScratch": "From scratch",
+      "language": "Language",
+      "examplePagingLabel": "Paging",
+      "examplePaging": "Fetch page by page until an empty list is returned (max 100 per page, 20 pages).",
+      "exampleApiAuthLabel": "API parameters",
+      "exampleApiAuth": "Keep the endpoint and query parameters in config.json.",
+      "exampleDedupeLabel": "Dedupe by key",
+      "exampleDedupe": "Deduplicate by the primary key, keeping the last record.",
+      "exampleRetryLabel": "Retry",
+      "exampleRetry": "Retry failed requests up to 3 times with 2 s delay; then exit non-zero with the reason.",
+      "exampleIncrementalLabel": "Incremental",
+      "exampleIncremental": "Only fetch the last 7 days and add a fetched-at column.",
+      "rulesHint": "The result is saved as a new draft; automations keep running the published version",
+      "generate": "Generate draft",
+      "metaPackage": "Package",
+      "metaBase": "Based on",
+      "metaLanguage": "Language",
+      "stepBase": "Read base version",
+      "stepCode": "Generate script code",
+      "stepSave": "Save draft (git commit)",
+      "generated": "Saved as draft v{{version}} · {{count}} files",
+      "markerModified": "Changed",
+      "markerAdded": "New",
+      "statusPublished": "Published v{{version}}",
+      "statusDraft": "Draft",
+      "statusNew": "New",
+      "trialPreview": "Trial preview",
+      "publishVersion": "Publish v{{version}}",
+      "trialTitle": "Trial run output · {{version}} {{status}}",
+      "trialOk": "{{count}} rows · {{seconds}} s",
+      "depsInstalled": "deps installed",
+      "lastRunOk": "Last run {{time}} · {{count}} rows",
+      "lastRunFailed": "Last run {{time}} · failed · {{reason}}",
+      "noOutput": "No production run output yet",
+      "usedBy": "Automations using this package",
+      "notUsed": "No automation uses this package yet",
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    }
   }
 }

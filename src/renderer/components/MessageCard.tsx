@@ -6,6 +6,11 @@ import { Copy, Check, Clock, PencilLine, RotateCcw, XCircle } from 'lucide-react
 import type { Message, ContentBlock, ToolUseContent, ToolResultContent } from '../types';
 import { ContentBlockView } from './message/ContentBlockView';
 import { DataObjectCards, extractDataObjects } from './message/DataObjectCards';
+import {
+  ScriptPackageCards,
+  extractSavedScriptPackages,
+  type SavedScriptPackageRef,
+} from './message/ScriptPackageCards';
 
 interface MessageCardProps {
   message: Message;
@@ -16,6 +21,8 @@ interface MessageCardProps {
   onResend?: (text: string) => void;
   /** Assistant message (last of a turn): re-ask the preceding user message. */
   onRegenerate?: () => void;
+  /** Script packages saved in this message's assistant run; when omitted, read from this message. */
+  savedScripts?: SavedScriptPackageRef[];
 }
 
 export const MessageCard = memo(function MessageCard({
@@ -24,6 +31,7 @@ export const MessageCard = memo(function MessageCard({
   onEdit,
   onResend,
   onRegenerate,
+  savedScripts: savedScriptsProp,
 }: MessageCardProps) {
   const { t } = useTranslation();
   const isUser = message.role === 'user';
@@ -73,6 +81,13 @@ export const MessageCard = memo(function MessageCard({
           ),
     [contentBlocks, isUser, isStreaming]
   );
+
+  const ownSavedScripts = useMemo(
+    () =>
+      isUser || isStreaming || savedScriptsProp ? [] : extractSavedScriptPackages(contentBlocks),
+    [contentBlocks, isUser, isStreaming, savedScriptsProp]
+  );
+  const savedScripts = isStreaming ? [] : (savedScriptsProp ?? ownSavedScripts);
 
   const handleCopy = async () => {
     const text = getTextContent();
@@ -169,6 +184,7 @@ export const MessageCard = memo(function MessageCard({
             );
           })}
           <DataObjectCards objects={dataObjects} />
+          <ScriptPackageCards packages={savedScripts} />
           {onRegenerate && !isStreaming && (
             <div className="flex items-center gap-1 pt-1 text-xs text-text-muted">
               <button

@@ -5,27 +5,48 @@ import path from 'path';
 import {
   scriptManifestSchema,
   type ScriptManifest,
-  type ScriptPackagePending,
+  type ScriptPackageEditorState,
+  type ScriptPackageFile,
   type ScriptPackageRunInfo,
   type ScriptPackageSummary,
+  type ScriptPackageVersion,
+  type ScriptPackageVersionDetail,
   type ScriptTestRunResult,
+  type ScriptVersionSource,
 } from '../../../shared/automation/script-package';
 import { failureReason, runProcess, type ProcessResult } from './process';
-import { readScriptOutput, type ParsedScriptOutput } from './output';
+import { parseCsv, readScriptOutput, type ParsedScriptOutput } from './output';
+import { PackageRepo, PUBLISHED_TAG } from './git-repo';
+import type { ScriptFilesGenerator } from './generator';
+import type { AgentRuntimeConfig } from '../../../shared/contracts';
+import type {
+  ScriptGenerateDraftInput,
+  ScriptGenerateDraftResult,
+  ScriptGenerateProgressEvent,
+} from '../../../shared/automation/script-package';
+import {
+  MemoryScriptVersionStore,
+  type ScriptVersionRecord,
+  type ScriptVersionStore,
+} from './version-store';
 
-/** App-owned folder inside each package: deps state, last good output, AI drafts. */
+/** App-owned folder inside each package (git-ignored): run dirs, deps state, last output. */
 export const STATE_DIR = '.sophron';
-const PENDING_DIR = 'pending';
 const RUNTIME_DIRS = new Set([STATE_DIR, '.venv', 'node_modules', '__pycache__', '.git']);
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const PACKAGE_ID_PATTERN = /^[^\\/:*?"<>|.][^\\/:*?"<>|]{0,79}$/;
+const PREVIEW_ROWS = 200;
 
 interface PackageState {
   depsHash?: string;
   runtimeVersion?: string;
+  /** Commit materialised in a run directory. */
+  commit?: string;
   lastSuccess?: ScriptPackageRunInfo;
   lastError?: { at: number; message: string };
-  pending?: ScriptPackagePending;
+  /** Display name set in the editor (overrides manifest.name). */
+  displayName?: string;
+  editor?: ScriptPackageEditorState;
 }
 
 export interface ScriptRunOutput extends ParsedScriptOutput {
@@ -34,6 +55,7 @@ export interface ScriptRunOutput extends ParsedScriptOutput {
   durationMs: number;
   installedDeps: boolean;
   log: string;
+  version?: number;
 }
 
 export class ScriptPackageError extends Error {
@@ -49,6 +71,8 @@ export class ScriptPackageError extends Error {
 
 export interface ScriptPackageServiceOptions {
   rootDir: string;
+  /** Version metadata (DB); defaults to in-memory. */
+  versions?: ScriptVersionStore;
   now?: () => number;
   /** Override interpreters (tests). */
   python?: { command: string; args: string[] };
@@ -56,20 +80,70 @@ export interface ScriptPackageServiceOptions {
   npmCommand?: string;
 }
 
+export interface SaveDraftOptions {
+  source: ScriptVersionSource;
+  rulePrompt?: string;
+  baseVersion?: number | null;
+  sessionId?: string;
+  automationId?: string;
+  rows?: number;
+}
+
+export interface SaveDraftResult {
+  summary: ScriptPackageSummary;
+  version: ScriptPackageVersion;
+  /** False when nothing changed and the existing newest version was returned. */
+  created: boolean;
+  /** True when an earlier draft of the same source was overwritten. */
+  replaced: boolean;
+}
+
+/** Which tree a trial run executes. */
+export type ScriptRunTarget = number | 'published' | 'working';
+
+/**
+ * Script packages: every package folder is a git repo (isomorphic-git). Each version is a
+ * commit; the version automations run carries the tag `vN` and the moving tag `published`.
+ * The folder itself is the working tree users open and edit; automations and trial runs
+ * execute a checkout of a commit under `.sophron/run/`, never the working tree.
+ */
 export class ScriptPackageService {
   readonly rootDir: string;
   private readonly now: () => number;
+  private readonly store: ScriptVersionStore;
   private readonly locks = new Map<string, Promise<unknown>>();
+  /** Packages whose working tree is being edited by an AI repair session. */
+  private readonly repairing = new Set<string>();
 
   constructor(private readonly options: ScriptPackageServiceOptions) {
     this.rootDir = options.rootDir;
     this.now = options.now ?? (() => Date.now());
+    this.store = options.versions ?? new MemoryScriptVersionStore();
   }
 
   packageDir(id: string): string {
     if (!PACKAGE_ID_PATTERN.test(id))
       throw new ScriptPackageError(`脚本包名称无效：${id}`, 'invalid');
     return path.join(this.rootDir, id);
+  }
+
+  private repo(id: string): PackageRepo {
+    return new PackageRepo(this.packageDir(id));
+  }
+
+  /** A free folder name for a new package called `name`. */
+  async newPackageId(name: string): Promise<string> {
+    const base =
+      name
+        .trim()
+        .replace(/[\\/:*?"<>|\s]+/g, '_')
+        .replace(/^[._]+/, '')
+        .slice(0, 60) || 'script';
+    for (let index = 1; index < 1000; index += 1) {
+      const id = index === 1 ? base : `${base}_${index}`;
+      if (!existsSync(path.join(this.rootDir, id))) return id;
+    }
+    return `${base}_${this.now()}`;
   }
 
   async list(): Promise<ScriptPackageSummary[]> {
@@ -84,56 +158,518 @@ export class ScriptPackageService {
     return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
   }
 
+  /** Summary of a package; first picks up edits made in the folder as a 手动修改 draft. */
   async summary(id: string): Promise<ScriptPackageSummary> {
     const dir = this.packageDir(id);
+    try {
+      await this.sync(id);
+    } catch {
+      // An unreadable working tree still lists; the manifest error below explains it.
+    }
+    return this.summaryUnsynced(id, dir);
+  }
+
+  private async summaryUnsynced(id: string, dir: string): Promise<ScriptPackageSummary> {
     const state = await this.readState(dir);
+    const records = this.store.list(id);
+    const published = records.find((record) => record.status === 'published');
+    const draft = [...records]
+      .reverse()
+      .find((record) => record.status === 'draft' && record.version > (published?.version ?? 0));
+    const base = {
+      id,
+      dir,
+      lastSuccess: state.lastSuccess,
+      lastError: state.lastError,
+      published: published && toVersion(published),
+      draft: draft && toVersion(draft),
+      versionCount: records.length,
+    };
     let manifest: ScriptManifest;
     try {
       manifest = await this.readManifest(dir);
     } catch (error) {
       return {
-        id,
-        name: id,
-        dir,
-        entry: '',
-        runtime: 'python',
+        ...base,
+        name: state.displayName ?? id,
+        entry: published?.entry ?? '',
+        runtime: published?.runtime ?? 'python',
         depsReady: false,
         invalid: error instanceof Error ? error.message : String(error),
       };
     }
-    const depsFile = depsFileFor(manifest, dir);
-    const depsHash = await this.depsHash(dir, manifest);
+    const runDir = this.runDir(dir, 'published');
+    const runState = await this.readState(runDir);
+    let depsFile: ScriptPackageSummary['depsFile'];
+    let depsReady = Boolean(published);
+    if (published) {
+      const files = await this.repo(id)
+        .treeIndex(published.commit)
+        .catch(() => new Map<string, string>());
+      const runtime = published.runtime;
+      const file = runtime === 'python' ? 'requirements.txt' : 'package.json';
+      depsFile = files.has(file) ? file : undefined;
+      if (depsFile) {
+        const materialised = runState.commit === published.commit;
+        depsReady =
+          materialised &&
+          runState.depsHash ===
+            (await this.depsHash(runDir, { ...manifest, runtime }).catch(() => undefined)) &&
+          this.depsInstalled(runDir, runtime);
+      }
+    }
     return {
-      id,
-      name: manifest.name,
+      ...base,
+      name: state.displayName ?? manifest.name,
       description: manifest.description,
-      dir,
-      entry: manifest.entry,
-      runtime: manifest.runtime,
-      runtimeVersion: state.runtimeVersion,
+      entry: published?.entry ?? manifest.entry,
+      runtime: published?.runtime ?? manifest.runtime,
+      runtimeVersion: runState.runtimeVersion ?? state.runtimeVersion,
       depsFile,
-      depsReady: !depsFile || (state.depsHash === depsHash && this.depsInstalled(dir, manifest)),
-      lastSuccess: state.lastSuccess,
-      lastError: state.lastError,
-      pending: state.pending && existsSync(this.pendingDir(dir)) ? state.pending : undefined,
+      depsReady,
     };
   }
 
-  /** Dry run: installs deps if needed and runs the entry; nothing is imported. */
+  // ── versions ─────────────────────────────────────────────────────────
+
+  /** Version history (newest first) with each version's git diff against the published one. */
+  async listVersions(id: string): Promise<ScriptPackageVersion[]> {
+    const repo = this.repo(id);
+    const records = this.store.list(id);
+    const published = records.find((record) => record.status === 'published');
+    const result: ScriptPackageVersion[] = [];
+    for (const record of records.reverse()) {
+      const version = toVersion(record);
+      if (published && record.version !== published.version) {
+        version.diff = await repo.diff(published.commit, record.commit).catch(() => undefined);
+      }
+      result.push(version);
+    }
+    return result;
+  }
+
+  async versionDetail(id: string, versionNumber: number): Promise<ScriptPackageVersionDetail> {
+    const record = this.requireRecord(id, versionNumber);
+    const repo = this.repo(id);
+    const published = this.store.list(id).find((item) => item.status === 'published');
+    const files = await repo.readFiles(record.commit);
+    return {
+      ...toVersion(record),
+      files,
+      ...(published && published.version !== record.version
+        ? { diff: await repo.diff(published.commit, record.commit) }
+        : {}),
+    };
+  }
+
+  /**
+   * Commit the working tree (optionally replaced by `files`) as a draft. Repeated drafts
+   * from AI repair, manual edits and chat overwrite the newest unpublished draft of the
+   * same source instead of piling up versions.
+   */
+  saveDraft(
+    id: string,
+    options: SaveDraftOptions & { files?: ScriptPackageFile[] }
+  ): Promise<SaveDraftResult> {
+    return this.withLock(id, () => this.saveDraftUnlocked(id, options));
+  }
+
+  private async saveDraftUnlocked(
+    id: string,
+    options: SaveDraftOptions & { files?: ScriptPackageFile[] }
+  ): Promise<SaveDraftResult> {
+    const dir = this.packageDir(id);
+    const repo = new PackageRepo(dir);
+    await this.ensureRepo(id);
+    if (options.files) await writeWorkingFiles(dir, options.files);
+    await repo.ensure();
+    const manifest = await this.readManifest(dir).catch((error: unknown) => {
+      throw new ScriptPackageError(
+        `manifest.json 无效：${error instanceof Error ? error.message : String(error)}`,
+        'invalid'
+      );
+    });
+    if (!existsSync(path.join(dir, manifest.entry))) {
+      throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
+    }
+    const records = this.store.list(id);
+    const published = records.find((record) => record.status === 'published');
+    const reusable =
+      options.source === 'rule'
+        ? undefined
+        : [...records]
+            .reverse()
+            .find(
+              (record) =>
+                record.status === 'draft' &&
+                record.source === options.source &&
+                record.version > (published?.version ?? 0) &&
+                record.version === records[records.length - 1]?.version
+            );
+    const nextVersion = reusable?.version ?? (records.at(-1)?.version ?? 0) + 1;
+    const commit = await repo.commitAll(
+      `v${nextVersion} ${SOURCE_LABEL[options.source]}${
+        options.rulePrompt ? `\n\n${options.rulePrompt.slice(0, 2000)}` : ''
+      }`,
+      reusable ? { replace: reusable.commit } : {}
+    );
+    const now = this.now();
+    if (!commit && reusable) {
+      // Same content as the draft being overwritten (e.g. a repeated repair arrived at the same
+      // fix): keep the commit, refresh what this attempt recorded.
+      this.store.update(id, reusable.version, {
+        rulePrompt: options.rulePrompt ?? reusable.rulePrompt,
+        sessionId: options.sessionId ?? reusable.sessionId,
+        automationId: options.automationId ?? reusable.automationId,
+        rows: options.rows ?? reusable.rows,
+        updatedAt: now,
+      });
+      return {
+        summary: await this.summaryUnsynced(id, dir),
+        version: toVersion(this.requireRecord(id, reusable.version)),
+        created: false,
+        replaced: true,
+      };
+    }
+    if (!commit) {
+      const latest = records.at(-1);
+      if (latest) {
+        return {
+          summary: await this.summaryUnsynced(id, dir),
+          version: toVersion(latest),
+          created: false,
+          replaced: false,
+        };
+      }
+    }
+    const oid = commit ?? (await repo.head());
+    if (!oid) throw new ScriptPackageError('无法提交脚本包版本', 'invalid');
+    const fields = {
+      commit: oid,
+      status: 'draft' as const,
+      source: options.source,
+      entry: manifest.entry,
+      runtime: manifest.runtime,
+      rulePrompt: options.rulePrompt,
+      baseVersion:
+        options.baseVersion === undefined ? (published?.version ?? null) : options.baseVersion,
+      sessionId: options.sessionId,
+      automationId: options.automationId,
+      rows: options.rows,
+      updatedAt: now,
+    };
+    if (reusable) this.store.update(id, reusable.version, fields);
+    else this.store.insert({ packageId: id, version: nextVersion, createdAt: now, ...fields });
+    const saved = this.requireRecord(id, nextVersion);
+    return {
+      summary: await this.summaryUnsynced(id, dir),
+      version: toVersion(saved),
+      created: true,
+      replaced: Boolean(reusable),
+    };
+  }
+
+  /** 规则生成: generate a draft from a rule prompt, based on a version or from scratch. */
+  async generateDraft(
+    input: ScriptGenerateDraftInput,
+    generator: ScriptFilesGenerator,
+    options: {
+      runtimeConfig?: AgentRuntimeConfig;
+      onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
+    } = {}
+  ): Promise<ScriptGenerateDraftResult> {
+    const emit = options.onProgress ?? (() => undefined);
+    try {
+      const name = input.name?.trim() || '';
+      const id = input.packageId || (await this.newPackageId(name || '新脚本包'));
+      const existing = Boolean(input.packageId);
+      let baseFiles: ScriptPackageFile[] = [];
+      let lastError: string | undefined;
+      let displayName = name;
+      emit({ phase: 'source_summary', kind: 'message', text: `脚本包：${name || id}` });
+      if (existing) {
+        const summary = await this.summary(id);
+        displayName = name || summary.name;
+        lastError = summary.lastError?.message;
+        if (input.baseVersion != null) {
+          const base = await this.versionDetail(id, input.baseVersion);
+          baseFiles = base.files.filter((file) => file.path !== '.gitignore');
+          emit({
+            phase: 'source_summary',
+            kind: 'message',
+            text: `基于 v${base.version}（${STATUS_LABEL[base.status]}）修改 · ${baseFiles.length} 个文件`,
+          });
+        } else {
+          emit({ phase: 'source_summary', kind: 'message', text: '从头生成' });
+        }
+        if (lastError)
+          emit({ phase: 'source_summary', kind: 'message', text: `最近一次失败：${lastError}` });
+      } else {
+        emit({ phase: 'source_summary', kind: 'message', text: '新建脚本包，从头生成' });
+      }
+      emit({
+        phase: 'code_generation',
+        kind: 'message',
+        text: `语言：${input.runtime === 'node' ? 'Node.js' : 'Python'}`,
+      });
+      const files = await generator.generate({
+        name: displayName || id,
+        rulePrompt: input.rulePrompt,
+        runtime: input.runtime,
+        baseFiles,
+        baseLabel: input.baseVersion != null ? `v${input.baseVersion}` : undefined,
+        lastError,
+        runtimeConfig: options.runtimeConfig,
+        onDelta: (text) => emit({ phase: 'code_generation', kind: 'delta', text }),
+      });
+      emit({ phase: 'saving', kind: 'message', text: `保存为草稿 · ${files.length} 个文件` });
+      await mkdir(this.packageDir(id), { recursive: true });
+      const saved = await this.saveDraft(id, {
+        source: 'rule',
+        rulePrompt: input.rulePrompt,
+        baseVersion: input.baseVersion,
+        files,
+      });
+      await this.patchState(this.packageDir(id), {
+        editor: {
+          rulePrompt: input.rulePrompt,
+          runtime: input.runtime,
+          modelConfigSetId: input.modelConfigSetId,
+        },
+      });
+      emit({ phase: 'complete', kind: 'message', text: `已保存 v${saved.version.version} 草稿` });
+      return {
+        summary: await this.summaryUnsynced(id, this.packageDir(id)),
+        version: await this.versionDetail(id, saved.version.version),
+      };
+    } catch (error) {
+      emit({
+        phase: 'error',
+        kind: 'message',
+        text: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Make `versionNumber` the version automations run: tag it `vN`, move the `published`
+   * tag, archive the previously published one. Publishing an older version is a rollback.
+   */
+  publish(id: string, versionNumber: number): Promise<ScriptPackageSummary> {
+    return this.withLock(id, async () => {
+      const record = this.requireRecord(id, versionNumber);
+      const repo = this.repo(id);
+      const now = this.now();
+      for (const other of this.store.list(id)) {
+        if (other.status === 'published' && other.version !== versionNumber)
+          this.store.update(id, other.version, { status: 'archived' });
+      }
+      await repo.tag(`v${versionNumber}`, record.commit);
+      await repo.tag(PUBLISHED_TAG, record.commit);
+      this.store.update(id, versionNumber, { status: 'published', publishedAt: now });
+      await this.patchState(this.packageDir(id), { lastError: undefined });
+      return this.summaryUnsynced(id, this.packageDir(id));
+    });
+  }
+
+  deleteVersion(id: string, versionNumber: number): Promise<void> {
+    return this.withLock(id, async () => {
+      const record = this.requireRecord(id, versionNumber);
+      if (record.status === 'published') {
+        throw new ScriptPackageError('已发布的版本不能删除', 'invalid');
+      }
+      this.store.delete(id, versionNumber);
+      await this.repo(id).deleteTag(`v${versionNumber}`);
+    });
+  }
+
+  async setMeta(
+    id: string,
+    patch: { displayName?: string; editor?: ScriptPackageEditorState }
+  ): Promise<ScriptPackageSummary> {
+    const dir = this.packageDir(id);
+    await this.patchState(dir, {
+      ...(patch.displayName !== undefined
+        ? { displayName: patch.displayName.trim() || undefined }
+        : {}),
+      ...(patch.editor !== undefined ? { editor: patch.editor } : {}),
+    });
+    return this.summary(id);
+  }
+
+  async editorState(id: string): Promise<ScriptPackageEditorState | undefined> {
+    return (await this.readState(this.packageDir(id))).editor;
+  }
+
+  // ── working tree ─────────────────────────────────────────────────────
+
+  /** Save edits made directly in the folder (打开文件夹) as a 手动修改 draft. */
+  private sync(id: string): Promise<SaveDraftResult | null> {
+    if (this.repairing.has(id)) return Promise.resolve(null);
+    return this.withLock(id, async () => {
+      if (this.repairing.has(id)) return null;
+      const repo = this.repo(id);
+      const fresh = await this.ensureRepo(id);
+      if (fresh) return null;
+      if ((await repo.changedPaths()).length === 0) return null;
+      try {
+        await this.readManifest(repo.dir);
+      } catch {
+        return null; // half-edited manifest: wait until it is valid again
+      }
+      return this.saveDraftUnlocked(id, { source: 'manual' });
+    });
+  }
+
+  /**
+   * Initialise git for a package folder. A folder that has files but no history (written
+   * before versioning) becomes v1, published so existing automations keep running.
+   * Returns true when it created that first version.
+   */
+  private async ensureRepo(id: string): Promise<boolean> {
+    const repo = this.repo(id);
+    const hadGit = repo.exists;
+    if (hadGit && (await repo.head())) return false;
+    await repo.ensure();
+    // Only a folder that predates versioning is migrated; a fresh repo waits for its draft.
+    if (hadGit || !existsSync(path.join(repo.dir, 'manifest.json'))) return false;
+    if (this.store.list(id).length > 0) return false;
+    let manifest: ScriptManifest;
+    try {
+      manifest = await this.readManifest(repo.dir);
+    } catch {
+      return false;
+    }
+    const commit = await repo.commitAll('v1 导入');
+    if (!commit) return false;
+    const now = this.now();
+    this.store.insert({
+      packageId: id,
+      version: 1,
+      commit,
+      status: 'published',
+      source: 'chat',
+      entry: manifest.entry,
+      runtime: manifest.runtime,
+      baseVersion: null,
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: now,
+    });
+    await repo.tag('v1', commit);
+    await repo.tag(PUBLISHED_TAG, commit);
+    return true;
+  }
+
+  /**
+   * Prepare the working tree for an AI repair: folder edits are saved first, then the
+   * published version is checked out so the AI fixes what automations actually run.
+   */
+  beginRepair(id: string): Promise<string> {
+    return this.withLock(id, async () => {
+      const dir = this.packageDir(id);
+      await this.ensureRepo(id);
+      const repo = new PackageRepo(dir);
+      if ((await repo.changedPaths()).length > 0) {
+        await this.saveDraftUnlocked(id, { source: 'manual' }).catch(() => undefined);
+      }
+      const published = this.store.list(id).find((record) => record.status === 'published');
+      if (published) await repo.checkoutTree(published.commit);
+      this.repairing.add(id);
+      return dir;
+    });
+  }
+
+  /** Commit a successful repair as the (single, overwritten) AI 修复 draft, or revert it. */
+  finishRepair(
+    id: string,
+    result: {
+      ok: boolean;
+      reason: string;
+      rows?: number;
+      sessionId?: string;
+      automationId?: string;
+    }
+  ): Promise<SaveDraftResult | null> {
+    return this.withLock(id, async () => {
+      try {
+        const dir = this.packageDir(id);
+        if (result.ok) {
+          return await this.saveDraftUnlocked(id, {
+            source: 'ai_repair',
+            rulePrompt: result.reason,
+            rows: result.rows,
+            sessionId: result.sessionId,
+            automationId: result.automationId,
+          });
+        }
+        const head = await new PackageRepo(dir).head();
+        if (head) await new PackageRepo(dir).checkoutTree(head);
+        return null;
+      } finally {
+        this.repairing.delete(id);
+      }
+    });
+  }
+
+  /** Register a folder written elsewhere (by the AI in its workspace) as a draft version. */
+  async importFromDir(
+    sourceDir: string,
+    id?: string,
+    meta: Partial<SaveDraftOptions> = {}
+  ): Promise<SaveDraftResult> {
+    const source = path.resolve(sourceDir);
+    if (!(await stat(source).catch(() => null))?.isDirectory()) {
+      throw new ScriptPackageError(`目录不存在：${sourceDir}`, 'invalid');
+    }
+    const manifest = await this.readManifest(source);
+    if (!existsSync(path.join(source, manifest.entry))) {
+      throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
+    }
+    const packageId = (id ?? path.basename(source)).trim();
+    const target = this.packageDir(packageId);
+    if (path.resolve(target) !== source) {
+      // Keep the folder's own pending edits as a manual draft before replacing them.
+      if (existsSync(path.join(target, '.git'))) await this.sync(packageId);
+    }
+    return this.withLock(packageId, async () => {
+      await mkdir(target, { recursive: true });
+      await this.ensureRepo(packageId);
+      if (path.resolve(target) !== source) {
+        await clearWorkingTree(target);
+        await copyPackageFiles(source, target);
+      }
+      return this.saveDraftUnlocked(packageId, { source: 'chat', ...meta });
+    });
+  }
+
+  // ── running ──────────────────────────────────────────────────────────
+
+  /** Dry run of a version (default: published): installs deps, runs, nothing is imported. */
   async testRun(
     id: string,
-    options: { timeoutMs: number; pending?: boolean }
+    options: { timeoutMs: number; target?: ScriptRunTarget }
   ): Promise<ScriptTestRunResult> {
     const startedAt = this.now();
     try {
       const output = await this.run(id, { ...options, dryRun: true });
+      const table = parseCsv(output.csv);
+      const columns = output.columns;
+      const previewRows = table.slice(1, PREVIEW_ROWS + 1).map((row) => {
+        const record: Record<string, string> = {};
+        columns.forEach((column, index) => (record[column] = row[index] ?? ''));
+        return record;
+      });
       return {
         ok: true,
+        version: output.version,
         rows: output.rows,
-        columns: output.columns,
+        columns,
         durationMs: output.durationMs,
         installedDeps: output.installedDeps,
         preview: output.csv.split(/\r?\n/).slice(0, 6).join('\n'),
+        previewRows,
         log: output.log,
       };
     } catch (error) {
@@ -148,28 +684,28 @@ export class ScriptPackageService {
   }
 
   /**
-   * Install deps when missing or changed, run the entry with a timeout and validate the output.
-   * Only a successful real run replaces the stable output file, so failures keep the old data.
+   * Run the published version (or, for dry runs, another target): check its commit out
+   * into a run directory, install deps when missing or changed, run the entry with a
+   * timeout and validate the output. Only a successful real run replaces the stable output.
    */
   run(
     id: string,
-    options: { timeoutMs: number; dryRun?: boolean; pending?: boolean }
+    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget }
   ): Promise<ScriptRunOutput> {
     return this.withLock(id, () => this.runUnlocked(id, options));
   }
 
   private async runUnlocked(
     id: string,
-    options: { timeoutMs: number; dryRun?: boolean; pending?: boolean }
+    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget }
   ): Promise<ScriptRunOutput> {
     const packageDir = this.packageDir(id);
     if (!existsSync(path.join(packageDir, 'manifest.json'))) {
       throw new ScriptPackageError(`找不到脚本包：${id}`, 'invalid');
     }
-    const dir = options.pending ? this.pendingDir(packageDir) : packageDir;
-    if (options.pending && !existsSync(dir)) {
-      throw new ScriptPackageError('没有待确认的新版本', 'invalid');
-    }
+    await this.ensureRepo(id);
+    const target = options.dryRun ? (options.target ?? 'published') : 'published';
+    const { dir, record } = await this.checkoutForRun(id, packageDir, target);
     const manifest = await this.readManifest(dir).catch((error: unknown) => {
       throw new ScriptPackageError(
         `manifest.json 无效：${error instanceof Error ? error.message : String(error)}`,
@@ -180,17 +716,14 @@ export class ScriptPackageService {
     if (!existsSync(entryPath)) {
       throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
     }
-    const installedDeps = await this.ensureDeps(
-      dir,
-      manifest,
-      options.pending ? undefined : packageDir
-    );
-    const runDir = path.join(packageDir, STATE_DIR, 'runs', String(this.now()));
-    await mkdir(runDir, { recursive: true });
+    const installedDeps = await this.ensureDeps(dir, manifest);
+    const outDir = path.join(packageDir, STATE_DIR, 'runs', String(this.now()));
+    await mkdir(outDir, { recursive: true });
     const format = manifest.output?.format ?? 'csv';
-    const outputPath = path.join(runDir, `output.${format}`);
+    const outputPath = path.join(outDir, `output.${format}`);
     const configPath = path.join(dir, 'config.json');
     const startedAt = this.now();
+    const isPublished = target === 'published';
     try {
       const command = this.entryCommand(dir, manifest, entryPath);
       const result = await runProcess(command.command, command.args, {
@@ -204,6 +737,7 @@ export class ScriptPackageService {
           SOPHRON_CONFIG: existsSync(configPath) ? configPath : '',
           PYTHONIOENCODING: 'utf-8',
           PYTHONUNBUFFERED: '1',
+          PYTHONDONTWRITEBYTECODE: '1',
         },
       });
       const durationMs = this.now() - startedAt;
@@ -234,20 +768,17 @@ export class ScriptPackageService {
         );
       }
       const csvPath = path.join(packageDir, STATE_DIR, 'output.csv');
+      const info = { at: this.now(), rows: parsed.rows, durationMs };
       if (!options.dryRun) {
         await writeFile(csvPath, parsed.csv, 'utf8');
-        await this.patchState(packageDir, {
-          lastSuccess: { at: this.now(), rows: parsed.rows, durationMs },
-          lastError: undefined,
-        });
-      } else if (!options.pending) {
-        await this.patchState(packageDir, {
-          lastSuccess: { at: this.now(), rows: parsed.rows, durationMs },
-        });
+        await this.patchState(packageDir, { lastSuccess: info, lastError: undefined });
+      } else if (isPublished) {
+        await this.patchState(packageDir, { lastSuccess: info });
       }
-      return { ...parsed, csvPath, durationMs, installedDeps, log };
+      if (record) this.store.update(id, record.version, { rows: parsed.rows });
+      return { ...parsed, csvPath, durationMs, installedDeps, log, version: record?.version };
     } catch (error) {
-      if (!options.dryRun && !options.pending) {
+      if (!options.dryRun) {
         await this.patchState(packageDir, {
           lastError: {
             at: this.now(),
@@ -257,14 +788,53 @@ export class ScriptPackageService {
       }
       throw error;
     } finally {
-      await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
+      await rm(outDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 
-  // ── deps ──────────────────────────────────────────────────────────────
+  private runDir(packageDir: string, name: 'published' | 'trial'): string {
+    return path.join(packageDir, STATE_DIR, 'run', name);
+  }
 
-  private depsInstalled(dir: string, manifest: ScriptManifest): boolean {
-    if (manifest.runtime === 'python') return existsSync(venvPython(dir));
+  /** Check the target's tree out into a run directory (deps folders survive). */
+  private async checkoutForRun(
+    id: string,
+    packageDir: string,
+    target: ScriptRunTarget
+  ): Promise<{ dir: string; record?: ScriptVersionRecord }> {
+    const repo = new PackageRepo(packageDir);
+    if (target === 'working') {
+      const dir = this.runDir(packageDir, 'trial');
+      await mkdir(dir, { recursive: true });
+      await clearWorkingTree(dir);
+      await copyPackageFiles(packageDir, dir);
+      await this.patchState(dir, { commit: undefined });
+      return { dir };
+    }
+    let record: ScriptVersionRecord | undefined;
+    if (target === 'published') {
+      const oid = await repo.resolveTag(PUBLISHED_TAG);
+      record = this.store.list(id).find((item) => item.status === 'published');
+      if (!oid || !record) {
+        throw new ScriptPackageError('脚本包还没有发布版本，请先在编辑器或对话中发布', 'invalid');
+      }
+      record = { ...record, commit: oid };
+    } else {
+      record = this.requireRecord(id, target);
+    }
+    const dir = this.runDir(packageDir, target === 'published' ? 'published' : 'trial');
+    const state = await this.readState(dir);
+    if (state.commit !== record.commit || !existsSync(path.join(dir, 'manifest.json'))) {
+      await repo.checkoutTree(record.commit, dir);
+      await this.patchState(dir, { commit: record.commit });
+    }
+    return { dir, record };
+  }
+
+  // ── deps ─────────────────────────────────────────────────────────────
+
+  private depsInstalled(dir: string, runtime: ScriptManifest['runtime']): boolean {
+    if (runtime === 'python') return existsSync(venvPython(dir));
     return existsSync(path.join(dir, 'node_modules'));
   }
 
@@ -272,28 +842,30 @@ export class ScriptPackageService {
     const file = depsFileFor(manifest, dir);
     if (!file) return undefined;
     const content = await readFile(path.join(dir, file), 'utf8');
-    return createHash('sha256').update(`${manifest.runtime}\n${content}`).digest('hex');
+    const lock = path.join(dir, 'package-lock.json');
+    const lockContent =
+      manifest.runtime === 'node' && existsSync(lock) ? await readFile(lock, 'utf8') : '';
+    return createHash('sha256')
+      .update(`${manifest.runtime}\n${content}\n${lockContent}`)
+      .digest('hex');
   }
 
-  /** Returns true when an install ran. `stateDir` is where the deps hash is tracked. */
-  private async ensureDeps(
-    dir: string,
-    manifest: ScriptManifest,
-    statePackageDir?: string
-  ): Promise<boolean> {
+  /** Returns true when an install ran. The deps hash is tracked in the run dir's state. */
+  private async ensureDeps(dir: string, manifest: ScriptManifest): Promise<boolean> {
     const hash = await this.depsHash(dir, manifest);
-    const stateOwner = statePackageDir ?? dir;
-    const state = await this.readState(stateOwner);
+    const state = await this.readState(dir);
     if (!hash) {
       if (!state.runtimeVersion)
-        await this.patchState(stateOwner, {
-          runtimeVersion: await this.runtimeVersion(dir, manifest),
-        });
+        await this.patchState(dir, { runtimeVersion: await this.runtimeVersion(dir, manifest) });
       return false;
     }
-    if (state.depsHash === hash && this.depsInstalled(dir, manifest)) return false;
+    if (state.depsHash === hash && this.depsInstalled(dir, manifest.runtime)) return false;
     const fail = (step: string, result: ProcessResult) => {
-      throw new ScriptPackageError(`依赖安装失败（${step}）：${failureReason(result)}`, 'deps');
+      const hint =
+        step === 'npm' && result.code === -1 && /ENOENT/.test(result.stderr)
+          ? '找不到 npm，安装带依赖的 Node 脚本需要本机安装 Node.js（含 npm）'
+          : failureReason(result);
+      throw new ScriptPackageError(`依赖安装失败（${step}）：${hint}`, 'deps', processLog(result));
     };
     if (manifest.runtime === 'python') {
       await rm(path.join(dir, '.venv'), { recursive: true, force: true });
@@ -311,13 +883,14 @@ export class ScriptPackageService {
       if (pip.code !== 0) fail('pip', pip);
     } else {
       const npm = this.options.npmCommand ?? (process.platform === 'win32' ? 'npm.cmd' : 'npm');
-      const install = await runProcess(npm, ['install', '--no-audit', '--no-fund', '--omit=dev'], {
-        cwd: dir,
-        timeoutMs: INSTALL_TIMEOUT_MS,
-      });
+      // A committed lockfile installs exactly; otherwise do not write one into the checkout.
+      const args = existsSync(path.join(dir, 'package-lock.json'))
+        ? ['ci', '--no-audit', '--no-fund', '--omit=dev']
+        : ['install', '--no-audit', '--no-fund', '--omit=dev', '--no-package-lock'];
+      const install = await runProcess(npm, args, { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS });
       if (install.code !== 0) fail('npm', install);
     }
-    await this.patchState(stateOwner, {
+    await this.patchState(dir, {
       depsHash: hash,
       runtimeVersion: await this.runtimeVersion(dir, manifest),
     });
@@ -372,81 +945,32 @@ export class ScriptPackageService {
     return { command: python.command, args: [...python.args, entryPath] };
   }
 
-  // ── pending AI versions ─────────────────────────────────────────────
-
-  /** `.sophron/pending/<id>`: the folder name doubles as the repair session's project name. */
-  pendingDir(packageDir: string): string {
-    return path.join(packageDir, STATE_DIR, PENDING_DIR, path.basename(packageDir));
-  }
-
-  /** Fresh editable copy of the package for an AI repair; returns its folder. */
-  async preparePending(id: string, errorText: string): Promise<string> {
-    const dir = this.packageDir(id);
-    const pending = this.pendingDir(dir);
-    await rm(path.dirname(pending), { recursive: true, force: true });
-    await copyPackageFiles(dir, pending);
-    await writeFile(path.join(pending, 'LAST_ERROR.txt'), `${errorText}\n`, 'utf8');
-    await this.patchState(dir, { pending: undefined });
-    return pending;
-  }
-
-  async markPending(id: string, pending: ScriptPackagePending): Promise<void> {
-    const dir = this.packageDir(id);
-    await rm(path.join(this.pendingDir(dir), 'LAST_ERROR.txt'), { force: true });
-    await this.patchState(dir, { pending });
-  }
-
-  async discardPending(id: string): Promise<void> {
-    const dir = this.packageDir(id);
-    await this.withLock(id, async () => {
-      await rm(path.dirname(this.pendingDir(dir)), { recursive: true, force: true });
-      await this.patchState(dir, { pending: undefined });
-    });
-  }
-
-  /** Replace the active version with the confirmed AI version. */
-  async confirmPending(id: string): Promise<ScriptPackageSummary> {
-    const dir = this.packageDir(id);
-    await this.withLock(id, async () => {
-      const pending = this.pendingDir(dir);
-      if (!existsSync(pending)) throw new ScriptPackageError('没有待确认的新版本', 'invalid');
-      await this.readManifest(pending);
-      for (const entry of await readdir(dir)) {
-        if (!RUNTIME_DIRS.has(entry))
-          await rm(path.join(dir, entry), { recursive: true, force: true });
-      }
-      await copyPackageFiles(pending, dir);
-      await rm(path.dirname(pending), { recursive: true, force: true });
-      await this.patchState(dir, { pending: undefined, lastError: undefined });
-    });
-    return this.summary(id);
-  }
-
-  /** Register a folder written elsewhere (e.g. by the AI in its workspace) as a package. */
-  async importFromDir(sourceDir: string, id?: string): Promise<ScriptPackageSummary> {
-    const source = path.resolve(sourceDir);
-    if (!(await stat(source).catch(() => null))?.isDirectory()) {
-      throw new ScriptPackageError(`目录不存在：${sourceDir}`, 'invalid');
-    }
-    const manifest = await this.readManifest(source);
-    if (!existsSync(path.join(source, manifest.entry))) {
-      throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
-    }
-    const packageId = (id ?? path.basename(source)).trim();
-    const target = this.packageDir(packageId);
-    if (path.resolve(target) === source) return this.summary(packageId);
-    await this.withLock(packageId, async () => {
-      await mkdir(target, { recursive: true });
-      for (const entry of await readdir(target)) {
-        if (!RUNTIME_DIRS.has(entry))
-          await rm(path.join(target, entry), { recursive: true, force: true });
-      }
-      await copyPackageFiles(source, target);
-    });
-    return this.summary(packageId);
+  /** Last real run's output (the table automations import), for the editor's 数据 tab. */
+  async lastOutput(
+    id: string
+  ): Promise<{ columns: string[]; rows: Array<Record<string, string>>; total: number } | null> {
+    const file = path.join(this.packageDir(id), STATE_DIR, 'output.csv');
+    if (!existsSync(file)) return null;
+    const table = parseCsv(await readFile(file, 'utf8'));
+    const columns = (table[0] ?? []).map((column) => column.trim());
+    return {
+      columns,
+      total: Math.max(0, table.length - 1),
+      rows: table.slice(1, PREVIEW_ROWS + 1).map((row) => {
+        const record: Record<string, string> = {};
+        columns.forEach((column, index) => (record[column] = row[index] ?? ''));
+        return record;
+      }),
+    };
   }
 
   // ── state ────────────────────────────────────────────────────────────
+
+  private requireRecord(id: string, versionNumber: number): ScriptVersionRecord {
+    const record = this.store.list(id).find((item) => item.version === versionNumber);
+    if (!record) throw new ScriptPackageError(`找不到版本 v${versionNumber}`, 'invalid');
+    return record;
+  }
 
   private async readManifest(dir: string): Promise<ScriptManifest> {
     const raw = JSON.parse(await readFile(path.join(dir, 'manifest.json'), 'utf8'));
@@ -489,6 +1013,20 @@ export class ScriptPackageService {
   }
 }
 
+const STATUS_LABEL = { draft: '草稿', published: '已发布', archived: '已归档' } as const;
+
+export const SOURCE_LABEL: Record<ScriptVersionSource, string> = {
+  chat: '对话生成',
+  rule: '规则生成',
+  ai_repair: 'AI 修复',
+  manual: '手动修改',
+};
+
+function toVersion(record: ScriptVersionRecord): ScriptPackageVersion {
+  const { packageId: _packageId, automationId: _automationId, commit, ...rest } = record;
+  return { ...rest, commit: commit.slice(0, 7) };
+}
+
 function venvPython(dir: string): string {
   return process.platform === 'win32'
     ? path.join(dir, '.venv', 'Scripts', 'python.exe')
@@ -501,6 +1039,26 @@ function depsFileFor(
 ): 'requirements.txt' | 'package.json' | undefined {
   const file = manifest.runtime === 'python' ? 'requirements.txt' : 'package.json';
   return existsSync(path.join(dir, file)) ? file : undefined;
+}
+
+/** Remove everything except runtime folders (and .gitignore stays only if re-copied). */
+async function clearWorkingTree(dir: string): Promise<void> {
+  if (!existsSync(dir)) return;
+  for (const entry of await readdir(dir)) {
+    if (RUNTIME_DIRS.has(entry) || entry === '.gitignore') continue;
+    await rm(path.join(dir, entry), { recursive: true, force: true });
+  }
+}
+
+async function writeWorkingFiles(dir: string, files: ScriptPackageFile[]): Promise<void> {
+  await clearWorkingTree(dir);
+  for (const file of files) {
+    const rel = file.path.replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!rel || rel.split('/').some((part) => part === '..' || RUNTIME_DIRS.has(part))) continue;
+    const target = path.join(dir, ...rel.split('/'));
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, file.content, 'utf8');
+  }
 }
 
 async function copyPackageFiles(from: string, to: string): Promise<void> {

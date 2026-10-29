@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -113,7 +113,7 @@ describe('script.run action', () => {
   it('notify policy: fails with the package name and keeps old data', async () => {
     const startSession = vi.fn();
     const { commands, action } = setup({ startSession } as Partial<SessionManager>);
-    writeFileSync(path.join(root, 'fx', 'main.js'), "console.error('选择器失效'); process.exit(1)");
+    await breakPublished();
     const config = {
       packageId: 'fx',
       timeoutMs: 20_000,
@@ -127,18 +127,32 @@ describe('script.run action', () => {
     expect(startSession).not.toHaveBeenCalled();
   });
 
-  it('ai_repair policy: fixes a pending copy, test-runs it and leaves it for confirmation', async () => {
-    writeFileSync(path.join(root, 'fx', 'main.js'), "console.error('选择器失效'); process.exit(1)");
+  it('runs only the published version, never an unpublished folder edit', async () => {
+    const { action } = setup();
+    await scripts.list();
+    writeFileSync(path.join(root, 'fx', 'main.js'), "console.error('坏了'); process.exit(1)");
+    const config = { packageId: 'fx', timeoutMs: 20_000, rawTableId: 'raw-1' };
+    await expect(action.execute(config, context(), node(config))).resolves.toBe('汇率 · 2 行');
+    expect((await scripts.summary('fx')).draft?.source).toBe('manual');
+  });
+
+  it('ai_repair policy: repairs in the package folder and overwrites one AI draft', async () => {
+    await breakPublished();
+    let rate = 7.2;
     const startSession = vi.fn(async (_title: string, prompt: string, cwd: string) => {
       expect(prompt).toContain('SOPHRON_OUTPUT');
-      // The "AI" repairs the copy in its working directory.
+      expect(cwd).toBe(path.join(root, 'fx'));
+      // The "AI" repairs the published code checked out in the package folder.
       writeFileSync(
         path.join(cwd, 'main.js'),
-        "require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'ccy,rate\\nCNY,7.2\\n')"
+        `require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'ccy,rate\\nCNY,${rate}\\n')`
       );
-      return { id: 's1', title: '修复脚本' };
+      return { id: `s${startSession.mock.calls.length}`, title: '修复脚本' };
     });
-    const listSessions = vi.fn(() => [{ id: 's1', status: 'completed' }]);
+    const listSessions = vi.fn(() => [
+      { id: 's1', status: 'completed' },
+      { id: 's2', status: 'completed' },
+    ]);
     const { commands, action } = setup({
       startSession,
       listSessions,
@@ -150,7 +164,7 @@ describe('script.run action', () => {
       onScriptError: 'ai_repair',
     };
     await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      '汇率：选择器失效 · 脚本已重新生成（试运行 1 行），待确认'
+      '汇率：选择器失效 · 脚本已重新生成为 v3 草稿（试运行 1 行），待发布'
     );
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     // Unattended: permission prompts are denied rather than blocking the run.
@@ -158,11 +172,25 @@ describe('script.run action', () => {
       denyPermissionRequests: true,
       permissionRules: expect.arrayContaining([{ tool: 'script_package_test', action: 'allow' }]),
     });
+    // Second failure: the same v3 draft is overwritten.
+    rate = 7.3;
+    await expect(action.execute(config, context(), node(config))).rejects.toThrow('v3 草稿');
     const summary = await scripts.summary('fx');
-    expect(summary.pending).toMatchObject({ rows: 1, sessionId: 's1' });
-    // Active version is still the broken one until confirmed.
+    expect(summary.draft).toMatchObject({ version: 3, source: 'ai_repair', sessionId: 's2' });
+    expect(summary.versionCount).toBe(3);
+    // The published (broken) version keeps running until the draft is published.
     await expect(scripts.run('fx', { timeoutMs: 20_000 })).rejects.toThrow('选择器失效');
-    await scripts.confirmPending('fx');
-    expect((await scripts.run('fx', { timeoutMs: 20_000 })).rows).toBe(1);
+    await scripts.publish('fx', 3);
+    const fixed = await scripts.run('fx', { timeoutMs: 20_000 });
+    expect(fixed.rows).toBe(1);
+    expect(readFileSync(fixed.csvPath, 'utf8')).toContain('7.3');
   });
 });
+
+/** v1 is the working script; publish a broken v2 so automations fail. */
+async function breakPublished() {
+  await scripts.list();
+  writeFileSync(path.join(root, 'fx', 'main.js'), "console.error('选择器失效'); process.exit(1)");
+  const saved = await scripts.saveDraft('fx', { source: 'manual' });
+  await scripts.publish('fx', saved.version.version);
+}

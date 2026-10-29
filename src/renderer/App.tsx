@@ -49,6 +49,11 @@ const CloudDataView = lazy(() =>
 const SkillsView = lazy(() =>
   import('./components/SkillsView').then((module) => ({ default: module.SkillsView }))
 );
+const ScriptPackageWorkbench = lazy(() =>
+  import('./components/scripts/script-package-workbench').then((module) => ({
+    default: module.ScriptPackageWorkbench,
+  }))
+);
 const AutomationView = lazy(() =>
   import('./components/AutomationView').then((module) => ({ default: module.AutomationView }))
 );
@@ -107,6 +112,8 @@ function App() {
   const setSandboxSetupComplete = useAppStore((s) => s.setSandboxSetupComplete);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const setContextPanelCollapsed = useAppStore((s) => s.setContextPanelCollapsed);
+  const scriptEditor = useAppStore((s) => s.scriptEditor);
+  const closeScriptEditor = useAppStore((s) => s.closeScriptEditor);
 
   const { listSessions, isElectron } = useIPC();
   const { width } = useWindowSize();
@@ -203,6 +210,17 @@ function App() {
         : 'welcome'
       : mainView;
 
+  // The script editor page belongs to the view it was opened from; leaving it closes it.
+  const scriptEditorRouteRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!scriptEditor) {
+      scriptEditorRouteRef.current = null;
+      return;
+    }
+    if (scriptEditorRouteRef.current === null) scriptEditorRouteRef.current = activeMainRouteId;
+    else if (scriptEditorRouteRef.current !== activeMainRouteId) closeScriptEditor();
+  }, [activeMainRouteId, scriptEditor, closeScriptEditor]);
+
   useEffect(() => {
     if (!isKeepAliveMainRoute(activeMainRouteId)) return;
 
@@ -276,7 +294,7 @@ function App() {
 
             <div className="flex-1 min-h-0 flex overflow-hidden">
               {/* Main Content Area */}
-              <main className="app-main-panel flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
+              <main className="app-main-panel relative flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden">
                 {mainPanelRoutes
                   .filter((route) => route.mounted)
                   .map((route) => (
@@ -297,11 +315,30 @@ function App() {
                   ))}
 
                 {activeMainRouteId === 'welcome' && <WelcomeView />}
+                {scriptEditor && (
+                  <div className="app-main-panel absolute inset-0 z-20 flex min-h-0">
+                    <PanelErrorBoundary
+                      name="ScriptPackageWorkbench"
+                      resetKey={String(scriptEditor.nonce)}
+                      fallback={<MainPanelFallback />}
+                    >
+                      <Suspense fallback={<MainPanelFallback />}>
+                        <ScriptPackageWorkbench
+                          key={scriptEditor.nonce}
+                          target={scriptEditor}
+                          onClose={closeScriptEditor}
+                        />
+                      </Suspense>
+                    </PanelErrorBoundary>
+                  </div>
+                )}
               </main>
 
               {/* Context Panel - only show when in session and not in settings */}
               {activeSessionId && mountedMainRouteIds.has('chat') && (
-                <div className={activeMainRouteId === 'chat' ? 'contents' : 'hidden'}>
+                <div
+                  className={activeMainRouteId === 'chat' && !scriptEditor ? 'contents' : 'hidden'}
+                >
                   <PanelErrorBoundary
                     name="ContextPanel"
                     resetKey={activeSessionId}

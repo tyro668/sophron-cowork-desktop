@@ -7,6 +7,7 @@ import './i18n-test';
 import { ScriptRunEditor } from '../../src/renderer/components/settings/schedule/script-run-editor';
 import type { AutomationActionNode } from '../../src/shared/automation/types';
 import type { ScriptPackageSummary } from '../../src/shared/automation/script-package';
+import { useAppStore } from '../../src/renderer/store';
 
 vi.mock('../../src/renderer/components/settings/schedule/editor-controls', () => ({
   FormRow: ({ label, children }: { label: React.ReactNode; children: React.ReactNode }) => (
@@ -49,20 +50,31 @@ const pkg: ScriptPackageSummary = {
   depsFile: 'requirements.txt',
   depsReady: true,
   lastSuccess: { at: 1, rows: 126, durationMs: 10 },
+  versionCount: 3,
+  published: {
+    version: 3,
+    status: 'published',
+    source: 'rule',
+    entry: 'main.py',
+    runtime: 'python',
+    createdAt: Date.UTC(2026, 9, 20, 1, 0),
+    updatedAt: Date.UTC(2026, 9, 20, 1, 0),
+    publishedAt: Date.UTC(2026, 9, 20, 1, 0),
+  },
 };
 
 const scripts = {
   list: vi.fn(async () => [pkg]),
   open: vi.fn(async () => undefined),
   testRun: vi.fn(async () => ({ ok: true, rows: 25, durationMs: 5, installedDeps: false })),
-  confirmPending: vi.fn(async () => pkg),
-  discardPending: vi.fn(async () => undefined),
 };
 
 beforeEach(async () => {
   await i18n.changeLanguage('zh');
   Object.assign(window, { electronAPI: { automation: { scripts } } });
   for (const fn of Object.values(scripts)) fn.mockClear();
+  scripts.list.mockImplementation(async () => [pkg]);
+  useAppStore.setState({ scriptEditor: null });
 });
 afterEach(async () => {
   cleanup();
@@ -115,16 +127,45 @@ describe('ScriptRunEditor', () => {
     expect(scripts.open).toHaveBeenCalledWith('fx');
     fireEvent.click(screen.getByText('试运行', { selector: 'button' }));
     expect(await screen.findByText('试运行成功 · 25 行')).toBeTruthy();
-    expect(scripts.testRun).toHaveBeenCalledWith('fx', 60_000);
+    expect(scripts.testRun).toHaveBeenCalledWith('fx', 60_000, 'published');
   });
 
-  it('offers adopt / discard for a pending AI version', async () => {
-    scripts.list.mockResolvedValueOnce([
-      { ...pkg, pending: { createdAt: 1, rows: 30, reason: 'x' } },
+  it('shows the published version and opens the editor', async () => {
+    setup({ packageId: 'fx', timeoutMs: 60_000 });
+    const text = await screen.findByTestId('script-version-text');
+    expect(text.textContent).toMatch(/^v3 已发布 · 10-20 \d\d:00$/);
+    fireEvent.click(screen.getByText('编辑脚本'));
+    expect(useAppStore.getState().scriptEditor).toMatchObject({ packageId: 'fx', step: 'rules' });
+  });
+
+  it('shows a pending AI-repair draft and opens it for review', async () => {
+    scripts.list.mockImplementation(async () => [
+      {
+        ...pkg,
+        versionCount: 4,
+        draft: { ...pkg.published!, version: 4, status: 'draft', source: 'ai_repair' },
+      },
     ]);
     setup({ packageId: 'fx', timeoutMs: 60_000 });
-    expect(await screen.findByText('AI 已重新生成 · 试运行 30 行，待确认')).toBeTruthy();
-    fireEvent.click(screen.getByText('采用'));
-    await waitFor(() => expect(scripts.confirmPending).toHaveBeenCalledWith('fx'));
+    expect(await screen.findByText('· v4 草稿待发布（AI 修复）', { exact: false })).toBeTruthy();
+    fireEvent.click(screen.getByText('查看草稿'));
+    expect(useAppStore.getState().scriptEditor).toMatchObject({
+      packageId: 'fx',
+      version: 4,
+      step: 'review',
+    });
+  });
+
+  it('lists version numbers and a new-package entry', async () => {
+    const onChange = setup({ packageId: '', timeoutMs: 60_000 });
+    await waitFor(() => expect(scripts.list).toHaveBeenCalled());
+    const select = screen.getByLabelText('脚本包') as HTMLSelectElement;
+    await waitFor(() =>
+      expect([...select.options].map((o) => o.textContent)).toContain('＋ 新建脚本包')
+    );
+    fireEvent.change(select, { target: { value: '__new_package__' } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect(useAppStore.getState().scriptEditor).toMatchObject({ step: 'rules' });
+    expect(useAppStore.getState().scriptEditor?.packageId).toBeUndefined();
   });
 });

@@ -17,6 +17,12 @@ import { useSkillMentions } from '../hooks/useSkillMentions';
 import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
+import {
+  extractSavedScriptPackages,
+  type SavedScriptPackageRef,
+} from './message/ScriptPackageCards';
+
+const NO_SAVED_SCRIPTS: SavedScriptPackageRef[] = [];
 import { TaskActivity } from './message/TaskActivity';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
@@ -880,6 +886,25 @@ export function ChatView() {
     return null;
   };
 
+  // Script packages saved during an assistant run are shown once, under its last message
+  // (tool calls and their results arrive as separate messages).
+  const savedScriptsByMessage = useMemo(() => {
+    const result = new Map<string, SavedScriptPackageRef[]>();
+    let run: ContentBlock[] = [];
+    displayedMessages.forEach((message, index) => {
+      if (message.role !== 'assistant') {
+        run = [];
+        return;
+      }
+      if (Array.isArray(message.content)) run.push(...(message.content as ContentBlock[]));
+      if (displayedMessages[index + 1]?.role === 'assistant') return;
+      const saved = extractSavedScriptPackages(run);
+      if (saved.length > 0) result.set(String(message.id), saved);
+      run = [];
+    });
+    return result;
+  }, [displayedMessages]);
+
   const messageElements = useMemo(
     () =>
       displayedMessages.map((message, index) => {
@@ -894,6 +919,7 @@ export function ChatView() {
             <MessageCard
               message={message}
               isStreaming={isPendingReply}
+              savedScripts={savedScriptsByMessage.get(String(message.id)) ?? NO_SAVED_SCRIPTS}
               onEdit={canActOnMessages && message.role === 'user' ? editIntoComposer : undefined}
               onResend={canActOnMessages && message.role === 'user' ? resendText : undefined}
               onRegenerate={
@@ -921,6 +947,7 @@ export function ChatView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       displayedMessages,
+      savedScriptsByMessage,
       canActOnMessages,
       editIntoComposer,
       resendText,

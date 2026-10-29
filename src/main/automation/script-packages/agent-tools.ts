@@ -23,14 +23,13 @@ export function buildScriptPackageGuide(rootDir: string): string {
     '',
     'Flow (do it, do not just describe it):',
     '1. Make sure the data source works: if this conversation has not fetched it yet, use webfetch (or the browser) on a public API/page first. Prefer a JSON/CSV API over HTML scraping; no login, no secrets, no headless browser.',
-    '2. Write a multi-file package in a NEW folder inside the current working directory (for example ./<package_id>/, id = lowercase letters, digits, _ or -):',
-    '   - manifest.json: {"name": "<short Chinese display name>", "description": "...", "entry": "main.py", "runtime": "python", "output": {"format": "csv", "columns": ["..."]}} (runtime "node" with main.js is also allowed)',
-    '   - main.py: reads parameters from the JSON file in env SOPHRON_CONFIG, calls the helpers, writes the result (CSV with header) to the path in env SOPHRON_OUTPUT, exits non-zero with a one-line reason on stderr on failure',
-    '   - at least one helper module (for example <pkg>/client.py for HTTP, <pkg>/transform.py for rows)',
-    '   - requirements.txt with pinned versions (or package.json); config.json for the parameters (URL, symbols, date range, ...)',
-    `3. Register it with script_package_save {sourceDir: <absolute folder>, id} (packages live in ${rootDir}).`,
-    '4. Verify with script_package_test {id}: it installs deps in an isolated env, runs the entry and returns rows, preview and log. If it fails, fix the files in the source folder, save again and re-test until ok. Prefer script_package_test over running the script with bash.',
-    '5. Reply briefly: package name and id, rows and columns from the test, and that runs will not use the model. Then OFFER to create an automation that runs it with the 执行脚本 action (automation_prepare with action {kind: "script", packageId}); ask for the time if none was given, and create only after the user agrees.',
+    '2. Write a multi-file package in a NEW folder inside the current working directory (for example ./<package_id>/, id = lowercase letters, digits, _ or -). Python is the default; use Node.js when the user asks for it or an npm library fits clearly better.',
+    '   Python: manifest.json {"name": "<short Chinese display name>", "description": "...", "entry": "main.py", "runtime": "python", "output": {"format": "csv", "columns": ["..."]}}; main.py plus helper modules (e.g. client.py, transform.py); requirements.txt with pinned versions (may be empty).',
+    '   Node.js: manifest.json {..., "entry": "main.js", "runtime": "node", ...}; main.js (CommonJS require, or ESM with "type": "module") plus helper modules under lib/; package.json with exact "dependencies" versions (no devDependencies needed). Node 20+ globals such as fetch are available.',
+    '   Both: the entry reads parameters from the JSON file in env SOPHRON_CONFIG (config.json: URL, symbols, date range, ...), writes the result (CSV with header, or a JSON array of objects when output.format is "json") to the path in env SOPHRON_OUTPUT, and exits non-zero with a one-line reason on stderr on failure.',
+    `3. Save it with script_package_save {sourceDir: <absolute folder>, id} (packages live in ${rootDir}; each package is a git repo and every save is a version). Saving creates or updates a DRAFT version — automations keep running the published version until it is published.`,
+    '4. Verify with script_package_test {id}: it installs deps in an isolated env (venv / npm), runs the draft and returns rows, preview and log. If it fails, fix the files in the source folder, save again (this overwrites the same draft) and re-test until ok. Prefer script_package_test over running the script with bash.',
+    '5. Reply briefly: package name, the draft version (e.g. "已保存为 v2 草稿"), rows and columns from the test, and which version automations still run (the save result has publishedVersion; if none: "发布后才能被自动化运行"). The user publishes with the 发布 button on the package card below your reply; call script_package_publish only when the user explicitly asks you to publish. Then OFFER to create an automation that runs it with the 执行脚本 action (automation_prepare with action {kind: "script", packageId}); ask for the time if none was given, and create only after the user agrees.',
     '</script_packages>',
   ].join('\n');
 }
@@ -54,6 +53,8 @@ export function createScriptPackageTools(scripts: ScriptPackageService): AgentRu
             entry: item.entry,
             runtime: item.runtime,
             depsReady: item.depsReady,
+            publishedVersion: item.published?.version ?? null,
+            draftVersion: item.draft?.version ?? null,
             lastSuccess: item.lastSuccess,
             invalid: item.invalid,
           }))
@@ -63,7 +64,7 @@ export function createScriptPackageTools(scripts: ScriptPackageService): AgentRu
       name: 'script_package_save',
       label: 'Save script package',
       description:
-        'Save a data fetch as a script package that the "执行脚本" automation action runs without any model call (固化成脚本 / 保存为脚本 / save as script). Pass the folder you wrote with manifest.json, the entry script, helper modules, requirements.txt or package.json and config.json; it is copied into the app script folder (.venv/node_modules are skipped). Re-saving the same id updates it. Always run script_package_test afterwards.',
+        'Save a data fetch as a script package that the "执行脚本" automation action runs without any model call (固化成脚本 / 保存为脚本 / save as script). Pass the folder you wrote with manifest.json, the entry script, helper modules, requirements.txt or package.json and config.json; it is copied into the app script folder (.venv/node_modules are skipped) and committed as a DRAFT version. Re-saving the same id overwrites that draft; automations keep running the published version until the user publishes. Always run script_package_test afterwards.',
       parameters: Type.Object({
         sourceDir: Type.String({
           minLength: 1,
@@ -78,29 +79,63 @@ export function createScriptPackageTools(scripts: ScriptPackageService): AgentRu
       }),
       execute: async (_toolCallId, params) => {
         const input = params as { sourceDir: string; id?: string };
-        return text(await scripts.importFromDir(input.sourceDir, input.id));
+        const saved = await scripts.importFromDir(input.sourceDir, input.id);
+        const published = saved.summary.published?.version;
+        const draft = saved.version.version;
+        return text({
+          id: saved.summary.id,
+          name: saved.summary.name,
+          entry: saved.summary.entry,
+          runtime: saved.version.runtime,
+          version: draft,
+          status: saved.version.status,
+          publishedVersion: published ?? null,
+          message:
+            saved.version.status === 'draft'
+              ? published
+                ? `已保存为 v${draft} 草稿，自动化仍运行已发布的 v${published}，发布后下次运行起改用 v${draft}。`
+                : `已保存为 v${draft} 草稿；还没有发布版本，发布后才能被自动化运行。`
+              : `内容与 v${draft} 相同，未生成新版本。`,
+        });
       },
     },
     {
       name: 'script_package_test',
       label: 'Test script package',
       description:
-        'Dry-run a saved script package: installs its deps if needed, runs the entry and validates the output. Nothing is imported. Returns the row count, the first output lines (preview) and the tail of stdout/stderr (log). Set pending=true to test the version being repaired (.sophron/pending).',
+        'Dry-run a saved script package: installs its deps if needed, runs the entry and validates the output. Nothing is imported. By default it runs the package folder as it is now (the draft just saved, or the files an AI repair is editing); pass version to run a specific version. Returns the row count, the first output lines (preview) and the tail of stdout/stderr (log).',
       parameters: Type.Object({
         id: Type.String({ minLength: 1 }),
         timeoutSeconds: Type.Optional(Type.Integer({ minimum: 5, maximum: 3600 })),
-        pending: Type.Optional(Type.Boolean()),
+        version: Type.Optional(Type.Integer({ minimum: 1 })),
       }),
       execute: async (_toolCallId, params) => {
-        const input = params as { id: string; timeoutSeconds?: number; pending?: boolean };
-        return text(
-          await scripts.testRun(input.id, {
-            timeoutMs: input.timeoutSeconds
-              ? input.timeoutSeconds * 1000
-              : DEFAULT_SCRIPT_TIMEOUT_MS,
-            pending: input.pending === true,
-          })
-        );
+        const input = params as { id: string; timeoutSeconds?: number; version?: number };
+        const result = await scripts.testRun(input.id, {
+          timeoutMs: input.timeoutSeconds ? input.timeoutSeconds * 1000 : DEFAULT_SCRIPT_TIMEOUT_MS,
+          target: input.version ?? 'working',
+        });
+        const { previewRows: _rows, ...rest } = result;
+        return text(rest);
+      },
+    },
+    {
+      name: 'script_package_publish',
+      label: 'Publish script package',
+      description:
+        'Publish a script package version so automations run it (the previously published version is archived; publishing an older version rolls back). Only call this when the user explicitly asks to publish or roll back; otherwise the user publishes from the package card.',
+      parameters: Type.Object({
+        id: Type.String({ minLength: 1 }),
+        version: Type.Integer({ minimum: 1 }),
+      }),
+      execute: async (_toolCallId, params) => {
+        const input = params as { id: string; version: number };
+        const summary = await scripts.publish(input.id, input.version);
+        return text({
+          id: summary.id,
+          name: summary.name,
+          publishedVersion: summary.published?.version ?? null,
+        });
       },
     },
   ] as AgentRuntimeCustomTool[];

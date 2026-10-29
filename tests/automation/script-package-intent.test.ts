@@ -65,11 +65,12 @@ describe('script package intent', () => {
       'script_package_list',
       'script_package_save',
       'script_package_test',
+      'script_package_publish',
     ]);
     expect(hit?.toolContexts?.[0]?.stablePrompt).toContain('script_package_save');
     expect(hit?.toolContexts?.[0]?.stablePrompt).toContain('固化成脚本');
     // A bare "ok" right after stays sticky; a topic change releases the tools.
-    expect((await run('可以'))?.activateTools).toHaveLength(3);
+    expect((await run('可以'))?.activateTools).toHaveLength(4);
     expect((await run('写一首诗'))?.activateTools).toEqual([]);
     // Still discoverable through capabilities_search.
     expect(Object.keys(hit?.toolPacks ?? {})).toEqual(['automation.scripts']);

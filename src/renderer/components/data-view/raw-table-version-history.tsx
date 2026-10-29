@@ -15,12 +15,15 @@ export function NormalizerProjectTree({
   onSelect,
   t,
   spacious = false,
+  markers,
 }: {
   files: DataNormalizerProjectFile[];
   selectedPath: string;
   onSelect: (path: string) => void;
   t: TranslateFn;
   spacious?: boolean;
+  /** Short label shown after a file name, e.g. 「已改」. */
+  markers?: Record<string, string>;
 }) {
   const tree = useMemo(() => buildNormalizerProjectTree(files), [files]);
   if (tree.length === 0) {
@@ -40,6 +43,7 @@ export function NormalizerProjectTree({
           selectedPath={selectedPath}
           onSelect={onSelect}
           spacious={spacious}
+          markers={markers}
         />
       ))}
     </div>
@@ -52,13 +56,16 @@ export function NormalizerProjectTreeNodeView({
   selectedPath,
   onSelect,
   spacious,
+  markers,
 }: {
   node: NormalizerProjectTreeNode;
   depth: number;
   selectedPath: string;
   onSelect: (path: string) => void;
   spacious: boolean;
+  markers?: Record<string, string>;
 }) {
+  const marker = node.type === 'file' ? markers?.[node.path] : undefined;
   const isFile = node.type === 'file';
   const isSelected = isFile && node.path === selectedPath;
   const Icon = isFile ? FileText : Folder;
@@ -87,6 +94,14 @@ export function NormalizerProjectTreeNodeView({
           className={`h-3.5 w-3.5 flex-shrink-0 ${isSelected ? 'text-accent' : 'text-text-muted'}`}
         />
         <span className="min-w-0 truncate">{node.name}</span>
+        {marker ? (
+          <span
+            className="ml-auto flex-shrink-0 pl-2 text-[11px] font-medium text-warning"
+            data-testid="project-tree-marker"
+          >
+            {marker}
+          </span>
+        ) : null}
       </button>
       {node.children.length > 0 ? (
         <div>
@@ -98,6 +113,7 @@ export function NormalizerProjectTreeNodeView({
               selectedPath={selectedPath}
               onSelect={onSelect}
               spacious={spacious}
+              markers={markers}
             />
           ))}
         </div>
@@ -106,7 +122,24 @@ export function NormalizerProjectTreeNodeView({
   );
 }
 
-export function RawTableVersionHistoryPanel({
+/** Minimal version shape shared by raw-table normalizers and script packages. */
+export interface HistoryVersionLike {
+  id: string;
+  version: number;
+  status: 'draft' | 'published' | 'archived';
+  updatedAt: number;
+  rulePrompt?: string;
+}
+
+export interface HistoryVersionDiff {
+  changed: number;
+  added: number;
+  removed: number;
+  /** Omitted when versions have no comparable rule (script packages). */
+  ruleSame?: boolean;
+}
+
+export function RawTableVersionHistoryPanel<V extends HistoryVersionLike>({
   currentVersion,
   currentVersionId,
   deletingVersionId,
@@ -118,20 +151,31 @@ export function RawTableVersionHistoryPanel({
   publishingVersionId,
   t,
   versions,
+  sourceOf,
+  diffOf,
+  onOpen,
 }: {
-  currentVersion?: DataRawTableNormalizerArtifactVersion;
+  currentVersion?: V;
   currentVersionId?: string;
   deletingVersionId: string | null;
   embedded?: boolean;
   loading: boolean;
   onRefresh: () => void;
-  onDelete: (version: DataRawTableNormalizerArtifactVersion) => void;
-  onPublish: (version: DataRawTableNormalizerArtifactVersion) => void;
+  onDelete: (version: V) => void;
+  onPublish: (version: V) => void;
   publishingVersionId: string | null;
   t: TranslateFn;
-  versions: DataRawTableNormalizerArtifactVersion[];
+  versions: V[];
+  /** Adds a 来源 column (script packages). */
+  sourceOf?: (version: V) => string;
+  /** Diff against the current version; defaults to comparing normalizer files. */
+  diffOf?: (version: V, current: V | undefined) => HistoryVersionDiff | null;
+  /** Makes the version number a link that opens that version. */
+  onOpen?: (version: V) => void;
 }) {
-  const cols = 'grid-cols-[120px_100px_120px_minmax(0,1fr)_92px_40px]';
+  const cols = sourceOf
+    ? 'grid-cols-[100px_90px_100px_110px_minmax(0,1fr)_92px_40px]'
+    : 'grid-cols-[120px_100px_120px_minmax(0,1fr)_92px_40px]';
   const th =
     'flex h-8 items-center border-b border-l border-border-subtle bg-surface-muted px-2.5 text-[11.5px] font-medium text-text-muted first:border-l-0';
   const td =
@@ -141,6 +185,9 @@ export function RawTableVersionHistoryPanel({
       <div className={`grid ${cols}`} data-testid="normalizer-version-grid">
         <div className={th}>{t('data.rawTables.editor.versionsColumnVersion')}</div>
         <div className={th}>{t('data.rawTables.editor.versionsColumnStatus')}</div>
+        {sourceOf ? (
+          <div className={th}>{t('data.rawTables.editor.versionsColumnSource')}</div>
+        ) : null}
         <div className={th}>{t('data.rawTables.editor.versionsColumnUpdatedAt')}</div>
         <div className={th}>{t('data.rawTables.editor.versionsColumnDiff')}</div>
         <div className={th} aria-label={t('data.rawTables.editor.versionsColumnActions')} />
@@ -148,13 +195,29 @@ export function RawTableVersionHistoryPanel({
         {versions.map((version) => {
           const isCurrent = version.id === currentVersionId;
           const isPublished = version.status === 'published';
-          const diff = getNormalizerVersionDiff(version, currentVersion);
+          const diff = diffOf
+            ? diffOf(version, currentVersion)
+            : getNormalizerVersionDiff(
+                version as unknown as DataRawTableNormalizerArtifactVersion,
+                currentVersion as unknown as DataRawTableNormalizerArtifactVersion | undefined
+              );
           return (
             <div key={version.id} className="contents" data-testid="normalizer-version-row">
               <div className={`${td} gap-1.5 px-2.5`}>
-                <span className="text-[13px] font-semibold text-text-primary">
-                  {t('data.rawTables.editor.versionNumber', { version: version.version })}
-                </span>
+                {onOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpen(version)}
+                    data-testid="version-open"
+                    className="text-[13px] font-semibold text-text-primary hover:text-accent hover:underline"
+                  >
+                    {t('data.rawTables.editor.versionNumber', { version: version.version })}
+                  </button>
+                ) : (
+                  <span className="text-[13px] font-semibold text-text-primary">
+                    {t('data.rawTables.editor.versionNumber', { version: version.version })}
+                  </span>
+                )}
                 {isCurrent ? (
                   <Badge tone="accent">{t('data.rawTables.editor.currentVersion')}</Badge>
                 ) : null}
@@ -172,6 +235,11 @@ export function RawTableVersionHistoryPanel({
                       : t('data.rawTables.editor.versionStatusDraft')}
                 </Badge>
               </div>
+              {sourceOf ? (
+                <div className={`${td} px-2.5`} data-testid="version-source">
+                  <Badge tone="default">{sourceOf(version)}</Badge>
+                </div>
+              ) : null}
               <div
                 className={`${td} whitespace-nowrap px-2.5 text-xs tabular-nums text-text-muted`}
                 title={formatDateTime(version.updatedAt)}
@@ -185,10 +253,14 @@ export function RawTableVersionHistoryPanel({
                         changed: diff.changed,
                         added: diff.added,
                         removed: diff.removed,
-                      })} · ${
-                        diff.ruleSame
-                          ? t('data.rawTables.editor.versionRuleSameText')
-                          : t('data.rawTables.editor.versionRuleChangedText')
+                      })}${
+                        diff.ruleSame === undefined
+                          ? ''
+                          : ` · ${
+                              diff.ruleSame
+                                ? t('data.rawTables.editor.versionRuleSameText')
+                                : t('data.rawTables.editor.versionRuleChangedText')
+                            }`
                       }`
                     : version.rulePrompt || '-'}
                 </span>
