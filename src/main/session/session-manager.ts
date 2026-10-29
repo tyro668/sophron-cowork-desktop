@@ -88,6 +88,9 @@ interface AgentRunnerLike {
 
 interface SessionStartOptions {
   suppressCompletionNotification?: boolean;
+  /** Unattended background session: a call that would need a human decision is denied
+   * immediately (the agent sees the denial and adapts) instead of waiting forever. */
+  denyPermissionRequests?: boolean;
 }
 
 interface SessionRunOptions {
@@ -118,6 +121,7 @@ export class SessionManager {
     Array<{ prompt: string; content?: ContentBlock[]; options?: SessionRunOptions }>
   > = new Map();
   private idleWaiters: Map<string, Set<() => void>> = new Map();
+  private unattendedSessions = new Set<string>();
   private pendingPermissions = new Map<
     string,
     { sessionId: string; toolName: string; resolve: (result: PermissionResult) => void }
@@ -315,11 +319,15 @@ export class SessionManager {
     if (options?.suppressCompletionNotification) {
       this.suppressedCompletionNotifications.add(session.id);
     }
+    if (options?.denyPermissionRequests) {
+      this.unattendedSessions.add(session.id);
+    }
 
     // Start processing the prompt with content blocks
     this.enqueuePrompt(session, prompt, content, {
       selectedSkillNames: options?.selectedSkillNames,
       permissionRules: options?.permissionRules,
+      permissionPolicy: options?.permissionPolicy,
     });
 
     return session;
@@ -1120,6 +1128,7 @@ export class SessionManager {
 
     // Stop if running
     this.stopSession(sessionId);
+    this.unattendedSessions.delete(sessionId);
 
     // Sync and cleanup sandbox if it exists for this session
     if (SandboxSync.hasSession(sessionId)) {
@@ -1433,6 +1442,10 @@ export class SessionManager {
     signal?: AbortSignal
   ): Promise<PermissionResult> {
     if (signal?.aborted) return 'deny';
+    if (this.unattendedSessions.has(sessionId)) {
+      log('[SessionManager] Unattended session, denying permission request:', toolName);
+      return 'deny';
+    }
     this.pendingPermissions.get(toolUseId)?.resolve('deny');
     return new Promise((resolve) => {
       const settle = (result: PermissionResult) => {

@@ -1,4 +1,5 @@
 import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
+import type { ScriptPackageSummary, ScriptTestRunResult } from '../automation/script-package';
 import type { RemoteQrSetupState, RemoteQrChannel } from './remote/qr-setup';
 /**
  * @module shared/contracts/electron-api
@@ -543,6 +544,13 @@ export interface ElectronApi {
     listRuns: (id: string, query?: AutomationRunQuery) => Promise<AutomationRun[]>;
     listArtifacts: (runId: string) => Promise<AutomationArtifact[]>;
     listActionDefinitions: () => Promise<AutomationActionDefinitionSummary[]>;
+    scripts: {
+      list: () => Promise<ScriptPackageSummary[]>;
+      open: (id: string, pending?: boolean) => Promise<void>;
+      testRun: (id: string, timeoutMs: number, pending?: boolean) => Promise<ScriptTestRunResult>;
+      confirmPending: (id: string) => Promise<ScriptPackageSummary>;
+      discardPending: (id: string) => Promise<void>;
+    };
     groups: {
       list: () => Promise<AutomationGroup[]>;
       create: (payload: AutomationCreateGroupInput) => Promise<AutomationGroup>;

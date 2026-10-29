@@ -16,7 +16,12 @@ export const DEFAULT_TIME = '09:00';
 export const AUTOMATION_TABLE_PAGE_SIZE = 10;
 export const CLOUD_TARGET_TABLE_PAGE_SIZE = 50;
 // Data processing stays unified; cloud sync is reusable as a separate action.
-export const ACTION_MENU_TYPES = ['conversation.run', 'data.pipeline.run', 'cloud.sync'];
+export const ACTION_MENU_TYPES = [
+  'conversation.run',
+  'data.pipeline.run',
+  'cloud.sync',
+  'script.run',
+];
 export const CLOUD_TABLE_PROCESS_ACTION_TYPE = 'cloud.table.process';
 export const DATA_ACTION_TYPES = ['data.pipeline.run'];
 export const DATA_PREVIEW_ACTION_TYPES = ['data.raw.preview', 'data.result.preview'];

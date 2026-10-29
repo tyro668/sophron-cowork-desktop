@@ -19,6 +19,7 @@ import { registerSandboxIpc } from './sandbox/ipc';
 import { registerLogsIpc } from './logs/ipc';
 import { registerRemoteIpc } from './remote/ipc';
 import { registerAutomationIpc } from './automation/ipc';
+import { registerScriptPackageIpc } from './automation/script-ipc';
 import { registerScheduleIpc } from './schedule/ipc';
 import { registerMemoryIpc } from './memory/ipc';
 
@@ -37,6 +38,7 @@ export function registerAllIpc(): void {
   registerLogsIpc();
   registerRemoteIpc();
   registerAutomationIpc();
+  registerScriptPackageIpc();
   registerScheduleIpc();
   registerMemoryIpc();
 }

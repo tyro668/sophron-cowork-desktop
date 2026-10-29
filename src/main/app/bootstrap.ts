@@ -11,6 +11,8 @@ import { AutomationScheduler } from '../automation/automation-scheduler';
 import { AutomationService } from '../automation/automation-service';
 import { createAutomationStore } from '../automation/automation-store';
 import { createDefaultAutomationActionRegistry } from '../automation/default-actions';
+import { ScriptPackageService } from '../automation/script-packages/service';
+import { createScriptPackageAgentRuntimeExtension } from '../automation/script-packages/agent-tools';
 import { createAutomationAgentRuntimeExtension } from '../automation/tools';
 import { AutomationToolService } from '../automation/tools/service';
 import { configStore } from '../config/config-store';
@@ -256,7 +258,11 @@ export async function bootstrap(): Promise<void> {
   ) {
     log('[Automation] Recovered interrupted runs:', recoveredAutomationRuns);
   }
+  appContext.scriptPackages = new ScriptPackageService({
+    rootDir: join(app.getPath('userData'), 'scripts'),
+  });
   const automationActionRegistry = createDefaultAutomationActionRegistry({
+    scriptPackages: appContext.scriptPackages,
     dataPipelineStore: initializedDataPipelineStore,
     automationStore: appContext.automationStore,
     dataCommandService: appContext.dataCommandService ?? undefined,
@@ -326,6 +332,7 @@ export async function bootstrap(): Promise<void> {
     onAutomationsChanged: rescheduleAutomations,
   });
   extensionManager.register(createAutomationAgentRuntimeExtension(automationToolService));
+  extensionManager.register(createScriptPackageAgentRuntimeExtension(appContext.scriptPackages));
 
   // 初始化远程管理器
   remoteManager.setRendererCallback(sendToRenderer);

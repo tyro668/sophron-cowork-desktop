@@ -96,6 +96,29 @@ describe('SessionManager processQueue concurrency', () => {
     sendToRenderer = vi.fn<(event: ServerEvent) => void>();
   });
 
+  it('keeps the permission policy passed to startSession together with its rules', async () => {
+    const manager = new SessionManager(db, sendToRenderer);
+    const processPrompt = vi.fn().mockResolvedValue(undefined);
+    (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
+    const rules = getPermissionRulesForPolicy('auto_review');
+    const session = await manager.startSession(
+      'Background',
+      'go',
+      '/tmp',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { permissionPolicy: 'auto_review', permissionRules: rules }
+    );
+    await vi.waitFor(() => expect(processPrompt).toHaveBeenCalledTimes(1));
+    expect(processPrompt.mock.calls[0][3]).toMatchObject({
+      permissionPolicy: 'auto_review',
+      permissionRules: rules,
+    });
+    await manager.waitForSessionIdle(session.id);
+  });
+
   it('captures the current policy for each queued turn before another mode is selected', async () => {
     const manager = new SessionManager(db, sendToRenderer);
     const originalPolicy = configStore.get('permissionPolicy');

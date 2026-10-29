@@ -20,6 +20,7 @@ import type { MemoryService } from '../memory/memory-service';
 import type { AutomationStore } from '../automation/automation-store';
 import type { AutomationService } from '../automation/automation-service';
 import type { AutomationScheduler } from '../automation/automation-scheduler';
+import type { ScriptPackageService } from '../automation/script-packages/service';
 import type { UpdateService } from '../update/update-service';
 
 export interface AppContext {
@@ -33,6 +34,7 @@ export interface AppContext {
   automationStore: AutomationStore | null;
   automationService: AutomationService | null;
   automationScheduler: AutomationScheduler | null;
+  scriptPackages: ScriptPackageService | null;
   dataPipelineStore: DataPipelineStore | null;
   dataCommandService: DataCommandService | null;
   recordDataPipelineLlmUsage: DataPipelineLlmUsageRecorder | undefined;
@@ -58,6 +60,7 @@ export const appContext: AppContext = {
   automationStore: null,
   automationService: null,
   automationScheduler: null,
+  scriptPackages: null,
   dataPipelineStore: null,
   dataCommandService: null,
   recordDataPipelineLlmUsage: undefined,

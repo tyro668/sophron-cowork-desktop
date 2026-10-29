@@ -3904,7 +3904,8 @@
       "conversation_run": "Spawn conversation task",
       "cloud_table_process": "Process cloud table",
       "data_raw_preview": "Read raw table",
-      "data_result_preview": "Read result table"
+      "data_result_preview": "Read result table",
+      "script_run": "Run script"
     },
     "dependencyAlways": "Always run",
     "dependencyOnSuccess": "Run after previous succeeds",
@@ -3933,7 +3934,37 @@
     "backToListShort": "Back",
     "intervalLabel": "Interval",
     "startAtLabel": "Start",
-    "endAtLabelLong": "End"
+    "endAtLabelLong": "End",
+    "script": {
+      "title": "Run script",
+      "menuDescription": "Run a saved script, no AI",
+      "package": "Script package",
+      "selectPackage": "Select a script package",
+      "noPackages": "No script packages",
+      "open": "Open",
+      "entry": "Entry",
+      "timeout": "Timeout",
+      "seconds": "{{count}} s",
+      "minutes": "{{count}} min",
+      "output": "Output to",
+      "createTable": "New raw table · {{name}}",
+      "rawTableOption": "Raw table · {{name}}",
+      "onError": "On script error",
+      "notify": "Notify only",
+      "aiRepair": "Let AI regenerate",
+      "testRun": "Test run",
+      "testing": "Running…",
+      "testOk": "Test run OK · {{count}} rows",
+      "depsReady": "Dependencies ready",
+      "depsOnFirstRun": "Dependencies install on first run",
+      "lastSuccess": "last success {{count}} rows",
+      "pending": "New version",
+      "pendingText": "AI regenerated · test run {{count}} rows, needs confirmation",
+      "view": "View",
+      "adopt": "Adopt",
+      "discard": "Discard",
+      "required": "Select a script package"
+    }
   },
   "remote": {
     "title": "Remote Control",

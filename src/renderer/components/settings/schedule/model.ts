@@ -316,6 +316,9 @@ export function validateEnabledActionNodes(
     ) {
       return tr('schedule.promptRequired', '请输入要执行的 Prompt');
     }
+    if (node.type === 'script.run' && !String(node.config.packageId ?? '').trim()) {
+      return tr('schedule.script.required', '请选择脚本包');
+    }
     if (node.type === 'data.pipeline.run' && !String(node.config.pipelineId ?? '').trim()) {
       return tr('schedule.dataPipelineRequired', '请选择要执行的数据加工');
     }
@@ -550,6 +553,7 @@ export function relinkLinearGraph(graph: AutomationActionGraph): AutomationActio
 
 export function defaultConfigForAction(type: string): Record<string, unknown> {
   if (type === 'cloud.sync') return { direction: '', spaceId: '', projectId: '' };
+  if (type === 'script.run') return { packageId: '', timeoutMs: 120_000, onScriptError: 'notify' };
   if (type === 'conversation.run') {
     return {
       prompt: '',
