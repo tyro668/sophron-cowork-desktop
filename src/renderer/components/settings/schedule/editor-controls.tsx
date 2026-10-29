@@ -1,7 +1,7 @@
 import { useState, type MouseEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { AppConfig } from '../../../types';
-import { GlassSelect } from '../../GlassSelect';
+import { GlassSelect, type GlassSelectOption } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
 import { AgentModelSelector, getAgentModelLabel } from '../../AgentModelSelector';
 
@@ -139,7 +139,7 @@ export function FlushSelect({
   triggerIcon,
 }: {
   value: string;
-  options: Array<{ value: string; label: string }>;
+  options: GlassSelectOption[];
   placeholder: string;
   onChange: (value: string) => void;
   ariaLabel: string;

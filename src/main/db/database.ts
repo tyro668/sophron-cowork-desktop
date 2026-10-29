@@ -14,6 +14,7 @@ import { join } from 'path';
 import { existsSync, mkdirSync, statSync, renameSync, openSync, readSync, closeSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { log, logError, logWarn } from '../utils/logger';
+import { SCRIPT_VERSIONS_TABLE_SQL } from '../automation/script-packages/version-store';
 
 export interface DatabaseInstance {
   // Raw database access (for advanced queries)
@@ -792,6 +793,13 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
         );
         CREATE INDEX IF NOT EXISTS idx_skill_invocations_time ON skill_invocations(invoked_at);
       `);
+    },
+  },
+  {
+    version: 9,
+    name: 'script_package_versions',
+    up: (database) => {
+      database.exec(SCRIPT_VERSIONS_TABLE_SQL);
     },
   },
 ];

@@ -34,11 +34,49 @@ export interface ScriptPackageRunInfo {
   durationMs: number;
 }
 
-export interface ScriptPackagePending {
-  createdAt: number;
-  rows: number;
+export const SCRIPT_VERSION_STATUSES = ['draft', 'published', 'archived'] as const;
+export type ScriptVersionStatus = (typeof SCRIPT_VERSION_STATUSES)[number];
+
+/** Where a version came from (shown as 来源 in the version history). */
+export const SCRIPT_VERSION_SOURCES = ['chat', 'rule', 'ai_repair', 'manual'] as const;
+export type ScriptVersionSource = (typeof SCRIPT_VERSION_SOURCES)[number];
+
+/** One immutable snapshot of a package; automations only run the published one. */
+export interface ScriptPackageVersion {
+  version: number;
+  status: ScriptVersionStatus;
+  source: ScriptVersionSource;
+  entry: string;
+  runtime: ScriptRuntime;
+  /** Rule prompt for 规则生成 versions; the failure reason for AI repairs. */
+  rulePrompt?: string;
+  /** Version this one was derived from (null = from scratch). */
+  baseVersion?: number | null;
   sessionId?: string;
-  reason: string;
+  /** Rows of the last successful trial run of this version. */
+  rows?: number;
+  createdAt: number;
+  updatedAt: number;
+  publishedAt?: number;
+  /** Git commit of this version (short form for display). */
+  commit?: string;
+  /** Changes against the published version, from git (absent for the published one). */
+  diff?: ScriptTreeDiff;
+}
+
+export interface ScriptTreeDiff {
+  added: string[];
+  modified: string[];
+  removed: string[];
+}
+
+export interface ScriptPackageFile {
+  path: string;
+  content: string;
+}
+
+export interface ScriptPackageVersionDetail extends ScriptPackageVersion {
+  files: ScriptPackageFile[];
 }
 
 export interface ScriptPackageSummary {
@@ -54,13 +92,18 @@ export interface ScriptPackageSummary {
   depsReady: boolean;
   lastSuccess?: ScriptPackageRunInfo;
   lastError?: { at: number; message: string };
-  pending?: ScriptPackagePending;
+  /** The version automations run; undefined until one is published. */
+  published?: ScriptPackageVersion;
+  /** Newest draft newer than the published version (e.g. an AI repair awaiting review). */
+  draft?: ScriptPackageVersion;
+  versionCount: number;
   /** Manifest problem; the package is listed but cannot run. */
   invalid?: string;
 }
 
 export interface ScriptTestRunResult {
   ok: boolean;
+  version?: number;
   rows?: number;
   columns?: string[];
   durationMs: number;
@@ -68,8 +111,41 @@ export interface ScriptTestRunResult {
   installedDeps: boolean;
   /** First lines of the CSV output. */
   preview?: string;
+  /** First rows of the output for the 试运行预览 grid. */
+  previewRows?: Array<Record<string, string>>;
   /** Tail of the entry's stdout/stderr. */
   log?: string;
+}
+
+export interface ScriptGenerateDraftInput {
+  /** Existing package; omitted to create a new one named `name`. */
+  packageId?: string;
+  name?: string;
+  rulePrompt: string;
+  /** Version to modify; null = generate from scratch. */
+  baseVersion: number | null;
+  runtime: ScriptRuntime;
+  modelConfigSetId?: string | null;
+  progressId?: string;
+}
+
+export interface ScriptGenerateDraftResult {
+  summary: ScriptPackageSummary;
+  version: ScriptPackageVersionDetail;
+}
+
+export interface ScriptGenerateProgressEvent {
+  progressId: string;
+  phase: 'source_summary' | 'code_generation' | 'saving' | 'complete' | 'error';
+  kind: 'message' | 'delta';
+  text: string;
+}
+
+/** Editor state kept between visits (rule prompt typed but not generated yet). */
+export interface ScriptPackageEditorState {
+  rulePrompt?: string;
+  runtime?: ScriptRuntime;
+  modelConfigSetId?: string | null;
 }
 
 export const SCRIPT_TIMEOUT_OPTIONS_MS = [30_000, 60_000, 120_000, 300_000, 600_000, 1_800_000];

@@ -65,7 +65,7 @@ describe('main database migrations', () => {
     const db = openRawDb();
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     for (const table of [
       'projects',
       'sessions',
@@ -109,7 +109,7 @@ describe('main database migrations', () => {
 
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     const session = db
       .prepare('SELECT project_id, cwd, agent_session_id FROM sessions WHERE id = ?')
       .get('s1') as {
@@ -142,7 +142,7 @@ describe('main database migrations', () => {
     db.exec('DROP TABLE skills');
 
     migrateMainSchema(db);
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(tableNames(db)).not.toContain('skills');
   });
 
@@ -160,6 +160,6 @@ describe('main database migrations', () => {
       /readonly/i
     );
     // Reads still work.
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, MAIN_SCHEMA_VERSION + 100]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, MAIN_SCHEMA_VERSION + 100]);
   });
 });

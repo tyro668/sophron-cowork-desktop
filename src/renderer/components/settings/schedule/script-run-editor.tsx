@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Play } from 'lucide-react';
+import { FileSearch, FolderOpen, PencilLine, Play } from 'lucide-react';
 import type { AutomationActionNode, DataRawTable } from '../../../types';
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
@@ -9,8 +9,12 @@ import {
   type ScriptTestRunResult,
 } from '../../../../shared/automation/script-package';
 import { FlushSelect, FormRow } from './editor-controls';
+import { useAppStore } from '../../../store';
+import { formatDateTime } from '../../data-view/shared';
+import { SCRIPT_SOURCE_KEYS } from '../../scripts/labels';
 
 const CREATE_TABLE = '__create__';
+const NEW_PACKAGE = '__new_package__';
 
 function timeoutLabel(ms: number, t: (key: string, options?: Record<string, unknown>) => string) {
   return ms < 60_000
@@ -37,7 +41,8 @@ export function ScriptRunEditor({
   const [packages, setPackages] = useState<ScriptPackageSummary[] | null>(null);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<ScriptTestRunResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  const openScriptEditor = useAppStore((state) => state.openScriptEditor);
+  const scriptEditorOpen = useAppStore((state) => state.scriptEditor !== null);
 
   const refresh = useCallback(async () => {
     try {
@@ -52,10 +57,23 @@ export function ScriptRunEditor({
     return () => window.removeEventListener('focus', refresh);
   }, [refresh]);
   useEffect(() => setTest(null), [packageId]);
+  // Coming back from the editor page: pick up new versions.
+  useEffect(() => {
+    if (!scriptEditorOpen) void refresh();
+  }, [scriptEditorOpen, refresh]);
 
   const selected = packages?.find((item) => item.id === packageId);
-  const packageOptions = (packages ?? []).map((item) => ({ value: item.id, label: item.name }));
+  const packageOptions: Array<{ value: string; label: string; hint?: string }> = (
+    packages ?? []
+  ).map((item) => ({
+    value: item.id,
+    label: item.name,
+    hint: item.published
+      ? t('schedule.script.optionVersion', { version: item.published.version })
+      : t('schedule.script.noPublished'),
+  }));
   if (packageId && !selected) packageOptions.push({ value: packageId, label: packageId });
+  packageOptions.push({ value: NEW_PACKAGE, label: `＋ ${t('schedule.script.newPackage')}` });
 
   const timeoutOptions = SCRIPT_TIMEOUT_OPTIONS_MS.includes(timeoutMs)
     ? SCRIPT_TIMEOUT_OPTIONS_MS
@@ -87,7 +105,9 @@ export function ScriptRunEditor({
     setTesting(true);
     setTest(null);
     try {
-      setTest(await window.electronAPI.automation.scripts.testRun(packageId, timeoutMs));
+      setTest(
+        await window.electronAPI.automation.scripts.testRun(packageId, timeoutMs, 'published')
+      );
     } catch (error) {
       setTest({
         ok: false,
@@ -97,18 +117,6 @@ export function ScriptRunEditor({
       });
     } finally {
       setTesting(false);
-      void refresh();
-    }
-  };
-
-  const pendingAction = async (kind: 'confirm' | 'discard') => {
-    if (!packageId || busy) return;
-    setBusy(true);
-    try {
-      if (kind === 'confirm') await window.electronAPI.automation.scripts.confirmPending(packageId);
-      else await window.electronAPI.automation.scripts.discardPending(packageId);
-    } finally {
-      setBusy(false);
       void refresh();
     }
   };
@@ -152,7 +160,13 @@ export function ScriptRunEditor({
                 : t('schedule.script.selectPackage')
             }
             options={packageOptions}
-            onChange={(value) => update({ packageId: value })}
+            onChange={(value) => {
+              if (value === NEW_PACKAGE) {
+                openScriptEditor({ step: 'rules' });
+                return;
+              }
+              update({ packageId: value });
+            }}
           />
           <button
             type="button"
@@ -162,6 +176,56 @@ export function ScriptRunEditor({
           >
             <FolderOpen size={13} />
             {t('schedule.script.open')}
+          </button>
+        </div>
+      </FormRow>
+      <FormRow label={t('schedule.script.version')}>
+        <div className="ui-flush-split flex min-h-[35px] flex-1 items-stretch">
+          <span
+            className="ui-flush-text min-w-0 flex-1 truncate text-text-muted"
+            data-testid="script-version-text"
+          >
+            {selected ? (
+              <>
+                {selected.published
+                  ? t('schedule.script.versionPublished', {
+                      version: selected.published.version,
+                      time: formatDateTime(
+                        selected.published.publishedAt ?? selected.published.updatedAt
+                      ).replace(/^\d{4}-/, ''),
+                    })
+                  : t('schedule.script.noPublished')}
+                {selected.draft ? (
+                  <span className="text-warning">
+                    {' · '}
+                    {t('schedule.script.draftPending', {
+                      version: selected.draft.version,
+                      source: t(SCRIPT_SOURCE_KEYS[selected.draft.source]),
+                    })}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              '—'
+            )}
+          </span>
+          <button
+            type="button"
+            className="ui-accent-cell w-[28.5714%] flex-shrink-0 border-l border-border-subtle"
+            disabled={!selected}
+            data-testid="script-edit-cell"
+            onClick={() =>
+              selected?.draft
+                ? openScriptEditor({
+                    packageId,
+                    version: selected.draft.version,
+                    step: 'review',
+                  })
+                : openScriptEditor({ packageId, step: 'rules' })
+            }
+          >
+            {selected?.draft ? <FileSearch size={13} /> : <PencilLine size={13} />}
+            {selected?.draft ? t('schedule.script.viewDraft') : t('schedule.script.editScript')}
           </button>
         </div>
       </FormRow>
@@ -206,38 +270,6 @@ export function ScriptRunEditor({
           onChange={(value) => value && update({ onScriptError: value })}
         />
       </FormRow>
-      {selected?.pending && (
-        <FormRow label={t('schedule.script.pending')}>
-          <div className="ui-flush-split flex min-h-[35px] flex-1 items-stretch">
-            <span className="ui-flush-text min-w-0 flex-1 truncate text-warning">
-              {t('schedule.script.pendingText', { count: selected.pending.rows })}
-            </span>
-            <button
-              type="button"
-              className="ui-accent-cell w-[72px] flex-shrink-0 border-l border-border-subtle"
-              onClick={() => void window.electronAPI.automation.scripts.open(packageId, true)}
-            >
-              {t('schedule.script.view')}
-            </button>
-            <button
-              type="button"
-              className="ui-accent-cell w-[72px] flex-shrink-0 border-l border-border-subtle"
-              disabled={busy}
-              onClick={() => void pendingAction('confirm')}
-            >
-              {t('schedule.script.adopt')}
-            </button>
-            <button
-              type="button"
-              className="ui-accent-cell w-[72px] flex-shrink-0 border-l border-border-subtle"
-              disabled={busy}
-              onClick={() => void pendingAction('discard')}
-            >
-              {t('schedule.script.discard')}
-            </button>
-          </div>
-        </FormRow>
-      )}
       <FormRow label={t('schedule.script.testRun')}>
         <button
           type="button"

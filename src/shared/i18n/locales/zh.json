@@ -391,7 +391,8 @@
         "ruleLabel": "规则描述",
         "examplesLabel": "示例",
         "copyShort": "复制",
-        "copiedShort": "已复制"
+        "copiedShort": "已复制",
+        "versionsColumnSource": "来源"
       },
       "status": {
         "available": "可用",
@@ -3445,7 +3446,15 @@
     },
     "dataObjectDeleted": "已删除",
     "openDataObject": "打开",
-    "viewReason": "查看原因"
+    "viewReason": "查看原因",
+    "scriptPackageKind": "脚本包",
+    "scriptDraft": "v{{version}} 草稿",
+    "scriptPublishedSuffix": "已发布 v{{version}}",
+    "scriptNotPublished": "未发布",
+    "scriptPublish": "发布",
+    "scriptPublished": "已发布",
+    "scriptOpenEditor": "在编辑器中查看",
+    "scriptArchived": "v{{version}} 已归档"
   },
   "schedule": {
     "executionSummary": "已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）",
@@ -3958,12 +3967,15 @@
       "depsReady": "依赖已就绪",
       "depsOnFirstRun": "首次运行将安装依赖",
       "lastSuccess": "上次成功 {{count}} 行",
-      "pending": "新版本",
-      "pendingText": "AI 已重新生成 · 试运行 {{count}} 行，待确认",
-      "view": "查看",
-      "adopt": "采用",
-      "discard": "放弃",
-      "required": "请选择脚本包"
+      "required": "请选择脚本包",
+      "version": "版本",
+      "editScript": "编辑脚本",
+      "viewDraft": "查看草稿",
+      "newPackage": "新建脚本包",
+      "versionPublished": "v{{version}} 已发布 · {{time}}",
+      "draftPending": "v{{version}} 草稿待发布（{{source}}）",
+      "noPublished": "尚未发布",
+      "optionVersion": "v{{version}}"
     }
   },
   "remote": {
@@ -4443,5 +4455,67 @@
   "composer": {
     "shortcutSend": "发送",
     "shortcutNewline": "换行"
+  },
+  "scripts": {
+    "source": {
+      "chat": "对话生成",
+      "rule": "规则生成",
+      "ai_repair": "AI 修复",
+      "manual": "手动修改"
+    },
+    "status": {
+      "draft": "草稿",
+      "published": "已发布",
+      "archived": "已归档"
+    },
+    "editor": {
+      "newName": "新建脚本包",
+      "name": "脚本包名称",
+      "folder": "文件夹",
+      "folderPending": "生成后创建",
+      "openFolder": "打开文件夹",
+      "ruleLabel": "规则描述",
+      "rulePlaceholder": "描述脚本要从哪里取数、取哪些字段、如何分页 / 去重 / 重试，输出哪些列。例如：从 https://api.example.com/rates 每天取 USD 对 CNY、EUR、JPY 的汇率，输出 日期、币种、汇率。",
+      "base": "基于",
+      "basePublished": "v{{version}}（已发布）",
+      "baseScratch": "从头生成",
+      "language": "语言",
+      "examplePagingLabel": "分页抓取",
+      "examplePaging": "按页抓取，直到返回空列表为止（每页最多 100 条，最多 20 页）。",
+      "exampleApiAuthLabel": "接口参数",
+      "exampleApiAuth": "接口地址和查询参数写在 config.json 中，便于以后修改。",
+      "exampleDedupeLabel": "按主键去重",
+      "exampleDedupe": "按主键去重，保留最后一次出现的记录。",
+      "exampleRetryLabel": "失败重试",
+      "exampleRetry": "请求失败时最多重试 3 次，每次间隔 2 秒；仍失败则以非零退出码退出并说明原因。",
+      "exampleIncrementalLabel": "增量抓取",
+      "exampleIncremental": "只抓取最近 7 天的数据，并输出抓取时间列。",
+      "rulesHint": "生成结果保存为新草稿，自动化仍运行已发布版本",
+      "generate": "生成脚本草稿",
+      "metaPackage": "脚本包",
+      "metaBase": "基于",
+      "metaLanguage": "语言",
+      "stepBase": "读取基础版本",
+      "stepCode": "生成脚本代码",
+      "stepSave": "保存草稿（git 提交）",
+      "generated": "已保存为 v{{version}} 草稿 · {{count}} 个文件",
+      "markerModified": "已改",
+      "markerAdded": "新增",
+      "statusPublished": "已发布 v{{version}}",
+      "statusDraft": "草稿",
+      "statusNew": "新建",
+      "trialPreview": "试运行预览",
+      "publishVersion": "发布 v{{version}}",
+      "trialTitle": "试运行输出预览 · {{version}} {{status}}",
+      "trialOk": "{{count}} 行 · {{seconds}} 秒",
+      "depsInstalled": "已安装依赖",
+      "lastRunOk": "上次运行 {{time}} · 成功 {{count}} 行",
+      "lastRunFailed": "上次运行 {{time}} · 失败 · {{reason}}",
+      "noOutput": "还没有正式运行输出",
+      "usedBy": "引用此脚本包的自动化",
+      "notUsed": "还没有自动化使用这个脚本包",
+      "enabled": "已启用",
+      "disabled": "未启用"
+    }
   }
 }

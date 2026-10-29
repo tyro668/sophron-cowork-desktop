@@ -15,6 +15,7 @@ import type {
   AutomationUpdateInput,
 } from '../../shared/contracts';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
+import type { ScriptGenerateProgressEvent } from '../../shared/automation/script-package';
 
 export function createAutomationApi(): ElectronApi['automation'] {
   return {
@@ -46,11 +47,26 @@ export function createAutomationApi(): ElectronApi['automation'] {
       ipcRenderer.invoke('automation.actions.listDefinitions'),
     scripts: {
       list: () => ipcRenderer.invoke('automation.scripts.list'),
-      open: (id, pending) => ipcRenderer.invoke('automation.scripts.open', id, pending),
-      testRun: (id, timeoutMs, pending) =>
-        ipcRenderer.invoke('automation.scripts.testRun', id, timeoutMs, pending),
-      confirmPending: (id) => ipcRenderer.invoke('automation.scripts.confirmPending', id),
-      discardPending: (id) => ipcRenderer.invoke('automation.scripts.discardPending', id),
+      get: (id) => ipcRenderer.invoke('automation.scripts.get', id),
+      open: (id) => ipcRenderer.invoke('automation.scripts.open', id),
+      testRun: (id, timeoutMs, target) =>
+        ipcRenderer.invoke('automation.scripts.testRun', id, timeoutMs, target),
+      versions: (id) => ipcRenderer.invoke('automation.scripts.versions', id),
+      versionDetail: (id, version) =>
+        ipcRenderer.invoke('automation.scripts.versionDetail', id, version),
+      publish: (id, version) => ipcRenderer.invoke('automation.scripts.publish', id, version),
+      deleteVersion: (id, version) =>
+        ipcRenderer.invoke('automation.scripts.deleteVersion', id, version),
+      setMeta: (id, patch) => ipcRenderer.invoke('automation.scripts.setMeta', id, patch),
+      editorState: (id) => ipcRenderer.invoke('automation.scripts.editorState', id),
+      lastOutput: (id) => ipcRenderer.invoke('automation.scripts.lastOutput', id),
+      generateDraft: (input) => ipcRenderer.invoke('automation.scripts.generateDraft', input),
+      onGenerateProgress: (callback) => {
+        const listener = (_event: Electron.IpcRendererEvent, data: ScriptGenerateProgressEvent) =>
+          callback(data);
+        ipcRenderer.on('automation.scripts.generateProgress', listener);
+        return () => ipcRenderer.removeListener('automation.scripts.generateProgress', listener);
+      },
     },
     groups: {
       list: (): Promise<AutomationGroup[]> => ipcRenderer.invoke('automation.groups.list'),

@@ -12,6 +12,7 @@ import { AutomationService } from '../automation/automation-service';
 import { createAutomationStore } from '../automation/automation-store';
 import { createDefaultAutomationActionRegistry } from '../automation/default-actions';
 import { ScriptPackageService } from '../automation/script-packages/service';
+import { createSqliteScriptVersionStore } from '../automation/script-packages/version-store';
 import { createScriptPackageAgentRuntimeExtension } from '../automation/script-packages/agent-tools';
 import { createAutomationAgentRuntimeExtension } from '../automation/tools';
 import { AutomationToolService } from '../automation/tools/service';
@@ -260,6 +261,7 @@ export async function bootstrap(): Promise<void> {
   }
   appContext.scriptPackages = new ScriptPackageService({
     rootDir: join(app.getPath('userData'), 'scripts'),
+    versions: createSqliteScriptVersionStore(db.raw),
   });
   const automationActionRegistry = createDefaultAutomationActionRegistry({
     scriptPackages: appContext.scriptPackages,

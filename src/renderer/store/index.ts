@@ -20,6 +20,17 @@ import { applySessionUpdate } from '../utils/session-update';
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
+export interface ScriptEditorTarget {
+  /** Existing package; omitted for 「新建脚本包」. */
+  packageId?: string;
+  /** Version to open (defaults to the newest draft, else the published one). */
+  version?: number;
+  step?: 'rules' | 'review';
+  /** Bumped on every open so the same target can be reopened. */
+  nonce: number;
+}
+let scriptEditorSeq = 0;
+
 export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
 export type DataWorkspaceTab = 'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis';
 
@@ -132,6 +143,8 @@ interface AppState {
   showSettings: boolean;
   settingsTab: string | null;
   desktopAuthStatus: DesktopAuthStatus;
+  /** Script package editor page shown over the current view (返回 closes it). */
+  scriptEditor: ScriptEditorTarget | null;
 
   // Permission
   pendingPermission: PermissionRequest | null;
@@ -249,6 +262,8 @@ interface AppState {
   setGlobalNotice: (notice: GlobalNotice | null) => void;
   clearGlobalNotice: () => void;
   navigateToDataElement: (target: DataResourceTarget) => void;
+  openScriptEditor: (target: Omit<ScriptEditorTarget, 'nonce'>) => void;
+  closeScriptEditor: () => void;
   navigateToDataTab: (tab: DataWorkspaceTab) => void;
   navigateToCloudData: () => void;
   navigateToCloudAutomationTemplate: (rawTemplate: string) => void;
@@ -320,6 +335,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   contextPanelCollapsed: false,
   showSettings: false,
   settingsTab: null,
+  scriptEditor: null,
   desktopAuthStatus: { authenticated: false, updatedAt: 0 },
   pendingPermission: null,
   pendingPermissionQueue: [],
@@ -794,6 +810,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   markInitialConfigStatusSeen: () => set({ hasSeenInitialConfigStatus: true }),
   setGlobalNotice: (notice) => set({ globalNotice: notice }),
   clearGlobalNotice: () => set({ globalNotice: null }),
+  openScriptEditor: (target) => set({ scriptEditor: { ...target, nonce: ++scriptEditorSeq } }),
+  closeScriptEditor: () => set({ scriptEditor: null }),
   navigateToDataElement: (target) =>
     set({
       mainView: 'data',

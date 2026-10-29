@@ -4,6 +4,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
+import { PackageRepo } from '../../src/main/automation/script-packages/git-repo';
 
 const hasPython = (() => {
   try {
@@ -68,24 +69,33 @@ describe('ScriptPackageService', () => {
     expect(list.find((item) => item.id === 'broken')?.invalid).toContain('entry');
   });
 
-  it('runs the entry with helper modules and config, and keeps the last good output on failure', async () => {
+  it('runs the published version and keeps the last good output on failure', async () => {
     const ok = await service.run('demo', { timeoutMs: 20_000 });
     expect(ok.rows).toBe(3);
+    expect(ok.version).toBe(1);
     expect(readFileSync(ok.csvPath, 'utf8')).toContain('r2,2');
     expect((await service.summary('demo')).lastSuccess?.rows).toBe(3);
 
+    // A folder edit becomes a 手动修改 draft; the automation keeps running v1.
     writeFileSync(path.join(root, 'demo', 'config.json'), '{"fail": true}');
+    const summary = await service.summary('demo');
+    expect(summary.published?.version).toBe(1);
+    expect(summary.draft).toMatchObject({ version: 2, source: 'manual', status: 'draft' });
+    expect((await service.run('demo', { timeoutMs: 20_000 })).rows).toBe(3);
+
+    await service.publish('demo', 2);
     await expect(service.run('demo', { timeoutMs: 20_000 })).rejects.toThrow('选择器失效');
     expect(readFileSync(ok.csvPath, 'utf8')).toContain('r2,2');
-    const summary = await service.summary('demo');
-    expect(summary.lastError?.message).toBe('选择器失效');
-    expect(summary.lastSuccess?.rows).toBe(3);
+    const failed = await service.summary('demo');
+    expect(failed.lastError?.message).toBe('选择器失效');
+    expect(failed.lastSuccess?.rows).toBe(3);
   });
 
   it('kills the script on timeout', async () => {
     writeFileSync(path.join(root, 'demo', 'config.json'), '{"sleep": true}');
     const started = Date.now();
-    await expect(service.run('demo', { timeoutMs: 1_000 })).rejects.toThrow('运行超时（1 秒）');
+    const test = await service.testRun('demo', { timeoutMs: 1_000, target: 'working' });
+    expect(test.error).toBe('运行超时（1 秒）');
     expect(Date.now() - started).toBeLessThan(10_000);
   });
 
@@ -94,40 +104,104 @@ describe('ScriptPackageService', () => {
       path.join(root, 'demo', 'main.js'),
       "require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'name\\nx\\n')"
     );
-    await expect(service.run('demo', { timeoutMs: 20_000 })).rejects.toThrow('结果缺少列：value');
+    expect((await service.testRun('demo', { timeoutMs: 20_000, target: 'working' })).error).toBe(
+      '结果缺少列：value'
+    );
     writeFileSync(path.join(root, 'demo', 'main.js'), '');
-    await expect(service.run('demo', { timeoutMs: 20_000 })).rejects.toThrow('没有写出结果文件');
+    expect(
+      (await service.testRun('demo', { timeoutMs: 20_000, target: 'working' })).error
+    ).toContain('没有写出结果文件');
   });
 
-  it('test runs do not replace the stable output', async () => {
+  it('test runs do not replace the stable output and return preview rows', async () => {
     const result = await service.testRun('demo', { timeoutMs: 20_000 });
-    expect(result).toMatchObject({ ok: true, rows: 3, columns: ['name', 'value'] });
+    expect(result).toMatchObject({ ok: true, rows: 3, columns: ['name', 'value'], version: 1 });
+    expect(result.previewRows?.[2]).toEqual({ name: 'r2', value: '2' });
     expect(existsSync(path.join(root, 'demo', '.sophron', 'output.csv'))).toBe(false);
   });
 
-  it('keeps an AI version pending until confirmed', async () => {
-    const pending = await service.preparePending('demo', 'boom');
-    expect(readFileSync(path.join(pending, 'LAST_ERROR.txt'), 'utf8')).toContain('boom');
-    writeFileSync(path.join(pending, 'config.json'), '{"n": 5}');
-    const test = await service.testRun('demo', { timeoutMs: 20_000, pending: true });
-    expect(test.rows).toBe(5);
-    await service.markPending('demo', { createdAt: 1, rows: 5, reason: 'boom' });
-    expect((await service.summary('demo')).pending?.rows).toBe(5);
-    // Active version untouched.
+  it('keeps versions in git: drafts, publish tags, archive, rollback and delete', async () => {
+    await service.list();
+    writeFileSync(path.join(root, 'demo', 'config.json'), '{"n": 5}');
+    const v2 = await service.saveDraft('demo', { source: 'rule', rulePrompt: '抓 5 行' });
+    expect(v2.version).toMatchObject({
+      version: 2,
+      status: 'draft',
+      source: 'rule',
+      baseVersion: 1,
+    });
+    // Trial-run the draft without publishing it.
+    expect((await service.testRun('demo', { timeoutMs: 20_000, target: 2 })).rows).toBe(5);
     expect((await service.run('demo', { timeoutMs: 20_000 })).rows).toBe(3);
 
-    await service.confirmPending('demo');
-    expect((await service.summary('demo')).pending).toBeUndefined();
-    expect((await service.run('demo', { timeoutMs: 20_000 })).rows).toBe(5);
-    expect(existsSync(path.join(root, 'demo', 'LAST_ERROR.txt'))).toBe(false);
+    const versions = await service.listVersions('demo');
+    expect(versions.map((item) => [item.version, item.status])).toEqual([
+      [2, 'draft'],
+      [1, 'published'],
+    ]);
+    expect(versions[0].diff).toEqual({ added: [], modified: ['config.json'], removed: [] });
+    const detail = await service.versionDetail('demo', 2);
+    expect(detail.files.find((file) => file.path === 'config.json')?.content).toBe('{"n": 5}');
 
-    await service.preparePending('demo', 'again');
-    await service.markPending('demo', { createdAt: 2, rows: 1, reason: 'again' });
-    await service.discardPending('demo');
-    expect((await service.summary('demo')).pending).toBeUndefined();
+    await service.publish('demo', 2);
+    expect((await service.run('demo', { timeoutMs: 20_000 })).rows).toBe(5);
+    expect((await service.listVersions('demo')).map((item) => [item.version, item.status])).toEqual(
+      [
+        [2, 'published'],
+        [1, 'archived'],
+      ]
+    );
+    const repo = new PackageRepo(path.join(root, 'demo'));
+    expect((await repo.listTags()).sort()).toEqual(['published', 'v1', 'v2']);
+
+    // Rollback = publish the earlier tag; the run checks v1 out again.
+    await service.publish('demo', 1);
+    expect(await repo.resolveTag('published')).toBe(await repo.resolveTag('v1'));
+    expect((await service.run('demo', { timeoutMs: 20_000 })).rows).toBe(3);
+    await expect(service.deleteVersion('demo', 1)).rejects.toThrow('已发布的版本不能删除');
+    await service.deleteVersion('demo', 2);
+    expect((await service.listVersions('demo')).map((item) => item.version)).toEqual([1]);
   });
 
-  it('imports an AI-written folder as a package', async () => {
+  it('AI repair works in the package folder and overwrites one draft on repeated failures', async () => {
+    await service.list(); // v1 published from the pre-versioning folder
+    writeFileSync(path.join(root, 'demo', 'config.json'), '{"n": 4}');
+    await service.summary('demo'); // v2 manual draft
+    const dir = await service.beginRepair('demo');
+    // The published version is checked out for the repair.
+    expect(readFileSync(path.join(dir, 'config.json'), 'utf8')).toBe('{"n": 3}');
+    writeFileSync(path.join(dir, 'config.json'), '{"n": 6}');
+    // Folder edits during a repair are not picked up as manual drafts.
+    expect((await service.summary('demo')).draft?.source).toBe('manual');
+    expect((await service.testRun('demo', { timeoutMs: 20_000, target: 'working' })).rows).toBe(6);
+    const first = await service.finishRepair('demo', { ok: true, reason: 'boom', rows: 6 });
+    expect(first?.version).toMatchObject({ version: 3, source: 'ai_repair', rulePrompt: 'boom' });
+
+    await service.beginRepair('demo');
+    writeFileSync(path.join(dir, 'config.json'), '{"n": 7}');
+    const second = await service.finishRepair('demo', { ok: true, reason: 'again', rows: 7 });
+    expect(second?.version.version).toBe(3);
+    expect(second?.replaced).toBe(true);
+    expect((await service.testRun('demo', { timeoutMs: 20_000, target: 3 })).rows).toBe(7);
+    expect((await service.listVersions('demo')).map((item) => item.version)).toEqual([3, 2, 1]);
+
+    // The same fix again: still that draft, with this attempt's details.
+    const commitBefore = (await service.listVersions('demo'))[0].commit;
+    await service.beginRepair('demo');
+    writeFileSync(path.join(dir, 'config.json'), '{"n": 7}');
+    const third = await service.finishRepair('demo', { ok: true, reason: 'third', rows: 7 });
+    expect(third?.replaced).toBe(true);
+    expect(third?.version).toMatchObject({ version: 3, rulePrompt: 'third', commit: commitBefore });
+
+    // A failed repair is reverted, nothing is saved.
+    await service.beginRepair('demo');
+    writeFileSync(path.join(dir, 'config.json'), 'broken');
+    expect(await service.finishRepair('demo', { ok: false, reason: 'x' })).toBeNull();
+    expect(readFileSync(path.join(dir, 'config.json'), 'utf8')).toBe('{"n": 7}');
+    expect((await service.summary('demo')).versionCount).toBe(3);
+  });
+
+  it('imports an AI-written folder as a draft; re-saving overwrites that draft', async () => {
     const source = mkdtempSync(path.join(os.tmpdir(), 'ai-pkg-'));
     try {
       writePackage(source, {
@@ -136,14 +210,73 @@ describe('ScriptPackageService', () => {
         'node_modules/x/index.js': '',
       });
       const saved = await service.importFromDir(source, 'ai-pkg');
-      expect(saved).toMatchObject({ id: 'ai-pkg', name: 'AI 包' });
+      expect(saved.summary).toMatchObject({ id: 'ai-pkg', name: 'AI 包' });
+      expect(saved.version).toMatchObject({ version: 1, status: 'draft', source: 'chat' });
       expect(existsSync(path.join(root, 'ai-pkg', 'node_modules'))).toBe(false);
-      expect((await service.run('ai-pkg', { timeoutMs: 20_000 })).rows).toBe(1);
+      await expect(service.run('ai-pkg', { timeoutMs: 20_000 })).rejects.toThrow('还没有发布版本');
+      expect((await service.testRun('ai-pkg', { timeoutMs: 20_000, target: 'working' })).rows).toBe(
+        1
+      );
+      writeFileSync(
+        path.join(source, 'run.js'),
+        "require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'a\\n1\\n2\\n')"
+      );
+      const again = await service.importFromDir(source, 'ai-pkg');
+      expect(again.version.version).toBe(1);
+      const unchanged = await service.importFromDir(source, 'ai-pkg');
+      expect(unchanged.created).toBe(false);
+      await service.publish('ai-pkg', 1);
+      expect((await service.run('ai-pkg', { timeoutMs: 20_000 })).rows).toBe(2);
       await expect(service.importFromDir(source, '../escape')).rejects.toThrow('名称无效');
     } finally {
       rmSync(source, { recursive: true, force: true });
     }
   });
+
+  it('runs a Node package with an npm dependency installed into the run checkout', async () => {
+    const npmAvailable = (() => {
+      try {
+        execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['--version'], {
+          stdio: 'ignore',
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    if (!npmAvailable) return;
+    // A local "file:" dependency exercises the real npm install path without the network.
+    const dep = mkdtempSync(path.join(os.tmpdir(), 'npm-dep-'));
+    try {
+      writePackage(dep, {
+        'package.json': JSON.stringify({ name: 'tiny-dep', version: '1.0.0', main: 'index.js' }),
+        'index.js': 'exports.twice = (n) => n * 2;',
+      });
+      writePackage(path.join(root, 'npmpkg'), {
+        'manifest.json': JSON.stringify({ name: 'npm 包', entry: 'main.js', runtime: 'node' }),
+        'package.json': JSON.stringify({
+          name: 'npmpkg',
+          version: '1.0.0',
+          private: true,
+          dependencies: { 'tiny-dep': `file:${dep}` },
+        }),
+        'main.js':
+          "const { twice } = require('tiny-dep'); require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'v\\n' + twice(21) + '\\n');",
+      });
+      const first = await service.run('npmpkg', { timeoutMs: 60_000 });
+      expect(first.installedDeps).toBe(true);
+      expect(readFileSync(first.csvPath, 'utf8')).toContain('42');
+      expect(
+        existsSync(path.join(root, 'npmpkg', '.sophron', 'run', 'published', 'node_modules'))
+      ).toBe(true);
+      // node_modules never enters git and the folder stays clean.
+      expect(existsSync(path.join(root, 'npmpkg', 'node_modules'))).toBe(false);
+      expect((await service.summary('npmpkg')).versionCount).toBe(1);
+      expect((await service.run('npmpkg', { timeoutMs: 60_000 })).installedDeps).toBe(false);
+    } finally {
+      rmSync(dep, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   it.skipIf(!hasPython)(
     'creates a per-package venv and reinstalls when requirements change',
@@ -156,10 +289,13 @@ describe('ScriptPackageService', () => {
       });
       const first = await service.run('py', { timeoutMs: 60_000 });
       expect(first.installedDeps).toBe(true);
-      expect(readFileSync(first.csvPath, 'utf8')).toContain(path.join('py', '.venv'));
+      expect(readFileSync(first.csvPath, 'utf8')).toContain(
+        path.join('py', '.sophron', 'run', 'published', '.venv')
+      );
       expect((await service.summary('py')).runtimeVersion).toMatch(/^Python \d+\.\d+$/);
       expect((await service.run('py', { timeoutMs: 60_000 })).installedDeps).toBe(false);
       writeFileSync(path.join(root, 'py', 'requirements.txt'), '# changed\n');
+      await service.publish('py', (await service.summary('py')).draft!.version);
       expect((await service.summary('py')).depsReady).toBe(false);
       expect((await service.run('py', { timeoutMs: 60_000 })).installedDeps).toBe(true);
     },
