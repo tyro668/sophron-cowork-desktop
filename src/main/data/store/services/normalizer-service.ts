@@ -22,14 +22,28 @@ import {
   PreparedRawTableNormalizerSourceContext,
   prepareRawTableNormalizerSources,
   readNormalizerOutputRelationForPath,
-  writeRawTableNormalizerProjectFiles,
 } from '../input-source';
+import { findReusableDraft, PUBLISHED_TAG } from '../../../versioning/git-repo';
+import type { DataRawTableNormalizerArtifactVersion } from '../../../../shared/contracts';
 import { NormalizerRepository } from '../repositories/normalizer-repository';
 import { InputSourceSummaryService } from './input-source-summary-service';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 
 export class NormalizerService {
+  /** Per-artifact queue: a save writes the repo's working tree, a sync reads it. */
+  private readonly repoLocks = new Map<string, Promise<unknown>>();
+  private withRepoLock<T>(artifactId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.repoLocks.get(artifactId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(work);
+    this.repoLocks.set(artifactId, next);
+    void next
+      .finally(() => {
+        if (this.repoLocks.get(artifactId) === next) this.repoLocks.delete(artifactId);
+      })
+      .catch(() => undefined);
+    return next;
+  }
   constructor(
     private readonly ctx: DataStoreContext,
     private readonly normalizers: NormalizerRepository,
@@ -87,39 +101,136 @@ export class NormalizerService {
       });
     }
 
+    return this.withRepoLock(artifactId, () =>
+      this.commitDraft(input, artifactId, files, rulePrompt, now)
+    );
+  }
+
+  private async commitDraft(
+    input: DataSaveRawTableNormalizerDraftInput,
+    artifactId: string,
+    files: DataSaveRawTableNormalizerDraftInput['files'],
+    rulePrompt: string,
+    now: number
+  ): Promise<DataRawTableNormalizerVersionSaveResult> {
     const versionNumber = await this.normalizers.nextVersionNumber(artifactId);
     const versionId = uuidv4();
-    const projectDir = this.normalizers.getRawTableNormalizerProjectDir(artifactId, versionId);
-    try {
-      writeRawTableNormalizerProjectFiles(projectDir, files);
-      await this.normalizers.insertVersion({
-        id: versionId,
-        artifactId,
-        version: versionNumber,
-        filesJson: JSON.stringify(files),
-        fileTreeHash: input.fileTreeHash.trim(),
-        rulePrompt,
-        sourceSummaryHash: input.sourceSummaryHash ?? null,
-        entrypointJson: JSON.stringify(input.entrypoint),
-        dependencyPrepareJson: input.dependencyPrepare
-          ? JSON.stringify(input.dependencyPrepare)
-          : null,
-        runtimeJson: JSON.stringify(input.runtime),
-        dependenciesJson: JSON.stringify(input.dependencies ?? []),
-        dependencyLockHash: input.dependencyLockHash ?? null,
-        createdAt: now,
-        updatedAt: now,
-      });
-    } catch (error) {
-      fs.rmSync(projectDir, { recursive: true, force: true });
-      throw error;
-    }
+    // The code goes into the artifact's git repo as a new commit; the row references it.
+    const repo = this.normalizers.repo(artifactId);
+    await repo.ensure();
+    await repo.writeFiles(files);
+    const commit =
+      (await repo.commitAll(`v${versionNumber} 规则生成\n\n${rulePrompt.slice(0, 2000)}`)) ??
+      (await repo.head());
+    if (!commit) throw new Error('Normalizer project files could not be committed');
+    await this.normalizers.insertVersion({
+      id: versionId,
+      artifactId,
+      version: versionNumber,
+      commit,
+      source: 'rule',
+      fileTreeHash: input.fileTreeHash.trim(),
+      rulePrompt,
+      sourceSummaryHash: input.sourceSummaryHash ?? null,
+      entrypointJson: JSON.stringify(input.entrypoint),
+      dependencyPrepareJson: input.dependencyPrepare
+        ? JSON.stringify(input.dependencyPrepare)
+        : null,
+      runtimeJson: JSON.stringify(input.runtime),
+      dependenciesJson: JSON.stringify(input.dependencies ?? []),
+      dependencyLockHash: input.dependencyLockHash ?? null,
+      createdAt: now,
+      updatedAt: now,
+    });
 
     return {
       artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifactId),
       version: await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId),
     };
   }
+
+  /** Versions newest first, read from git; edits made in the repo folder become a 手动修改 draft. */
+  async listRawTableNormalizerArtifactVersions(
+    artifactId: string
+  ): Promise<DataRawTableNormalizerArtifactVersion[]> {
+    await this.ctx.ensureMetadataReady();
+    await this.withRepoLock(artifactId, () => this.syncManualEdits(artifactId));
+    return this.normalizers.listRawTableNormalizerArtifactVersions(artifactId);
+  }
+
+  /** Folder edits (statusMatrix vs HEAD) are saved as a manual draft, overwriting the last one. */
+  private async syncManualEdits(artifactId: string): Promise<void> {
+    const repo = this.normalizers.repo(artifactId);
+    if (!repo.exists) return;
+    if ((await repo.changedPaths()).length === 0) return;
+    const records = await this.normalizers.listVersionRecords(artifactId);
+    const latest = records.at(-1);
+    if (!latest) return;
+    const reusable = findReusableDraft(records, 'manual');
+    const versionNumber = reusable?.version ?? latest.version + 1;
+    const commit = await repo.commitAll(
+      `v${versionNumber} 手动修改`,
+      reusable ? { replace: reusable.commit } : {}
+    );
+    if (!commit) return;
+    const now = this.ctx.now();
+    if (reusable) {
+      await this.normalizers.updateDraftVersion({
+        id: reusable.id,
+        commit,
+        fileTreeHash: commit,
+        rulePrompt: reusable.rulePrompt,
+        updatedAt: now,
+      });
+    } else {
+      await this.normalizers.insertVersion({
+        id: uuidv4(),
+        artifactId,
+        version: versionNumber,
+        commit,
+        source: 'manual',
+        fileTreeHash: commit,
+        rulePrompt: latest.rulePrompt,
+        sourceSummaryHash: latest.sourceSummaryHash ?? null,
+        entrypointJson: JSON.stringify(latest.entrypoint),
+        dependencyPrepareJson: latest.dependencyPrepare
+          ? JSON.stringify(latest.dependencyPrepare)
+          : null,
+        runtimeJson: JSON.stringify(latest.runtime),
+        dependenciesJson: JSON.stringify(latest.dependencies ?? []),
+        dependencyLockHash: latest.dependencyLockHash ?? null,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    await this.normalizers.touchArtifact(artifactId, now);
+  }
+
+  /** Check a version's commit out where it runs (deps env kept across checkouts). */
+  private async checkoutForRun(version: DataRawTableNormalizerArtifactVersion): Promise<string> {
+    const dir = this.normalizers.getRawTableNormalizerProjectDir(
+      version.artifactId,
+      version.version
+    );
+    await this.normalizers.repo(version.artifactId).checkoutTree(version.commit, dir);
+    return dir;
+  }
+
+  /** The version the artifact's `published` tag points at (what imports run). */
+  private async requirePublishedVersion(
+    artifactId: string
+  ): Promise<DataRawTableNormalizerArtifactVersion> {
+    const published = (await this.normalizers.listVersionRecords(artifactId)).find(
+      (version) => version.status === 'published'
+    );
+    if (!published) throw new Error('Custom input table normalizer has no published version');
+    const tagged = await this.normalizers.repo(artifactId).resolveTag(PUBLISHED_TAG);
+    if (tagged && tagged !== published.commit) {
+      throw new Error('Normalizer published tag does not match the published version');
+    }
+    return this.normalizers.requireRawTableNormalizerArtifactVersion(published.id);
+  }
+
   async publishRawTableNormalizerArtifactVersion(
     versionId: string
   ): Promise<DataRawTableNormalizerVersionSaveResult> {
@@ -127,7 +238,9 @@ export class NormalizerService {
     const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId);
     const artifact = await this.normalizers.requireRawTableNormalizerArtifact(version.artifactId);
     const now = this.ctx.now();
-    await this.normalizers.archiveOtherPublishedVersions(artifact.id, versionId, now);
+    // Publishing tags the commit vN and moves `published`; an older version = rollback.
+    await this.normalizers.repo(artifact.id).publishTag(version.version, version.commit);
+    await this.normalizers.archiveOtherPublishedVersions(artifact.id, versionId);
     await this.normalizers.markVersionPublished(versionId, now);
     await this.normalizers.setArtifactActiveVersion(artifact.id, versionId, now);
     return {
@@ -144,10 +257,11 @@ export class NormalizerService {
     const now = this.ctx.now();
     await this.normalizers.deleteVersionRow(versionId);
     await this.normalizers.touchArtifact(version.artifactId, now);
-    fs.rmSync(this.normalizers.getRawTableNormalizerProjectDir(version.artifactId, version.id), {
-      recursive: true,
-      force: true,
-    });
+    // The commit stays in history; only its run checkout is removed.
+    fs.rmSync(
+      this.normalizers.getRawTableNormalizerProjectDir(version.artifactId, version.version),
+      { recursive: true, force: true }
+    );
     return { success: true };
   }
   async previewRawTableNormalizerVersion(
@@ -191,11 +305,8 @@ export class NormalizerService {
       const result = await runRawTableNormalizerProject({
         version,
         prepareDependencies: input.prepareDependencies === true,
-        projectRoot: this.normalizers.getRawTableNormalizerProjectDir(
-          version.artifactId,
-          version.id
-        ),
-        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(),
+        projectRoot: await this.checkoutForRun(version),
+        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(version.artifactId),
         context: {
           sourcePath,
           sourceKind,
@@ -249,14 +360,13 @@ export class NormalizerService {
     offset: number;
   }): Promise<DataRawTablePreview> {
     const processing = input.config.dataProcessing;
-    if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
+    const artifactId = await this.artifactIdOf(processing);
+    if (!artifactId) {
       throw new Error('Published normalizer version is required for custom input table preview');
     }
-    if (processing.artifactVersionStatus !== 'published') {
-      throw new Error('Custom input table normalizer must be published before standard preview');
-    }
+    const published = await this.requirePublishedVersion(artifactId);
     return this.previewRawTableNormalizerVersion({
-      versionId: processing.artifactVersionId,
+      versionId: published.id,
       sourcePath: input.sourcePath,
       sourceKind: input.sourceKind,
       config: input.config,
@@ -272,18 +382,12 @@ export class NormalizerService {
     config: DataRawTableConfig
   ): Promise<PreparedRawTableImport> {
     const processing = config.dataProcessing;
-    if (processing?.strategy !== 'customize' || !processing.artifactVersionId) {
+    const artifactId = await this.artifactIdOf(processing);
+    if (!artifactId) {
       throw new Error('Published normalizer version is required for custom input table import');
     }
-    if (processing.artifactVersionStatus !== 'published') {
-      throw new Error('Custom input table normalizer must be published before import');
-    }
-    const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(
-      processing.artifactVersionId
-    );
-    if (version.status !== 'published') {
-      throw new Error('Custom input table normalizer version is not published');
-    }
+    // Imports follow the artifact's published tag, so a rollback changes the table data.
+    const version = await this.requirePublishedVersion(artifactId);
     const summary = await this.summarizer.summarizeRawTableSource({
       sourcePath,
       sourceKind,
@@ -303,11 +407,8 @@ export class NormalizerService {
       const result = await runRawTableNormalizerProject({
         version,
         prepareDependencies: false,
-        projectRoot: this.normalizers.getRawTableNormalizerProjectDir(
-          version.artifactId,
-          version.id
-        ),
-        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(),
+        projectRoot: await this.checkoutForRun(version),
+        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(version.artifactId),
         context: {
           sourcePath,
           sourceKind,
@@ -344,5 +445,16 @@ export class NormalizerService {
         fs.rmSync(preparedSources.directory, { recursive: true, force: true });
       }
     }
+  }
+
+  private async artifactIdOf(
+    processing: DataRawTableConfig['dataProcessing']
+  ): Promise<string | undefined> {
+    if (processing?.strategy !== 'customize') return undefined;
+    if (processing.artifactId) return processing.artifactId;
+    if (!processing.artifactVersionId) return undefined;
+    return (
+      await this.normalizers.getRawTableNormalizerArtifactVersion(processing.artifactVersionId)
+    )?.artifactId;
   }
 }

@@ -516,17 +516,6 @@ export function normalizeRawTableDataProcessing(
       runtime: value.runtime,
       entrypoint: value.entrypoint,
       dependencyPrepare: value.dependencyPrepare,
-      projectFiles: Array.isArray(value.projectFiles)
-        ? value.projectFiles
-            .filter(
-              (file) =>
-                file &&
-                typeof file.path === 'string' &&
-                typeof file.content === 'string' &&
-                file.path.trim().length > 0
-            )
-            .map((file) => ({ path: file.path, content: file.content }))
-        : undefined,
       sourceSummaryHash:
         typeof value.sourceSummaryHash === 'string' ? value.sourceSummaryHash : undefined,
     };

@@ -333,7 +333,7 @@ export class DataPipelineStore {
   listRawTableNormalizerArtifactVersions(
     artifactId: string
   ): Promise<DataRawTableNormalizerArtifactVersion[]> {
-    return this.normalizers.listRawTableNormalizerArtifactVersions(artifactId);
+    return this.normalizerService.listRawTableNormalizerArtifactVersions(artifactId);
   }
   getRawTableNormalizerArtifactVersion(
     id: string

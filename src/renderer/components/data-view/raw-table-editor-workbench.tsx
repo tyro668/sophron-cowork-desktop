@@ -83,6 +83,7 @@ import {
   getDefaultFolderRawTableConfig,
   getDefaultRawTableConfig,
   getRawTableDataProcessing,
+  getNormalizerChangeMarkers,
   getPreferredNormalizerFilePath,
   inferNormalizerLanguageFromRulePrompt,
   isRawTableConfigEqual,
@@ -131,10 +132,7 @@ export type RawTableCustomizeStep = 'rules' | 'generate' | 'review';
 
 function initialCustomizeStepFor(config: DataRawTableConfig): RawTableCustomizeStep {
   const processing = config.dataProcessing;
-  return processing?.strategy === 'customize' &&
-    (processing.artifactVersionId || (processing.projectFiles?.length ?? 0) > 0)
-    ? 'review'
-    : 'rules';
+  return processing?.strategy === 'customize' && processing.artifactVersionId ? 'review' : 'rules';
 }
 
 export function RawTableEditorWorkbench({
@@ -273,11 +271,21 @@ export function RawTableEditorWorkbench({
     dataProcessing.strategy === 'customize' ? dataProcessing.artifactVersionId : undefined;
   const normalizerProjectFiles = useMemo(() => {
     if (dataProcessing.strategy !== 'customize') return [];
-    if (dataProcessing.projectFiles && dataProcessing.projectFiles.length > 0) {
-      return dataProcessing.projectFiles;
-    }
+    // Code is read from the normalizer's git repo (via the version list), never from config.
     return currentNormalizerVersion?.files ?? [];
   }, [currentNormalizerVersion, dataProcessing]);
+  const normalizerChangeMarkers = useMemo(
+    () =>
+      getNormalizerChangeMarkers(
+        currentNormalizerVersion,
+        normalizerVersions.find((version) => version.status === 'published'),
+        {
+          modified: t('scripts.editor.markerModified'),
+          added: t('scripts.editor.markerAdded'),
+        }
+      ),
+    [currentNormalizerVersion, normalizerVersions, t]
+  );
   const normalizerProjectFileSignature = useMemo(
     () => normalizerProjectFiles.map((file) => file.path).join('\n'),
     [normalizerProjectFiles]
@@ -540,7 +548,6 @@ export function RawTableEditorWorkbench({
         runtime: result.version.runtime,
         entrypoint: result.version.entrypoint,
         dependencyPrepare: result.version.dependencyPrepare,
-        projectFiles: result.version.files,
         sourceSummaryHash: result.version.sourceSummaryHash ?? result.summary.hash,
       });
       setSelectedNormalizerFilePath(
@@ -717,13 +724,14 @@ export function RawTableEditorWorkbench({
         ...dataProcessing,
         artifactId: result.artifact.id,
         artifactVersionId: result.version.id,
+        // A rollback also brings back that version's rule.
+        rulePrompt: result.version.rulePrompt,
         artifactVersionStatus: result.version.status,
         fileTreeHash: result.version.fileTreeHash,
         dependencyLockHash: result.version.dependencyLockHash ?? undefined,
         runtime: result.version.runtime,
         entrypoint: result.version.entrypoint,
         dependencyPrepare: result.version.dependencyPrepare,
-        projectFiles: result.version.files,
         sourceSummaryHash: result.version.sourceSummaryHash ?? undefined,
       });
       void refreshNormalizerVersions(result.artifact.id);
@@ -766,7 +774,6 @@ export function RawTableEditorWorkbench({
           runtime: undefined,
           entrypoint: undefined,
           dependencyPrepare: undefined,
-          projectFiles: undefined,
           sourceSummaryHash: undefined,
         });
         setSelectedNormalizerFilePath('');
@@ -1363,6 +1370,7 @@ export function RawTableEditorWorkbench({
                         <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
                           <NormalizerProjectTree
                             files={normalizerProjectFiles}
+                            markers={normalizerChangeMarkers}
                             selectedPath={
                               selectedNormalizerFile?.path ?? selectedNormalizerFilePath
                             }
@@ -1922,6 +1930,9 @@ export function RawTableEditorWorkbench({
           onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
           onPublish={(version) => void publishSpecificNormalizerVersion(version)}
           publishingVersionId={customizeVersionActionId}
+          sourceOf={(version) =>
+            t(version.source === 'manual' ? 'scripts.source.manual' : 'scripts.source.rule')
+          }
           t={t}
           versions={normalizerVersions}
         />

@@ -1,4 +1,8 @@
-/** raw-table normalizer artifact/version row access + project paths. */
+/**
+ * raw-table 自定义 normalizer artifacts: version metadata rows in the DB, code in one git
+ * repo per artifact (`<normalizersRoot>/<artifactId>`, shared version layer with script
+ * packages). Version rows reference their commit; `files` / `tree` are read from git.
+ */
 import type {
   DataRawTableNormalizerArtifact,
   DataRawTableNormalizerArtifactVersion,
@@ -12,23 +16,41 @@ import {
 } from '../data-store-records';
 import { sanitizeNormalizerPathSegment } from '../input-source';
 import { toNumber } from '../../operators';
-import { dirname, join } from 'path';
+import { VersionRepo } from '../../../versioning/git-repo';
+import { join } from 'path';
 
 export class NormalizerRepository {
   constructor(private readonly ctx: DataStoreContext) {}
   getRawTableNormalizerStorageRoot(): string {
-    return join(dirname(this.ctx.dbPath), 'raw-table-normalizers');
+    return this.ctx.normalizersRoot;
   }
-  getRawTableNormalizerProjectDir(artifactId: string, versionId: string): string {
-    return join(
-      this.getRawTableNormalizerStorageRoot(),
-      'projects',
-      sanitizeNormalizerPathSegment(artifactId),
-      sanitizeNormalizerPathSegment(versionId)
+  /** The artifact's git repo folder (its working tree holds the newest version). */
+  getRawTableNormalizerRepoDir(artifactId: string): string {
+    return join(this.ctx.normalizersRoot, sanitizeNormalizerPathSegment(artifactId));
+  }
+  repo(artifactId: string): VersionRepo {
+    return new VersionRepo(this.getRawTableNormalizerRepoDir(artifactId));
+  }
+  /** Where a version's tree is checked out to run; its dependency env lives there too. */
+  getRawTableNormalizerProjectDir(artifactId: string, version: number): string {
+    return join(this.getRawTableNormalizerRepoDir(artifactId), '.sophron', 'run', `v${version}`);
+  }
+  getRawTableNormalizerRunRoot(artifactId: string): string {
+    return join(this.getRawTableNormalizerRepoDir(artifactId), '.sophron', 'runs');
+  }
+  /** Fill a version's files and blob index from its commit. */
+  async hydrate(
+    version: DataRawTableNormalizerArtifactVersion
+  ): Promise<DataRawTableNormalizerArtifactVersion> {
+    if (!version.commit) return version;
+    const repo = this.repo(version.artifactId);
+    if (!repo.exists) return version;
+    const tree = Object.fromEntries(await repo.treeIndex(version.commit));
+    const files = (await repo.readFiles(version.commit)).filter(
+      (file) => file.path !== '.gitignore'
     );
-  }
-  getRawTableNormalizerRunRoot(): string {
-    return join(this.getRawTableNormalizerStorageRoot(), 'runs');
+    delete tree['.gitignore'];
+    return { ...version, files, tree };
   }
   async getRawTableNormalizerArtifact(id: string): Promise<DataRawTableNormalizerArtifact | null> {
     const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactRow>(
@@ -56,6 +78,17 @@ export class NormalizerRepository {
         `,
       { artifactId }
     );
+    return Promise.all(
+      rows.map((row) => this.hydrate(mapRawTableNormalizerArtifactVersionRow(row)))
+    );
+  }
+  /** Metadata only (no git reads). */
+  async listVersionRecords(artifactId: string): Promise<DataRawTableNormalizerArtifactVersion[]> {
+    const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactVersionRow>(
+      `SELECT * FROM data_raw_table_normalizer_artifact_versions
+        WHERE artifact_id = $artifactId ORDER BY version ASC`,
+      { artifactId }
+    );
     return rows.map(mapRawTableNormalizerArtifactVersionRow);
   }
   async getRawTableNormalizerArtifactVersion(
@@ -65,7 +98,7 @@ export class NormalizerRepository {
       'SELECT * FROM data_raw_table_normalizer_artifact_versions WHERE id = $id LIMIT 1',
       { id }
     );
-    return rows[0] ? mapRawTableNormalizerArtifactVersionRow(rows[0]) : null;
+    return rows[0] ? this.hydrate(mapRawTableNormalizerArtifactVersionRow(rows[0])) : null;
   }
   async requireRawTableNormalizerArtifactVersion(
     id: string
@@ -175,7 +208,8 @@ export class NormalizerRepository {
     id: string;
     artifactId: string;
     version: number;
-    filesJson: string;
+    commit: string;
+    source: 'rule' | 'manual';
     fileTreeHash: string;
     rulePrompt: string;
     sourceSummaryHash: string | null;
@@ -190,12 +224,12 @@ export class NormalizerRepository {
     await this.ctx.metaRunSql(
       `
           INSERT INTO data_raw_table_normalizer_artifact_versions (
-            id, artifact_id, version, status, files_json, file_tree_hash, rule_prompt,
+            id, artifact_id, version, status, commit_oid, source, file_tree_hash, rule_prompt,
             source_summary_hash, entrypoint_json, dependency_prepare_json, runtime_json,
             dependencies_json, dependency_lock_hash, created_at, updated_at, published_at
           )
           VALUES (
-            $id, $artifactId, $version, 'draft', $filesJson, $fileTreeHash, $rulePrompt,
+            $id, $artifactId, $version, 'draft', $commit, $source, $fileTreeHash, $rulePrompt,
             $sourceSummaryHash, $entrypointJson, $dependencyPrepareJson, $runtimeJson,
             $dependenciesJson, $dependencyLockHash, $createdAt, $updatedAt, NULL
           )
@@ -204,7 +238,8 @@ export class NormalizerRepository {
         id: row.id,
         artifactId: row.artifactId,
         version: row.version,
-        filesJson: row.filesJson,
+        commit: row.commit,
+        source: row.source,
         fileTreeHash: row.fileTreeHash,
         rulePrompt: row.rulePrompt,
         sourceSummaryHash: row.sourceSummaryHash,
@@ -218,21 +253,32 @@ export class NormalizerRepository {
       }
     );
   }
-  async archiveOtherPublishedVersions(
-    artifactId: string,
-    versionId: string,
-    updatedAt: number
-  ): Promise<void> {
+  /** Overwrite a draft in place (a newer save of the same 来源). */
+  async updateDraftVersion(row: {
+    id: string;
+    commit: string;
+    fileTreeHash: string;
+    rulePrompt: string;
+    updatedAt: number;
+  }): Promise<void> {
+    await this.ctx.metaRunSql(
+      `UPDATE data_raw_table_normalizer_artifact_versions
+          SET commit_oid = $commit, file_tree_hash = $fileTreeHash, rule_prompt = $rulePrompt,
+              updated_at = $updatedAt
+        WHERE id = $id`,
+      row
+    );
+  }
+  async archiveOtherPublishedVersions(artifactId: string, versionId: string): Promise<void> {
     await this.ctx.metaRunSql(
       `
           UPDATE data_raw_table_normalizer_artifact_versions
-          SET status = 'archived',
-              updated_at = $updatedAt
+          SET status = 'archived'
           WHERE artifact_id = $artifactId
             AND status = 'published'
             AND id <> $versionId
         `,
-      { artifactId, versionId, updatedAt }
+      { artifactId, versionId }
     );
   }
   async markVersionPublished(versionId: string, at: number): Promise<void> {

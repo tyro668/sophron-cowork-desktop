@@ -238,7 +238,6 @@ export class RawTablesCommandService {
       runtime: published.version.runtime,
       entrypoint: published.version.entrypoint,
       dependencyPrepare: published.version.dependencyPrepare,
-      projectFiles: published.version.files,
       sourceSummaryHash: published.version.sourceSummaryHash ?? undefined,
     });
     const result = await this.createRawTable({

@@ -5,9 +5,10 @@ import path from 'path';
 import git from 'isomorphic-git';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  PACKAGE_GIT_AUTHOR,
-  PackageRepo,
-} from '../../src/main/automation/script-packages/git-repo';
+  VERSION_GIT_AUTHOR,
+  VersionRepo as PackageRepo,
+  findReusableDraft,
+} from '../../src/main/versioning/git-repo';
 
 let dir: string;
 let repo: PackageRepo;
@@ -46,10 +47,10 @@ describe('PackageRepo (isomorphic-git)', () => {
     write('run.log', 'log');
     const oid = await repo.commitAll('v1');
     expect(oid).toMatch(/^[0-9a-f]{40}$/);
-    const files = (await repo.readFiles(oid!)).map((file) => file.path);
+    const files = (await repo.readFiles(oid!)).map((file: { path: string }) => file.path);
     expect(files).toEqual(['.gitignore', 'main.py']);
     const [entry] = await git.log({ fs, dir, depth: 1 });
-    expect(entry.commit.author).toMatchObject(PACKAGE_GIT_AUTHOR);
+    expect(entry.commit.author).toMatchObject(VERSION_GIT_AUTHOR);
     expect(await repo.changedPaths()).toEqual([]);
     expect(await repo.commitAll('nothing')).toBeNull();
   });
@@ -109,5 +110,52 @@ describe('PackageRepo (isomorphic-git)', () => {
     // The working tree is untouched by a run checkout.
     expect(readFileSync(path.join(dir, 'main.py'), 'utf8')).toBe('v2\n');
     expect(await repo.changedPaths()).toEqual([]);
+  });
+
+  it('writeFiles replaces the working tree but keeps runtime folders', async () => {
+    const repo = new PackageRepo(dir);
+    await repo.ensure();
+    write('old.py', 'x');
+    mkdirSync(path.join(dir, '.normalizer-env', 'bin'), { recursive: true });
+    await repo.writeFiles([
+      { path: 'src/main.py', content: 'print(1)\n' },
+      { path: 'requirements.txt', content: '' },
+    ]);
+    expect(existsSync(path.join(dir, 'old.py'))).toBe(false);
+    expect(existsSync(path.join(dir, '.normalizer-env', 'bin'))).toBe(true);
+    expect(existsSync(path.join(dir, '.gitignore'))).toBe(true);
+    const oid = (await repo.commitAll('v1'))!;
+    expect((await repo.readFiles(oid)).map((file: { path: string }) => file.path)).toEqual([
+      '.gitignore',
+      'requirements.txt',
+      'src/main.py',
+    ]);
+    await expect(repo.writeFiles([{ path: '../escape.py', content: '' }])).rejects.toThrow();
+    await repo.publishTag(1, oid);
+    expect((await repo.listTags()).sort()).toEqual(['published', 'v1']);
+  });
+
+  it('findReusableDraft picks the newest unpublished draft of the same source', () => {
+    const rec = (version: number, status: 'draft' | 'published' | 'archived', source: string) => ({
+      version,
+      status,
+      source,
+      commit: String(version),
+    });
+    expect(
+      findReusableDraft([rec(1, 'published', 'chat'), rec(2, 'draft', 'manual')], 'manual')
+    ).toMatchObject({ version: 2 });
+    expect(
+      findReusableDraft([rec(1, 'published', 'chat'), rec(2, 'draft', 'manual')], 'ai_repair')
+    ).toBeUndefined();
+    expect(
+      findReusableDraft([rec(1, 'published', 'chat'), rec(2, 'draft', 'rule')], 'rule', {
+        alwaysNew: true,
+      })
+    ).toBeUndefined();
+    // A draft older than the published version is never reused.
+    expect(
+      findReusableDraft([rec(1, 'draft', 'manual'), rec(2, 'published', 'chat')], 'manual')
+    ).toBeUndefined();
   });
 });

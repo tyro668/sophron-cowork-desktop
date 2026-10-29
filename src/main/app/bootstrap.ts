@@ -142,6 +142,7 @@ export async function bootstrap(): Promise<void> {
     join(app.getPath('userData'), 'data', 'workspace.duckdb'),
     {
       metadataDb: db,
+      normalizersRoot: join(app.getPath('userData'), 'normalizers'),
     }
   );
   appContext.dataPipelineStore = initializedDataPipelineStore;
