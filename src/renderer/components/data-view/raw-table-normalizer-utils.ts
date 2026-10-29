@@ -272,15 +272,16 @@ export function getNormalizerVersionDiff(
   if (!current || version.id === current.id) {
     return null;
   }
-  const currentFiles = new Map(current.files.map((file) => [file.path, file.content]));
-  const versionFiles = new Map(version.files.map((file) => [file.path, file.content]));
+  // Git blob oids from the normalizer repo (equal oid = equal content).
+  const currentFiles = new Map(Object.entries(current.tree ?? {}));
+  const versionFiles = new Map(Object.entries(version.tree ?? {}));
   let added = 0;
   let removed = 0;
   let changed = 0;
-  for (const [path, content] of versionFiles) {
+  for (const [path, oid] of versionFiles) {
     if (!currentFiles.has(path)) {
       added += 1;
-    } else if (currentFiles.get(path) !== content) {
+    } else if (currentFiles.get(path) !== oid) {
       changed += 1;
     }
   }
@@ -295,6 +296,22 @@ export function getNormalizerVersionDiff(
     removed,
     ruleSame: version.rulePrompt === current.rulePrompt,
   };
+}
+
+/** 已改 / 新增 markers for a version's files, compared with the published version in git. */
+export function getNormalizerChangeMarkers(
+  version: DataRawTableNormalizerArtifactVersion | undefined,
+  published: DataRawTableNormalizerArtifactVersion | undefined,
+  labels: { modified: string; added: string }
+): Record<string, string> {
+  if (!version || !published || version.id === published.id) return {};
+  const markers: Record<string, string> = {};
+  for (const [path, oid] of Object.entries(version.tree ?? {})) {
+    const base = published.tree?.[path];
+    if (base === undefined) markers[path] = labels.added;
+    else if (base !== oid) markers[path] = labels.modified;
+  }
+  return markers;
 }
 
 export function inferNormalizerLanguageFromRulePrompt(rulePrompt: string): DataNormalizerLanguage {

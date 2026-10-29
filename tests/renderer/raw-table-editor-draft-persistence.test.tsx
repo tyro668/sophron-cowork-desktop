@@ -30,6 +30,9 @@ const DRAFT_VERSION: DataRawTableNormalizerArtifactVersion = {
   artifactId: 'art_1',
   version: 1,
   status: 'draft',
+  source: 'rule',
+  commit: 'c1',
+  tree: { 'main.py': 'b1' },
   files: [{ path: 'main.py', content: 'print(1)\n' }],
   fileTreeHash: 'hash_1',
   rulePrompt: 'keep paid rows',
@@ -49,7 +52,6 @@ const CUSTOMIZE_DRAFT_PROCESSING: DataRawTableConfig['dataProcessing'] = {
   fileTreeHash: 'hash_1',
   runtime: { language: 'python', environment: 'system' },
   entrypoint: { command: ['python', 'main.py'] },
-  projectFiles: [{ path: 'main.py', content: 'print(1)\n' }],
 };
 
 function makeRawTable(inputConfig: DataRawTableConfig): DataRawTable {

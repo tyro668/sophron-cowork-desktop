@@ -24,6 +24,8 @@ import {
 export interface DataPipelineStoreOptions {
   now?: () => number;
   metadataDb?: DatabaseInstance;
+  /** Root of the raw-table 自定义 normalizer git repos (default: `<db dir>/normalizers`). */
+  normalizersRoot?: string;
 }
 
 export const RESULT_TABLE_CONFIG_KIND = 'result_table';
@@ -113,7 +115,8 @@ export interface DataRawTableNormalizerArtifactVersionRow {
   artifact_id: string;
   version: number | string;
   status: string;
-  files_json: string;
+  source: string | null;
+  commit_oid: string | null;
   file_tree_hash: string;
   rule_prompt: string;
   source_summary_hash: string | null;
@@ -288,6 +291,7 @@ export function isDuckDbTransactionStateError(message: string): boolean {
   );
 }
 
+/** Version metadata from the DB; `files` / `tree` are filled from git by the repository. */
 export function mapRawTableNormalizerArtifactVersionRow(
   row: DataRawTableNormalizerArtifactVersionRow
 ): DataRawTableNormalizerArtifactVersion {
@@ -296,7 +300,10 @@ export function mapRawTableNormalizerArtifactVersionRow(
     artifactId: String(row.artifact_id),
     version: toNumber(row.version),
     status: normalizeNormalizerVersionStatus(row.status),
-    files: parseJsonField<DataRawTableNormalizerArtifactVersion['files']>(row.files_json, []),
+    source: row.source === 'manual' ? 'manual' : 'rule',
+    commit: row.commit_oid ? String(row.commit_oid) : '',
+    files: [],
+    tree: {},
     fileTreeHash: String(row.file_tree_hash),
     rulePrompt: String(row.rule_prompt),
     sourceSummaryHash: row.source_summary_hash ? String(row.source_summary_hash) : null,

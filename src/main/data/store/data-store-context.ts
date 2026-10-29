@@ -21,10 +21,12 @@ import { DuckDBInstance, DuckDBConnection } from '@duckdb/node-api';
 import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
 import * as fs from 'fs';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 
 export class DataStoreContext {
   readonly dbPath: string;
+  /** Root of the 自定义 normalizer git repos. */
+  readonly normalizersRoot: string;
   readonly now: () => number;
   readonly metadataDb: Database.Database | null;
   instance: DuckDBInstance | null = null;
@@ -41,6 +43,7 @@ export class DataStoreContext {
 
   constructor(dbPath: string, options: DataPipelineStoreOptions = {}) {
     this.dbPath = dbPath;
+    this.normalizersRoot = options.normalizersRoot ?? join(dirname(dbPath), 'normalizers');
     this.now = options.now ?? (() => Date.now());
     if (options.metadataDb) {
       this.metadataDb = options.metadataDb.raw;

@@ -444,7 +444,7 @@ describe('metadata migrations', () => {
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-      27, 28, 29, 30, 31,
+      27, 28, 29, 30, 31, 32,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -478,6 +478,7 @@ describe('metadata migrations', () => {
       'raw_table_sources',
       'cloud_raw_sources',
       'source_file_relative_paths',
+      'normalizer_code_to_git',
     ]);
     // v29: one source per legacy input table.
     expect(tableNames(raw)).toContain('data_raw_sources');
@@ -548,6 +549,108 @@ describe('metadata migrations', () => {
       )
       .get() as { c: number };
     expect(edgeCount.c).toBe(0);
+  });
+
+  it('v32 moves normalizer code from the DB into one git repo per artifact', async () => {
+    const tempRoot = makeTempRoot();
+    const raw = new Database(path.join(tempRoot, 'meta.sqlite'));
+    rawDbs.push(raw);
+    const first = openStore(path.join(tempRoot, 'workspace.duckdb'), raw);
+    await first.getDashboard({});
+    first.close();
+    stores.pop();
+    // Back to the pre-v32 shape: code in files_json, a code copy in the raw-table config.
+    raw.exec(`
+      DROP TABLE data_raw_table_normalizer_artifact_versions;
+      CREATE TABLE data_raw_table_normalizer_artifact_versions (
+        id VARCHAR PRIMARY KEY, artifact_id VARCHAR NOT NULL, version INTEGER NOT NULL,
+        status VARCHAR NOT NULL, files_json VARCHAR NOT NULL, file_tree_hash VARCHAR NOT NULL,
+        rule_prompt VARCHAR NOT NULL, source_summary_hash VARCHAR, entrypoint_json VARCHAR NOT NULL,
+        dependency_prepare_json VARCHAR, runtime_json VARCHAR NOT NULL, dependencies_json VARCHAR,
+        dependency_lock_hash VARCHAR, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL,
+        published_at BIGINT
+      );
+      DELETE FROM ${METADATA_MIGRATION_LEDGER} WHERE version = 32;
+    `);
+    raw
+      .prepare(
+        `INSERT INTO data_raw_table_normalizer_artifacts
+           (id, name, source_kind, primary_language, active_version_id, created_at, updated_at)
+         VALUES ('art-1', '订单清洗', 'excel', 'python', 'ver-2', 1, 1)`
+      )
+      .run();
+    const insertVersion = raw.prepare(
+      `INSERT INTO data_raw_table_normalizer_artifact_versions
+         (id, artifact_id, version, status, files_json, file_tree_hash, rule_prompt,
+          entrypoint_json, runtime_json, created_at, updated_at)
+       VALUES (?, 'art-1', ?, ?, ?, 'h', ?, '{"command":["python","main.py"]}',
+               '{"language":"python","environment":"venv"}', 1, 1)`
+    );
+    const files = (n: number) =>
+      JSON.stringify([
+        { path: 'main.py', content: `print(${n})\n` },
+        { path: 'requirements.lock', content: '' },
+      ]);
+    insertVersion.run('ver-1', 1, 'archived', files(1), '规则一');
+    insertVersion.run('ver-2', 2, 'published', files(2), '规则二');
+    insertVersion.run('ver-3', 3, 'draft', files(3), '规则三');
+    raw
+      .prepare(
+        `INSERT INTO data_raw_tables (id, name, source_path, table_name, row_count, column_count,
+           created_at, updated_at, config_json)
+         VALUES ('rt-custom', '订单', '/tmp/a.xlsx', 'in_orders', 0, 0, 1, 1, ?)`
+      )
+      .run(
+        JSON.stringify({
+          dataProcessing: {
+            strategy: 'customize',
+            rulePrompt: 'x',
+            artifactId: 'art-1',
+            artifactVersionId: 'ver-2',
+            projectFiles: [{ path: 'main.py', content: 'print(2)\n' }],
+          },
+        })
+      );
+    const legacyDir = path.join(tempRoot, 'raw-table-normalizers', 'projects', 'art-1');
+    fs.mkdirSync(legacyDir, { recursive: true });
+
+    const store = openStore(path.join(tempRoot, 'workspace.duckdb'), raw);
+    await store.getDashboard({});
+    expect(ledgerRows(raw).at(-1)).toEqual({ version: 32, name: 'normalizer_code_to_git' });
+    expect(columnNames(raw, 'data_raw_table_normalizer_artifact_versions')).not.toContain(
+      'files_json'
+    );
+    expect(
+      JSON.parse(
+        (
+          raw.prepare("SELECT config_json FROM data_raw_tables WHERE id = 'rt-custom'").get() as {
+            config_json: string;
+          }
+        ).config_json
+      ).dataProcessing
+    ).toEqual({
+      strategy: 'customize',
+      rulePrompt: 'x',
+      artifactId: 'art-1',
+      artifactVersionId: 'ver-2',
+    });
+    expect(fs.existsSync(path.join(tempRoot, 'raw-table-normalizers'))).toBe(false);
+
+    const repoDir = path.join(tempRoot, 'normalizers', 'art-1');
+    expect(fs.existsSync(path.join(repoDir, '.git'))).toBe(true);
+    const versions = await store.listRawTableNormalizerArtifactVersions('art-1');
+    expect(versions.map((v) => [v.version, v.status, v.source])).toEqual([
+      [3, 'draft', 'rule'],
+      [2, 'published', 'rule'],
+      [1, 'archived', 'rule'],
+    ]);
+    expect(versions[1].files.find((file) => file.path === 'main.py')?.content).toBe('print(2)\n');
+    expect(versions[0].tree['main.py']).not.toBe(versions[1].tree['main.py']);
+    const { VersionRepo } = await import('../src/main/versioning/git-repo');
+    const repo = new VersionRepo(repoDir);
+    expect((await repo.listTags()).sort()).toEqual(['published', 'v1', 'v2']);
+    expect(await repo.resolveTag('published')).toBe(versions[1].commit);
+    expect(await repo.head()).toBe(versions[0].commit);
   });
 
   it('converts or preserves dsl-only node configs from a pre-v15 database', async () => {

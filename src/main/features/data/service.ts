@@ -16,6 +16,7 @@ export function requireDataPipelineStore(): DataPipelineStore {
       join(app.getPath('userData'), 'data', 'workspace.duckdb'),
       {
         metadataDb: initDatabase(),
+        normalizersRoot: join(app.getPath('userData'), 'normalizers'),
       }
     );
   }

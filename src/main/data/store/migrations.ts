@@ -36,6 +36,9 @@ import {
 import { isLegacyDefaultWorkflow, type DataWorkflowNodeRow } from './workflow-model';
 import type { DataStoreContext } from './data-store-context';
 import { tokenizeExpression } from '../../../shared/expression-tokenizer';
+import { PUBLISHED_TAG, VersionRepo, versionTag } from '../../versioning/git-repo';
+import { sanitizeNormalizerPathSegment } from './input-source';
+import { dirname, join } from 'path';
 
 export interface MetadataMigration {
   readonly version: number;
@@ -1050,7 +1053,158 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'source_file_relative_paths',
     up: (ctx) => migrateSourceFileRelativePaths(ctx),
   },
+  {
+    version: 32,
+    name: 'normalizer_code_to_git',
+    up: (ctx) => migrateNormalizerCodeToGit(ctx),
+  },
 ];
+
+/**
+ * v32: raw-table 自定义 normalizer code moves out of the DB into one git repo per artifact
+ * (`ctx.normalizersRoot/<artifactId>`, shared version layer with script packages). Every
+ * version becomes a commit in version order, once-published versions get a `vN` tag and
+ * the published one the `published` tag. `files_json` is dropped, as are the code copies
+ * raw tables kept in `config.dataProcessing.projectFiles`, and the old per-version folders.
+ */
+async function migrateNormalizerCodeToGit(ctx: DataStoreContext): Promise<void> {
+  await ctx.ensureMetadataColumn(
+    'data_raw_table_normalizer_artifact_versions',
+    'commit_oid',
+    'VARCHAR'
+  );
+  await ctx.ensureMetadataColumn(
+    'data_raw_table_normalizer_artifact_versions',
+    'source',
+    'VARCHAR'
+  );
+  const hasCodeColumn = await ctx
+    .metaQueryRows('SELECT files_json FROM data_raw_table_normalizer_artifact_versions WHERE 1 = 0')
+    .then(
+      () => true,
+      () => false
+    );
+  if (hasCodeColumn) await moveNormalizerCodeToGit(ctx);
+  await stripRawTableProjectFiles(ctx);
+  fs.rmSync(join(dirname(ctx.dbPath), 'raw-table-normalizers'), { recursive: true, force: true });
+}
+
+async function moveNormalizerCodeToGit(ctx: DataStoreContext): Promise<void> {
+  const rows = await ctx.metaQueryRows<{
+    id: string;
+    artifact_id: string;
+    version: number | string;
+    status: string;
+    files_json: string | null;
+    rule_prompt: string | null;
+  }>(
+    `SELECT id, artifact_id, version, status, files_json, rule_prompt
+       FROM data_raw_table_normalizer_artifact_versions
+      ORDER BY artifact_id, version`
+  );
+  for (const row of rows) {
+    let files: Array<{ path: string; content: string }> = [];
+    try {
+      const parsed = JSON.parse(row.files_json || '[]') as unknown;
+      if (Array.isArray(parsed)) {
+        files = parsed.filter(
+          (file): file is { path: string; content: string } =>
+            Boolean(file) &&
+            typeof (file as { path?: unknown }).path === 'string' &&
+            typeof (file as { content?: unknown }).content === 'string'
+        );
+      }
+    } catch {
+      files = [];
+    }
+    const version = Number(row.version);
+    const repo = new VersionRepo(
+      join(ctx.normalizersRoot, sanitizeNormalizerPathSegment(row.artifact_id))
+    );
+    await repo.ensure();
+    await repo.writeFiles(files);
+    const commit =
+      (await repo.commitAll(`v${version} 规则生成\n\n${(row.rule_prompt ?? '').slice(0, 2000)}`)) ??
+      (await repo.head());
+    if (!commit) throw new Error(`Normalizer version ${row.id} could not be committed`);
+    if (row.status === 'published' || row.status === 'archived') {
+      await repo.tag(versionTag(version), commit);
+    }
+    if (row.status === 'published') await repo.tag(PUBLISHED_TAG, commit);
+    await ctx.metaRunSql(
+      `UPDATE data_raw_table_normalizer_artifact_versions
+          SET commit_oid = $commit, source = 'rule'
+        WHERE id = $id`,
+      { commit, id: row.id }
+    );
+  }
+  // Rebuild the table without files_json (DuckDB cannot drop a column that precedes an
+  // indexed one, so the same rebuild runs on both metadata backends).
+  const columns =
+    'id, artifact_id, version, status, commit_oid, source, file_tree_hash, rule_prompt, ' +
+    'source_summary_hash, entrypoint_json, dependency_prepare_json, runtime_json, ' +
+    'dependencies_json, dependency_lock_hash, created_at, updated_at, published_at';
+  await ctx.metaRunSql(`
+    CREATE TABLE data_raw_table_normalizer_versions_v32 (
+      id VARCHAR PRIMARY KEY,
+      artifact_id VARCHAR NOT NULL,
+      version INTEGER NOT NULL,
+      status VARCHAR NOT NULL,
+      commit_oid VARCHAR NOT NULL,
+      source VARCHAR NOT NULL,
+      file_tree_hash VARCHAR NOT NULL,
+      rule_prompt VARCHAR NOT NULL,
+      source_summary_hash VARCHAR,
+      entrypoint_json VARCHAR NOT NULL,
+      dependency_prepare_json VARCHAR,
+      runtime_json VARCHAR NOT NULL,
+      dependencies_json VARCHAR,
+      dependency_lock_hash VARCHAR,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      published_at BIGINT
+    )
+  `);
+  await ctx.metaRunSql(
+    `INSERT INTO data_raw_table_normalizer_versions_v32 (${columns})
+     SELECT ${columns} FROM data_raw_table_normalizer_artifact_versions`
+  );
+  await ctx.metaRunSql('DROP INDEX IF EXISTS idx_raw_table_normalizer_versions_artifact');
+  await ctx.metaRunSql('DROP INDEX IF EXISTS idx_raw_table_normalizer_versions_status');
+  await ctx.metaRunSql('DROP TABLE data_raw_table_normalizer_artifact_versions');
+  await ctx.metaRunSql(
+    'ALTER TABLE data_raw_table_normalizer_versions_v32 RENAME TO data_raw_table_normalizer_artifact_versions'
+  );
+  await ctx.metaRunSql(
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_versions_artifact ON data_raw_table_normalizer_artifact_versions(artifact_id, version)'
+  );
+  await ctx.metaRunSql(
+    'CREATE INDEX IF NOT EXISTS idx_raw_table_normalizer_versions_status ON data_raw_table_normalizer_artifact_versions(status, updated_at)'
+  );
+}
+
+async function stripRawTableProjectFiles(ctx: DataStoreContext): Promise<void> {
+  for (const table of ['data_raw_tables', 'data_raw_sources']) {
+    const configs = await ctx.metaQueryRows<{ id: string; config_json: string | null }>(
+      `SELECT id, config_json FROM ${table} WHERE config_json LIKE '%projectFiles%'`
+    );
+    for (const row of configs) {
+      let config: Record<string, unknown>;
+      try {
+        config = JSON.parse(row.config_json || '{}') as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const processing = config.dataProcessing as Record<string, unknown> | undefined;
+      if (!processing || !('projectFiles' in processing)) continue;
+      delete processing.projectFiles;
+      await ctx.metaRunSql(`UPDATE ${table} SET config_json = $config WHERE id = $id`, {
+        config: JSON.stringify(config),
+        id: row.id,
+      });
+    }
+  }
+}
 
 /** Raw-table 1:N model: every input table belongs to a source (file / folder / cloud table).
  *  Existing tables each get their own single-member source; nothing else changes. */

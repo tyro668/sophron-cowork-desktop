@@ -860,19 +860,13 @@ describe('DataCommandService', () => {
     expect(draft.version.status).toBe('draft');
     expect(draft.summary.fileCount).toBe(1);
     expect(draft.version.files.some((file) => file.path === 'src/cli.js')).toBe(true);
-    expect(
-      fs.existsSync(
-        path.join(
-          tempRoot,
-          'raw-table-normalizers',
-          'projects',
-          draft.artifact.id,
-          draft.version.id,
-          'src',
-          'cli.js'
-        )
-      )
-    ).toBe(true);
+    // Code lives in the artifact's git repo, not in the DB.
+    const repoDir = path.join(tempRoot, 'normalizers', draft.artifact.id);
+    expect(fs.readFileSync(path.join(repoDir, 'src', 'cli.js'), 'utf8')).toBe(
+      draft.version.files.find((file) => file.path === 'src/cli.js')?.content
+    );
+    expect(draft.version.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(draft.version.tree['src/cli.js']).toMatch(/^[0-9a-f]{40}$/);
 
     const preview = await service.previewRawTableNormalizerVersion({
       versionId: draft.version.id,
@@ -890,6 +884,10 @@ describe('DataCommandService', () => {
     });
     expect(published.version.status).toBe('published');
     expect(published.artifact.activeVersionId).toBe(draft.version.id);
+    const { VersionRepo } = await import('../src/main/versioning/git-repo');
+    const repo = new VersionRepo(repoDir);
+    expect(await repo.resolveTag('published')).toBe(draft.version.commit);
+    expect(await repo.resolveTag('v1')).toBe(draft.version.commit);
 
     const versions = await service.listRawTableNormalizerVersions({
       artifactId: draft.artifact.id,
@@ -909,14 +907,16 @@ describe('DataCommandService', () => {
       primaryLanguage: 'node',
     });
     expect(secondDraft.version.status).toBe('draft');
-    const secondDraftProjectDir = path.join(
-      tempRoot,
-      'raw-table-normalizers',
-      'projects',
-      secondDraft.artifact.id,
-      secondDraft.version.id
-    );
-    expect(fs.existsSync(secondDraftProjectDir)).toBe(true);
+    await service.previewRawTableNormalizerVersion({
+      versionId: secondDraft.version.id,
+      sourcePath: csvPath,
+      sourceKind: 'csv',
+      prepareDependencies: false,
+      limit: 5,
+    });
+    // The version runs from a checkout of its commit inside the repo's .sophron/run.
+    const secondDraftProjectDir = path.join(repoDir, '.sophron', 'run', 'v2');
+    expect(fs.existsSync(path.join(secondDraftProjectDir, 'src', 'cli.js'))).toBe(true);
 
     await expect(
       service.deleteRawTableNormalizerVersion({
@@ -936,6 +936,95 @@ describe('DataCommandService', () => {
     });
     expect(versionsAfterDelete.versions).toHaveLength(1);
     expect(versionsAfterDelete.versions[0]?.id).toBe(published.version.id);
+  });
+
+  it('custom input tables follow the published tag: edit to v2, roll back to v1', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n2,Bob\n', 'utf8');
+    const created = await service.createRawTableWithProcessingStrategy({
+      name: 'customers custom',
+      sourceKind: 'csv',
+      filePath: csvPath,
+      previewRows: 5,
+      processingStrategy: {
+        strategy: 'customize',
+        rulePrompt: 'Normalize the customer Csv.',
+        primaryLanguage: 'node',
+      },
+    });
+    const v1 = created.normalizer!.publishedVersion;
+    const rawTableId = created.rawTable.id;
+    const names = async () =>
+      (await store.previewRawTable({ id: rawTableId, limit: 5, offset: 0 })).rows.map(
+        (row) => row.name
+      );
+    expect(await names()).toEqual(['Alice', 'Bob']);
+
+    // v2: an edited transform (upper-cases values), saved as a new commit and published.
+    const v2 = (
+      await store.saveRawTableNormalizerDraft({
+        artifactId: v1.artifactId,
+        name: 'customers custom',
+        sourceKind: 'csv',
+        primaryLanguage: 'node',
+        rulePrompt: 'Upper-case every value.',
+        files: v1.files.map((file) =>
+          file.path === 'src/transform.js'
+            ? {
+                ...file,
+                content: file.content.replace(
+                  'String(row[index] ?? "").trim()',
+                  'String(row[index] ?? "").trim().toUpperCase()'
+                ),
+              }
+            : file
+        ),
+        fileTreeHash: 'v2',
+        entrypoint: v1.entrypoint,
+        dependencyPrepare: v1.dependencyPrepare,
+        runtime: v1.runtime,
+        dependencies: v1.dependencies,
+      })
+    ).version;
+    expect(v2.version).toBe(2);
+    expect(v2.tree['src/transform.js']).not.toBe(v1.tree['src/transform.js']);
+    expect(v2.tree['src/cli.js']).toBe(v1.tree['src/cli.js']);
+    await service.publishRawTableNormalizerVersion({ versionId: v2.id });
+    const config = created.rawTable.inputConfig;
+    await service.updateRawTable({ id: rawTableId, config });
+    expect(await names()).toEqual(['ALICE', 'BOB']);
+
+    // Rollback: publish v1 again — the tag moves and the re-imported table follows it,
+    // even though the table config still names the version it was created with.
+    await service.publishRawTableNormalizerVersion({ versionId: v1.id });
+    const repo = new (await import('../src/main/versioning/git-repo')).VersionRepo(
+      path.join(tempRoot, 'normalizers', v1.artifactId)
+    );
+    expect(await repo.resolveTag('published')).toBe(v1.commit);
+    expect((await repo.listTags()).sort()).toEqual(['published', 'v1', 'v2']);
+    await service.updateRawTable({ id: rawTableId, config });
+    expect(await names()).toEqual(['Alice', 'Bob']);
+    const versions = await service.listRawTableNormalizerVersions({ artifactId: v1.artifactId });
+    expect(versions.versions.map((v) => [v.version, v.status])).toEqual([
+      [2, 'archived'],
+      [1, 'published'],
+    ]);
+
+    // Edits made directly in the repo folder become a 手动修改 draft (overwritten on re-edit).
+    const transformPath = path.join(tempRoot, 'normalizers', v1.artifactId, 'src', 'transform.js');
+    fs.appendFileSync(transformPath, '\n// edit 1\n');
+    const afterEdit = await service.listRawTableNormalizerVersions({ artifactId: v1.artifactId });
+    expect(afterEdit.versions[0]).toMatchObject({ version: 3, status: 'draft', source: 'manual' });
+    fs.appendFileSync(transformPath, '// edit 2\n');
+    const afterSecondEdit = await service.listRawTableNormalizerVersions({
+      artifactId: v1.artifactId,
+    });
+    expect(afterSecondEdit.versions.map((v) => v.version)).toEqual([3, 2, 1]);
+    expect(
+      afterSecondEdit.versions[0].files.find((f) => f.path === 'src/transform.js')?.content
+    ).toContain('// edit 2');
+    expect(afterSecondEdit.versions[0].commit).not.toBe(afterEdit.versions[0].commit);
   });
 
   it('creates an input table through the custom processing strategy DSL', async () => {

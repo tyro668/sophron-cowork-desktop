@@ -111,6 +111,9 @@ export type DataNormalizerLanguage = 'python' | 'node';
 
 export type DataNormalizerArtifactVersionStatus = 'draft' | 'published' | 'archived';
 
+/** 来源 of a normalizer version: generated from the rule, or edited in the repo folder. */
+export type DataNormalizerVersionSource = 'rule' | 'manual';
+
 export interface DataNormalizerDependencySpec {
   name: string;
   version?: string;
@@ -134,7 +137,12 @@ export interface DataRawTableNormalizerArtifactVersion {
   artifactId: string;
   version: number;
   status: DataNormalizerArtifactVersionStatus;
+  source: DataNormalizerVersionSource;
+  /** Commit in the normalizer's git repo; `files` and `tree` are read from it. */
+  commit: string;
   files: DataNormalizerProjectFile[];
+  /** Git blob oid per file path, for diffs and changed markers between versions. */
+  tree: Record<string, string>;
   fileTreeHash: string;
   rulePrompt: string;
   sourceSummaryHash?: string | null;
@@ -307,7 +315,6 @@ export interface DataRawTableCustomizeProcessingConfig {
   runtime?: DataNormalizerRuntime;
   entrypoint?: DataNormalizerEntrypoint;
   dependencyPrepare?: DataNormalizerDependencyPrepareConfig;
-  projectFiles?: DataNormalizerProjectFile[];
   sourceSummaryHash?: string;
 }
 

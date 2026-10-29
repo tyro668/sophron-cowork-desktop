@@ -2,20 +2,34 @@ import fs from 'fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import git from 'isomorphic-git';
-import type { ScriptPackageFile } from '../../../shared/automation/script-package';
+/**
+ * Shared git version layer for user code the app generates and runs: script packages
+ * (自动化 · 执行脚本) and raw-table 自定义 normalizers. One folder = one isomorphic-git repo
+ * (no system git): every version is a commit on `main`, each published version gets a
+ * `vN` tag and the moving `published` tag marks what runs. Version metadata (status, 来源,
+ * notes) lives in the app database and references the commit.
+ */
 
-/** Neutral local author for script-package commits (never the user's identity). */
-export const PACKAGE_GIT_AUTHOR = { name: 'Sophron', email: 'local@sophron' };
+export interface VersionFile {
+  path: string;
+  content: string;
+}
+
+/** Neutral local author for version commits (never the user's identity). */
+export const VERSION_GIT_AUTHOR = { name: 'Sophron', email: 'local@sophron' };
 const BRANCH = 'main';
 /** Moving tag on the version automations run. */
 export const PUBLISHED_TAG = 'published';
 const MAX_FILE_BYTES = 256 * 1024;
 
+export const versionTag = (version: number) => `v${version}`;
+
 /** Runtime dirs, run outputs and logs never enter a version. */
-export const PACKAGE_GITIGNORE = [
+export const VERSION_GITIGNORE = [
   '# Managed by Sophron: runtime files are not part of a version',
   '.sophron/',
   '.venv/',
+  '.normalizer-env/',
   'node_modules/',
   '__pycache__/',
   '*.pyc',
@@ -25,7 +39,14 @@ export const PACKAGE_GITIGNORE = [
 ].join('\n');
 
 /** Folders kept when the app rewrites a working tree or run directory. */
-const KEEP_ON_REWRITE = new Set(['.git', '.sophron', '.venv', 'node_modules', '__pycache__']);
+const KEEP_ON_REWRITE = new Set([
+  '.git',
+  '.sophron',
+  '.venv',
+  '.normalizer-env',
+  'node_modules',
+  '__pycache__',
+]);
 
 export interface TreeDiff {
   added: string[];
@@ -33,8 +54,8 @@ export interface TreeDiff {
   removed: string[];
 }
 
-/** Git-backed history of one script package folder (isomorphic-git, no system git). */
-export class PackageRepo {
+/** Git-backed history of one versioned code folder (isomorphic-git, no system git). */
+export class VersionRepo {
   constructor(readonly dir: string) {}
 
   get exists(): boolean {
@@ -47,10 +68,10 @@ export class PackageRepo {
     if (!this.exists) await git.init({ fs, dir: this.dir, defaultBranch: BRANCH });
     const ignorePath = path.join(this.dir, '.gitignore');
     const current = fs.existsSync(ignorePath) ? fs.readFileSync(ignorePath, 'utf8') : '';
-    const missing = PACKAGE_GITIGNORE.split('\n').filter(
+    const missing = VERSION_GITIGNORE.split('\n').filter(
       (line) => line && !line.startsWith('#') && !current.split(/\r?\n/).includes(line)
     );
-    if (!current) await writeFile(ignorePath, PACKAGE_GITIGNORE, 'utf8');
+    if (!current) await writeFile(ignorePath, VERSION_GITIGNORE, 'utf8');
     else if (missing.length > 0)
       await writeFile(ignorePath, `${current.replace(/\s*$/, '\n')}${missing.join('\n')}\n`);
   }
@@ -113,10 +134,38 @@ export class PackageRepo {
       fs,
       dir: this.dir,
       message,
-      author: PACKAGE_GIT_AUTHOR,
-      committer: PACKAGE_GIT_AUTHOR,
+      author: VERSION_GIT_AUTHOR,
+      committer: VERSION_GIT_AUTHOR,
       ...(parent ? { parent } : {}),
     });
+  }
+
+  /** Replace the working tree with exactly these files (runtime folders are kept). */
+  async writeFiles(files: VersionFile[]): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    const keep = new Set<string>(['.gitignore']);
+    const targets: Array<[string, string]> = [];
+    for (const file of files) {
+      const rel = file.path.replace(/\\/g, '/').replace(/^\/+/, '');
+      if (!rel || rel === '.gitignore') continue;
+      if (rel.split('/').some((part) => part === '..' || KEEP_ON_REWRITE.has(part))) {
+        throw new Error(`Invalid file path: ${file.path}`);
+      }
+      keep.add(rel);
+      targets.push([rel, file.content]);
+    }
+    await removeUnlisted(this.dir, '', keep);
+    for (const [rel, content] of targets) {
+      const target = path.join(this.dir, ...rel.split('/'));
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, content, 'utf8');
+    }
+  }
+
+  /** Publish: tag the commit `vN` and move the `published` tag to it (rollback = older N). */
+  async publishTag(version: number, oid: string): Promise<void> {
+    await this.tag(versionTag(version), oid);
+    await this.tag(PUBLISHED_TAG, oid);
   }
 
   async tag(name: string, oid: string): Promise<void> {
@@ -156,8 +205,8 @@ export class PackageRepo {
   }
 
   /** Text files of a commit (binary and very large files are listed with empty content). */
-  async readFiles(oid: string): Promise<ScriptPackageFile[]> {
-    const files: ScriptPackageFile[] = [];
+  async readFiles(oid: string): Promise<VersionFile[]> {
+    const files: VersionFile[] = [];
     for (const [filepath, blobOid] of await this.treeIndex(oid)) {
       const { blob } = await git.readBlob({ fs, dir: this.dir, oid: blobOid });
       const binary = blob.length > MAX_FILE_BYTES || blob.includes(0);
@@ -210,4 +259,30 @@ async function removeUnlisted(root: string, rel: string, keep: Set<string>): Pro
       await rm(path.join(root, child), { force: true });
     }
   }
+}
+
+/** Minimal version record shape for the shared draft rules. */
+export interface DraftCandidate<S extends string = string> {
+  version: number;
+  status: 'draft' | 'published' | 'archived';
+  source: S;
+  commit: string;
+}
+
+/**
+ * The draft a new save of `source` overwrites: the newest version, when it is an
+ * unpublished draft of the same source newer than the published one. Rule generation
+ * (`alwaysNew`) always creates a new version.
+ */
+export function findReusableDraft<R extends DraftCandidate>(
+  records: R[],
+  source: R['source'],
+  options: { alwaysNew?: boolean } = {}
+): R | undefined {
+  if (options.alwaysNew) return undefined;
+  const sorted = [...records].sort((a, b) => a.version - b.version);
+  const latest = sorted.at(-1);
+  const published = sorted.filter((record) => record.status === 'published').at(-1);
+  if (!latest || latest.status !== 'draft' || latest.source !== source) return undefined;
+  return latest.version > (published?.version ?? 0) ? latest : undefined;
 }

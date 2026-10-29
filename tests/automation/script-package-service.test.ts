@@ -4,7 +4,7 @@ import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
-import { PackageRepo } from '../../src/main/automation/script-packages/git-repo';
+import { VersionRepo as PackageRepo } from '../../src/main/versioning/git-repo';
 
 const hasPython = (() => {
   try {
@@ -161,6 +161,14 @@ describe('ScriptPackageService', () => {
     await expect(service.deleteVersion('demo', 1)).rejects.toThrow('已发布的版本不能删除');
     await service.deleteVersion('demo', 2);
     expect((await service.listVersions('demo')).map((item) => item.version)).toEqual([1]);
+
+    // A folder edit shows up in the history itself as a 手动修改 draft.
+    writeFileSync(path.join(root, 'demo', 'config.json'), '{"n": 8}');
+    const afterEdit = await service.listVersions('demo');
+    expect(afterEdit.map((item) => [item.version, item.status, item.source])).toEqual([
+      [2, 'draft', 'manual'],
+      [1, 'published', expect.any(String)],
+    ]);
   });
 
   it('AI repair works in the package folder and overwrites one draft on repeated failures', async () => {

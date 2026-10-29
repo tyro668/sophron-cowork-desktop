@@ -16,7 +16,11 @@ import {
 } from '../../../shared/automation/script-package';
 import { failureReason, runProcess, type ProcessResult } from './process';
 import { parseCsv, readScriptOutput, type ParsedScriptOutput } from './output';
-import { PackageRepo, PUBLISHED_TAG } from './git-repo';
+import {
+  findReusableDraft,
+  VersionRepo as PackageRepo,
+  PUBLISHED_TAG,
+} from '../../versioning/git-repo';
 import type { ScriptFilesGenerator } from './generator';
 import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import type {
@@ -234,6 +238,8 @@ export class ScriptPackageService {
 
   /** Version history (newest first) with each version's git diff against the published one. */
   async listVersions(id: string): Promise<ScriptPackageVersion[]> {
+    // Folder edits show up in the history as a 手动修改 draft, like in summary().
+    await this.sync(id).catch(() => undefined);
     const repo = this.repo(id);
     const records = this.store.list(id);
     const published = records.find((record) => record.status === 'published');
@@ -294,18 +300,9 @@ export class ScriptPackageService {
     }
     const records = this.store.list(id);
     const published = records.find((record) => record.status === 'published');
-    const reusable =
-      options.source === 'rule'
-        ? undefined
-        : [...records]
-            .reverse()
-            .find(
-              (record) =>
-                record.status === 'draft' &&
-                record.source === options.source &&
-                record.version > (published?.version ?? 0) &&
-                record.version === records[records.length - 1]?.version
-            );
+    const reusable = findReusableDraft(records, options.source, {
+      alwaysNew: options.source === 'rule',
+    });
     const nextVersion = reusable?.version ?? (records.at(-1)?.version ?? 0) + 1;
     const commit = await repo.commitAll(
       `v${nextVersion} ${SOURCE_LABEL[options.source]}${
@@ -465,8 +462,7 @@ export class ScriptPackageService {
         if (other.status === 'published' && other.version !== versionNumber)
           this.store.update(id, other.version, { status: 'archived' });
       }
-      await repo.tag(`v${versionNumber}`, record.commit);
-      await repo.tag(PUBLISHED_TAG, record.commit);
+      await repo.publishTag(versionNumber, record.commit);
       this.store.update(id, versionNumber, { status: 'published', publishedAt: now });
       await this.patchState(this.packageDir(id), { lastError: undefined });
       return this.summaryUnsynced(id, this.packageDir(id));
@@ -557,8 +553,7 @@ export class ScriptPackageService {
       updatedAt: now,
       publishedAt: now,
     });
-    await repo.tag('v1', commit);
-    await repo.tag(PUBLISHED_TAG, commit);
+    await repo.publishTag(1, commit);
     return true;
   }
 
