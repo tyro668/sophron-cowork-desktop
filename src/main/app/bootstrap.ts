@@ -330,6 +330,7 @@ export async function bootstrap(): Promise<void> {
     dataPipelineStore: initializedDataPipelineStore,
     projectExists: (projectId) => Boolean(db.projects?.get(projectId)),
     onAutomationsChanged: rescheduleAutomations,
+    scriptPackages: appContext.scriptPackages ?? undefined,
   });
   extensionManager.register(createAutomationAgentRuntimeExtension(automationToolService));
   extensionManager.register(createScriptPackageAgentRuntimeExtension(appContext.scriptPackages));

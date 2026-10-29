@@ -28,6 +28,11 @@ import type {
   PreparedAutomationDependency,
 } from './contract';
 import { TOOL_RESULT_GUIDANCE } from '../../prompts/tool-copy';
+import type { ScriptPackageService } from '../script-packages/service';
+import {
+  DEFAULT_SCRIPT_TIMEOUT_MS,
+  SCRIPT_RUN_ACTION,
+} from '../../../shared/automation/script-package';
 
 interface AutomationToolServiceOptions {
   automationService: AutomationService;
@@ -37,6 +42,7 @@ interface AutomationToolServiceOptions {
   systemTimezone?: () => string;
   projectExists?: (projectId: string) => boolean;
   onAutomationsChanged?: () => void;
+  scriptPackages?: Pick<ScriptPackageService, 'summary'>;
 }
 
 export class AutomationToolService {
@@ -47,6 +53,7 @@ export class AutomationToolService {
   private readonly systemTimezone: () => string;
   private readonly projectExists?: (projectId: string) => boolean;
   private readonly onAutomationsChanged?: () => void;
+  private readonly scriptPackages?: Pick<ScriptPackageService, 'summary'>;
 
   constructor(options: AutomationToolServiceOptions) {
     this.automationService = options.automationService;
@@ -57,6 +64,7 @@ export class AutomationToolService {
       options.systemTimezone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     this.projectExists = options.projectExists;
     this.onAutomationsChanged = options.onAutomationsChanged;
+    this.scriptPackages = options.scriptPackages;
   }
 
   list(input: AutomationListToolInput = {}): AutomationToolResult {
@@ -345,6 +353,29 @@ export class AutomationToolService {
       };
     }
 
+    if (input.kind === 'script') {
+      const pkg = await this.requireScriptPackage(input.packageId.trim());
+      const timeoutMs = input.timeoutSeconds
+        ? input.timeoutSeconds * 1000
+        : DEFAULT_SCRIPT_TIMEOUT_MS;
+      return {
+        node: {
+          id: randomUUID(),
+          type: SCRIPT_RUN_ACTION,
+          label: pkg.name,
+          enabled: true,
+          config: {
+            packageId: pkg.id,
+            timeoutMs,
+            onScriptError: input.onScriptError ?? 'notify',
+          },
+        },
+        projectId: null,
+        actionText: `执行脚本 ${pkg.name} (${pkg.id})，结果写入原始表，不调用 AI`,
+        dependency: { kind: 'script', packageId: pkg.id, packageName: pkg.name },
+      };
+    }
+
     const prompt = input.prompt.trim();
     if (!prompt) throw new Error('Conversation task prompt is required.');
     if (prompt.length > 20_000) {
@@ -395,9 +426,25 @@ export class AutomationToolService {
     return pipeline;
   }
 
+  private async requireScriptPackage(packageId: string) {
+    if (!packageId) throw new Error('Script package id is required.');
+    if (!this.scriptPackages) throw new Error('Script packages are not available.');
+    const pkg = await this.scriptPackages.summary(packageId).catch(() => null);
+    if (!pkg || pkg.invalid) {
+      throw new Error(
+        `Script package not found or invalid: ${packageId}${pkg?.invalid ? ` (${pkg.invalid})` : ''}. Save it with script_package_save first.`
+      );
+    }
+    return pkg;
+  }
+
   private async revalidateDependency(dependency: PreparedAutomationDependency): Promise<void> {
     if (dependency.kind === 'data_pipeline') {
       await this.requireRunnableDataPipeline(dependency.pipelineId);
+      return;
+    }
+    if (dependency.kind === 'script') {
+      await this.requireScriptPackage(dependency.packageId);
       return;
     }
     if (dependency.projectId && this.projectExists && !this.projectExists(dependency.projectId)) {
@@ -548,7 +595,9 @@ export class AutomationToolService {
         ? 'data_pipeline'
         : enabledNode?.type === 'conversation.run'
           ? 'conversation'
-          : 'other';
+          : enabledNode?.type === SCRIPT_RUN_ACTION
+            ? 'script'
+            : 'other';
     const pipelineId =
       actionKind === 'data_pipeline' && typeof enabledNode?.config.pipelineId === 'string'
         ? enabledNode.config.pipelineId
@@ -560,6 +609,10 @@ export class AutomationToolService {
       status: automation.status,
       actionKind,
       dataPipelineId: pipelineId,
+      scriptPackageId:
+        actionKind === 'script' && typeof enabledNode?.config.packageId === 'string'
+          ? enabledNode.config.packageId
+          : undefined,
       scheduleSummary: formatAutomationTrigger(automation.trigger),
       timezone: automation.trigger.timezone,
       nextRunAt: automation.nextRunAt,

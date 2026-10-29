@@ -117,6 +117,22 @@ export const AutomationActionInputSchema = Type.Union([
     },
     { additionalProperties: false }
   ),
+  Type.Object(
+    {
+      kind: Type.Literal('script'),
+      packageId: Type.String({
+        minLength: 1,
+        description: TOOL_SCHEMA_COPY.automation.scriptPackageId,
+      }),
+      timeoutSeconds: Type.Optional(Type.Integer({ minimum: 30, maximum: 1800 })),
+      onScriptError: Type.Optional(
+        Type.Union([Type.Literal('notify'), Type.Literal('ai_repair')], {
+          description: TOOL_SCHEMA_COPY.automation.scriptOnError,
+        })
+      ),
+    },
+    { additionalProperties: false }
+  ),
 ]);
 
 export const AutomationListInputSchema = Type.Object(
@@ -247,7 +263,7 @@ export interface AutomationToolResult {
 
 export interface PreparedAutomationSummary {
   name: string;
-  actionKind: 'data_pipeline' | 'conversation';
+  actionKind: 'data_pipeline' | 'conversation' | 'script';
   actionText: string;
   scheduleText: string;
   timezone: string;
@@ -282,15 +298,17 @@ export interface PreparedAutomationScheduleUpdateDraft {
 
 export type PreparedAutomationDependency =
   | { kind: 'data_pipeline'; pipelineId: string; pipelineName: string }
-  | { kind: 'conversation'; projectId: string | null };
+  | { kind: 'conversation'; projectId: string | null }
+  | { kind: 'script'; packageId: string; packageName: string };
 
 export interface AutomationToolListItem {
   id: string;
   name: string;
   enabled: boolean;
   status: Automation['status'];
-  actionKind: 'data_pipeline' | 'conversation' | 'other';
+  actionKind: 'data_pipeline' | 'conversation' | 'script' | 'other';
   dataPipelineId?: string;
+  scriptPackageId?: string;
   scheduleSummary: string;
   timezone: string;
   nextRunAt: number | null;

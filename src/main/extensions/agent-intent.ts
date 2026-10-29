@@ -19,11 +19,21 @@ const DATA_GENERATION_PATTERN =
 const DATA_RUN_PATTERN = /运行|执行|重跑|再跑|run\b|execute\b/i;
 const DATA_NORMALIZER_PATTERN = /标准化|归一化|清洗规则|normaliz|规则引擎/i;
 const AUTOMATION_PROMPT_PATTERN =
-  /自动化|定时|调度|周期|每天|每日|每周|每小时|每月|明天|稍后|提醒|cron|schedule[ds]?\b|automat|reschedule|改期|暂停|启用|停用/i;
+  /自动化|定时|调度|周期|每天|每日|每周|每小时|每月|明天|稍后|提醒|cron|schedule[ds]?\b|automat|\bevery (?:day|morning|evening|night|hour|week|month|weekday)\b|\b(?:daily|hourly|weekly|monthly)\b|reschedule|改期|暂停|启用|停用/i;
 const AUTOMATION_UPDATE_PATTERN =
   /改期|修改.*(时间|频率|调度)|调整.*(时间|频率)|reschedule|change.*schedule|update.*schedule|暂停|停用|启用|disable|enable|pause|resume/i;
 const AUTOMATION_CREATE_PATTERN =
   /创建|新建|添加|安排|设置|create|new\b|add\b|set up|schedule\b|automate/i;
+
+/**
+ * "Turn this fetch into a script that runs without the model": explicit script-package
+ * wording, token-free wording, or a recurring fetch from a website/API. A bare mention
+ * of 脚本 (e.g. a question about a shell script) is deliberately not enough.
+ */
+const SCRIPT_PACKAGE_PATTERN =
+  /脚本包|执行脚本|固化|脚本化|(?:保存|存|做|生成|整理|转|变|打包)(?:成|为|一个|个|一下)?.{0,8}脚本|(?:不|别|无需|不需要)(?:要|用|再|会)?(?:消耗|花费?|调用|使用|用|走|经过).{0,6}(?:ai|token|llm|大模型|模型)|零\s*token|省\s*token|script[ -]?package|\b(?:save|turn|convert|make|package|freeze|wrap)\b.{0,24}\bscripts?\b|\bscripted\b|without (?:an? |the |using |spending |calling )?(?:ai|llm|model|tokens?)\b|\bno (?:ai|llm|tokens?)\b|zero[- ]token/i;
+const SCRIPT_RECURRING_FETCH_PATTERN =
+  /(?:每天|每日|每周|每小时|每月|定时|定期|以后|今后|自动)(?:都|自动)?.{0,10}(?:取数|抓取|采集|拉取|获取|爬取|同步|抓|取)|(?:fetch|pull|scrape|download|collect)\b.{0,40}\b(?:daily|every (?:day|hour|week|morning)|hourly|weekly|on a schedule)|(?:daily|every (?:day|hour|week|morning)|hourly|weekly)\b.{0,40}\b(?:fetch|pull|scrape|download|collect)/i;
 
 const TOOL_USE_SCAN_LIMIT = 30;
 
@@ -110,7 +120,12 @@ export function detectAutomationIntent(
   const text = context.prompt;
   const continuation = isOperationContinuation(text);
   const promptHit = AUTOMATION_PROMPT_PATTERN.test(text);
-  const historyHit = sessionUsedToolsWithPrefix(context.existingMessages, ['automation_']);
+  // Right after a script package was saved the assistant offers to schedule it, so a bare
+  // "yes" / "好的" continues into automation creation.
+  const historyHit = sessionUsedToolsWithPrefix(context.existingMessages, [
+    'automation_',
+    'script_package_',
+  ]);
   const active =
     promptHit ||
     (continuation && (historyHit || options.stickyActive || options.hasPendingReceipts));
@@ -124,6 +139,27 @@ export function detectAutomationIntent(
 }
 
 /** Last operation context; each explicit intent replaces, rather than expands, it. */
+export interface ScriptPackageIntentSignals {
+  active: boolean;
+  /** Explicit script-package wording, as opposed to a recurring-fetch hint. */
+  explicit: boolean;
+}
+
+export function detectScriptPackageIntent(
+  context: { prompt: string; existingMessages: Message[] },
+  options: { stickyActive: boolean }
+): ScriptPackageIntentSignals {
+  const text = context.prompt;
+  const explicit = SCRIPT_PACKAGE_PATTERN.test(text);
+  const fetchHit = SCRIPT_RECURRING_FETCH_PATTERN.test(text);
+  const continuation = isOperationContinuation(text);
+  const historyHit = sessionUsedToolsWithPrefix(context.existingMessages, ['script_package_']);
+  return {
+    active: explicit || fetchHit || (continuation && (historyHit || options.stickyActive)),
+    explicit,
+  };
+}
+
 export class SessionPackActivation {
   private readonly packs = new Map<string, Set<string>>();
 
