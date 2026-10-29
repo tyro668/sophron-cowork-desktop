@@ -44,6 +44,14 @@ export function createAutomationApi(): ElectronApi['automation'] {
       ipcRenderer.invoke('automation.artifacts.list', runId),
     listActionDefinitions: (): Promise<AutomationActionDefinitionSummary[]> =>
       ipcRenderer.invoke('automation.actions.listDefinitions'),
+    scripts: {
+      list: () => ipcRenderer.invoke('automation.scripts.list'),
+      open: (id, pending) => ipcRenderer.invoke('automation.scripts.open', id, pending),
+      testRun: (id, timeoutMs, pending) =>
+        ipcRenderer.invoke('automation.scripts.testRun', id, timeoutMs, pending),
+      confirmPending: (id) => ipcRenderer.invoke('automation.scripts.confirmPending', id),
+      discardPending: (id) => ipcRenderer.invoke('automation.scripts.discardPending', id),
+    },
     groups: {
       list: (): Promise<AutomationGroup[]> => ipcRenderer.invoke('automation.groups.list'),
       create: (payload: AutomationCreateGroupInput): Promise<AutomationGroup> =>

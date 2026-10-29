@@ -1,4 +1,7 @@
 import { registerCloudSyncAction } from './cloud-sync-action';
+import { registerScriptRunAction } from './script-run-action';
+import { waitForSession } from './wait-for-session';
+import type { ScriptPackageService } from './script-packages/service';
 import type { AutomationStore } from './automation-store';
 import type { DataPipelineStore } from '../data/data-pipeline-store';
 import type { DataCommandService } from '../data/data-command-service';
@@ -21,6 +24,7 @@ interface DefaultAutomationActionOptions {
     configSetId: string
   ) => AgentRuntimeConfig | null | Promise<AgentRuntimeConfig | null>;
   sendSessionUpdate?: (session: Awaited<ReturnType<SessionManager['startSession']>>) => void;
+  scriptPackages?: ScriptPackageService;
   now?: () => number;
 }
 
@@ -354,23 +358,15 @@ export function createDefaultAutomationActionRegistry(
   });
 
   registerCloudSyncAction(registry, options.dataCommandService, options.automationStore);
-  return registry;
-}
-
-async function waitForSession(
-  sessionManager: SessionManager,
-  sessionId: string,
-  timeoutMs: number,
-  now: () => number
-): Promise<void> {
-  const deadline = now() + timeoutMs;
-  while (now() < deadline) {
-    const session = sessionManager.listSessions().find((row) => row.id === sessionId);
-    if (!session || session.status === 'completed' || session.status === 'idle') return;
-    if (session.status === 'error') {
-      throw new Error(`Conversation failed: ${session.title}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  if (options.scriptPackages) {
+    registerScriptRunAction(registry, {
+      scripts: options.scriptPackages,
+      commands: options.dataCommandService,
+      store: options.automationStore,
+      sessionManager: options.sessionManager,
+      sendSessionUpdate: options.sendSessionUpdate,
+      now,
+    });
   }
-  throw new Error(`Conversation timed out after ${timeoutMs}ms`);
+  return registry;
 }

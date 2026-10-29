@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
 
@@ -171,5 +170,27 @@ describe('permission confirmation lifecycle', () => {
       manager.requestPermission('s1', 'p2', 'bash', {}, controller.signal)
     ).resolves.toBe('deny');
     expect(events).not.toHaveBeenCalled();
+  });
+
+  it('unattended sessions deny permission requests instead of waiting for a human', async () => {
+    const events = vi.fn();
+    const manager = new SessionManager(makeDb(), events);
+    const session = await manager.startSession(
+      '修复脚本',
+      'fix it',
+      '/tmp/workspace',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { denyPermissionRequests: true }
+    );
+    events.mockClear();
+    await expect(
+      manager.requestPermission(session.id, 'p1', 'bash', { command: 'rm -rf x' })
+    ).resolves.toBe('deny');
+    expect(events).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'permission.request' })
+    );
   });
 });

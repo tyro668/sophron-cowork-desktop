@@ -1,12 +1,14 @@
 import { useDataPipelineAuthoringCompletion } from '../../../features/data/hooks/use-data-pipeline-authoring';
 import { Button } from '../../ui/button';
 import { CloudSyncEditor } from './cloud-sync-editor';
+import { ScriptRunEditor } from './script-run-editor';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ChevronDown,
   ChevronUp,
   ChevronRight,
   Database,
+  FolderCode,
   Loader2,
   MessagesSquare,
   Plus,
@@ -737,6 +739,7 @@ export function ActionConfigEditor({
       className={
         isDataProcessNode(node) ||
         node.type === 'cloud.sync' ||
+        node.type === 'script.run' ||
         (node.type === 'conversation.run' && !cloudAutomation)
           ? ''
           : 'space-y-4 p-3'
@@ -760,6 +763,9 @@ export function ActionConfigEditor({
           resultTables={resultTables}
           onChange={onChange}
         />
+      )}
+      {node.type === 'script.run' && (
+        <ScriptRunEditor node={node} rawTables={rawTables} onChange={onChange} />
       )}
       {node.type === 'data.raw.preview' && (
         <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
@@ -815,6 +821,7 @@ export function getActionTitle(
   tr: (key: string, fallback: string) => string
 ): string {
   if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle', '云空间同步');
+  if (type === 'script.run') return tr('schedule.script.title', '执行脚本');
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.pipeline.run') {
     return tr('schedule.dataProcessActionTitle', '数据处理');
   }
@@ -843,6 +850,9 @@ export function getActionMenuDescription(
   if (type === 'cloud.sync') {
     return tr('schedule.cloudSync.menuDescription', '在云空间与本地数据表之间同步数据');
   }
+  if (type === 'script.run') {
+    return tr('schedule.script.menuDescription', '运行已保存的脚本，不调用 AI');
+  }
   if (type === 'conversation.run') {
     return tr(
       'schedule.actionTypes.conversationRun.description',
@@ -858,6 +868,7 @@ export function getActionIcon(type: string, node?: AutomationActionNode): Lucide
     if (node?.config.direction === 'output') return CloudUpload;
     return ArrowLeftRight;
   }
+  if (type === 'script.run') return FolderCode;
   if (node && isDataProcessNode(node)) return Database;
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE) return Database;
   if (type === 'conversation.run') return MessagesSquare;

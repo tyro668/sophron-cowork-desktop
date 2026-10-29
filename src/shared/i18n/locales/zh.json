@@ -3904,7 +3904,8 @@
       "conversation_run": "派生对话任务",
       "cloud_table_process": "处理云端表",
       "data_raw_preview": "读取原始表",
-      "data_result_preview": "读取结果表"
+      "data_result_preview": "读取结果表",
+      "script_run": "执行脚本"
     },
     "dependencyAlways": "总是执行",
     "dependencyOnSuccess": "上一步成功后执行",
@@ -3933,7 +3934,37 @@
     "backToListShort": "返回列表",
     "intervalLabel": "间隔",
     "startAtLabel": "开始时间",
-    "endAtLabelLong": "结束时间"
+    "endAtLabelLong": "结束时间",
+    "script": {
+      "title": "执行脚本",
+      "menuDescription": "运行已保存的脚本，不调用 AI",
+      "package": "脚本包",
+      "selectPackage": "选择脚本包",
+      "noPackages": "暂无脚本包",
+      "open": "打开",
+      "entry": "入口",
+      "timeout": "超时",
+      "seconds": "{{count}} 秒",
+      "minutes": "{{count}} 分钟",
+      "output": "输出到",
+      "createTable": "新建原始表 · {{name}}",
+      "rawTableOption": "原始表 · {{name}}",
+      "onError": "脚本出错",
+      "notify": "仅通知",
+      "aiRepair": "交给 AI 重新生成",
+      "testRun": "试运行",
+      "testing": "运行中…",
+      "testOk": "试运行成功 · {{count}} 行",
+      "depsReady": "依赖已就绪",
+      "depsOnFirstRun": "首次运行将安装依赖",
+      "lastSuccess": "上次成功 {{count}} 行",
+      "pending": "新版本",
+      "pendingText": "AI 已重新生成 · 试运行 {{count}} 行，待确认",
+      "view": "查看",
+      "adopt": "采用",
+      "discard": "放弃",
+      "required": "请选择脚本包"
+    }
   },
   "remote": {
     "title": "远程控制",
