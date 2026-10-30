@@ -125,6 +125,8 @@ export const dataClient = {
   generateRawTableNormalizerDraft: (
     ...args: Parameters<DataApi['generateRawTableNormalizerDraft']>
   ) => dataApi().generateRawTableNormalizerDraft(...args),
+  cancelRawTableNormalizerDraft: (progressId: string) =>
+    dataApi().cancelRawTableNormalizerDraft(progressId),
   listRawTableNormalizerVersions: (
     ...args: Parameters<DataApi['listRawTableNormalizerVersions']>
   ) => dataApi().listRawTableNormalizerVersions(...args),

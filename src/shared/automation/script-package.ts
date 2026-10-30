@@ -145,9 +145,31 @@ export interface ScriptFixInput {
   previousAttempts?: string[];
 }
 
+/** Trial run of a draft's files with the pass verdict applied (0 rows / empty columns fail). */
+export interface ScriptDraftCheck {
+  passed: boolean;
+  /** Failure reason (run error or 通过但结果异常 verdict). */
+  reason?: string;
+  rows?: number;
+  columns?: string[];
+  /** First lines of the CSV. */
+  preview?: string;
+  /** Parsed rows for the trial panel (renderer only). */
+  previewRows?: Array<Record<string, string>>;
+  log?: string;
+  exitCode?: number;
+  durationMs: number;
+}
+
 export interface ScriptGenerateDraftResult {
   summary: ScriptPackageSummary;
   version: ScriptPackageVersionDetail;
+  /** Final trial run of the saved draft (generation agents self-test before this). */
+  check?: ScriptDraftCheck;
+  /** The agent's closing summary (source, columns, on_empty behaviour). */
+  agentSummary?: string;
+  /** 规则生成: automatic fix rounds run after the agent's own iterations (≤ 3). */
+  autoFixRounds?: number;
   /** Fix turns: changed files, the model's one-line explanation, and whether the AI 修复 draft was overwritten. */
   changedFiles?: string[];
   fixSummary?: string;
@@ -156,7 +178,14 @@ export interface ScriptGenerateDraftResult {
 
 export interface ScriptGenerateProgressEvent {
   progressId: string;
-  phase: 'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
+  phase:
+    | 'source_summary'
+    | 'source_analysis'
+    | 'code_generation'
+    | 'verify'
+    | 'saving'
+    | 'complete'
+    | 'error';
   kind: 'message' | 'delta';
   text: string;
 }

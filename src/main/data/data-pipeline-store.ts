@@ -332,6 +332,11 @@ export class DataPipelineStore {
   ): Promise<DataRawTablePreview> {
     return this.normalizerService.previewRawTableNormalizerVersion(input);
   }
+  previewRawTableNormalizerFiles(
+    input: Parameters<NormalizerService['previewRawTableNormalizerFiles']>[0]
+  ): Promise<DataRawTablePreview> {
+    return this.normalizerService.previewRawTableNormalizerFiles(input);
+  }
   getRawTableNormalizerArtifact(id: string): Promise<DataRawTableNormalizerArtifact | null> {
     return this.normalizers.getRawTableNormalizerArtifact(id);
   }

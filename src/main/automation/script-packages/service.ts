@@ -21,12 +21,23 @@ import {
   VersionRepo as PackageRepo,
   PUBLISHED_TAG,
 } from '../../versioning/git-repo';
-import type { ScriptFilesGenerator } from './generator';
+import {
+  normalizeScriptManifest,
+  type ScriptAgentPhase,
+  type ScriptFilesGenerator,
+} from './generator';
+import {
+  changedFilePaths,
+  evaluatePass,
+  expectedColumnsFromManifest,
+} from '../../../shared/fix-error';
 import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import type {
+  ScriptDraftCheck,
   ScriptGenerateDraftInput,
   ScriptGenerateDraftResult,
   ScriptGenerateProgressEvent,
+  ScriptRuntime,
 } from '../../../shared/automation/script-package';
 import {
   MemoryScriptVersionStore,
@@ -40,6 +51,16 @@ const RUNTIME_DIRS = new Set([STATE_DIR, '.venv', 'node_modules', '__pycache__',
 const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 const PACKAGE_ID_PATTERN = /^[^\\/:*?"<>|.][^\\/:*?"<>|]{0,79}$/;
 const PREVIEW_ROWS = 200;
+/** 规则生成: fix turns after the agent's own iterations when the final trial run fails. */
+export const AUTO_FIX_ROUNDS = 3;
+const DEFAULT_CHECK_TIMEOUT_MS = 120_000;
+
+export interface GenerateDraftOptions {
+  runtimeConfig?: AgentRuntimeConfig;
+  onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
+  /** 取消 in the editor. */
+  signal?: AbortSignal;
+}
 
 interface PackageState {
   depsHash?: string;
@@ -368,34 +389,112 @@ export class ScriptPackageService {
     };
   }
 
-  /** 规则生成: generate a draft from a rule prompt, based on a version or from scratch. */
+  // ── AI drafts (规则生成 / AI 修复) ───────────────────────────────────
+
   /**
-   * 交给 AI 修复 from the editor: a follow-up turn that edits the current draft (baseVersion)
-   * using the trial-run failure. The result is saved as the AI 修复 draft, which later fixes
-   * overwrite (a new draft only when the newest version is not an unpublished AI 修复 draft).
+   * Hand the package folder to an editor agent: pending folder edits are saved first, then the
+   * working tree is replaced by `files` (the base version, or nothing for a new package).
+   * Folder syncing pauses until endAgentEdit.
+   */
+  private beginAgentEdit(id: string, files: ScriptPackageFile[]): Promise<string> {
+    return this.withLock(id, async () => {
+      if (this.repairing.has(id)) throw new ScriptPackageError('AI 正在修改这个脚本包', 'invalid');
+      const dir = this.packageDir(id);
+      await mkdir(dir, { recursive: true });
+      await this.ensureRepo(id);
+      const repo = new PackageRepo(dir);
+      if ((await repo.head()) && (await repo.changedPaths()).length > 0) {
+        await this.saveDraftUnlocked(id, { source: 'manual' }).catch(() => undefined);
+      }
+      await writeWorkingFiles(dir, files);
+      this.repairing.add(id);
+      return dir;
+    });
+  }
+
+  /** Commit the agent's working tree as a draft, or put the folder back as it was. */
+  private endAgentEdit(
+    id: string,
+    save: (SaveDraftOptions & { files?: ScriptPackageFile[] }) | null
+  ): Promise<SaveDraftResult | null> {
+    return this.withLock(id, async () => {
+      try {
+        if (save) return await this.saveDraftUnlocked(id, save);
+        const dir = this.packageDir(id);
+        const repo = new PackageRepo(dir);
+        const head = await repo.head();
+        if (head) await repo.checkoutTree(head);
+        else if (this.store.list(id).length === 0) await rm(dir, { recursive: true, force: true });
+        else await clearWorkingTree(dir);
+        return null;
+      } finally {
+        this.repairing.delete(id);
+      }
+    });
+  }
+
+  /** Trial-run the working tree with the pass verdict (what the agent's self-test sees). */
+  async checkWorkingTree(
+    id: string,
+    timeoutMs = DEFAULT_CHECK_TIMEOUT_MS
+  ): Promise<ScriptDraftCheck> {
+    const run = await this.testRun(id, { timeoutMs, target: 'working' });
+    return {
+      passed: run.ok,
+      ...(run.ok ? {} : { reason: run.error ?? '试运行失败' }),
+      rows: run.rows,
+      columns: run.columns,
+      preview: run.preview ?? previewFromLog(run.log),
+      previewRows: run.previewRows,
+      log: run.log,
+      exitCode: run.exitCode,
+      durationMs: run.durationMs,
+    };
+  }
+
+  /** Files of the package working tree (runtime folders and .gitignore excluded). */
+  private async workingFiles(id: string): Promise<ScriptPackageFile[]> {
+    return readWorkingFiles(this.packageDir(id));
+  }
+
+  /** Validate the agent's manifest, pin name/runtime and write it back. */
+  private async normalizeWorkingManifest(
+    id: string,
+    input: { name: string; runtime: ScriptRuntime }
+  ): Promise<ScriptPackageFile[]> {
+    const files = await this.workingFiles(id);
+    const content = normalizeScriptManifest(files, input);
+    await writeFile(path.join(this.packageDir(id), 'manifest.json'), content, 'utf8');
+    return files.map((file) => (file.path === 'manifest.json' ? { ...file, content } : file));
+  }
+
+  /**
+   * 交给 AI 修复 from the editor: an agent turn that edits the current draft (baseVersion) from
+   * the trial-run failure, verifying against the live source and self-testing. The result is
+   * saved as the AI 修复 draft, which later fixes overwrite.
    */
   private async fixDraft(
     input: ScriptGenerateDraftInput,
     generator: ScriptFilesGenerator,
-    options: {
-      runtimeConfig?: AgentRuntimeConfig;
-      onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
-    }
+    options: GenerateDraftOptions
   ): Promise<ScriptGenerateDraftResult> {
     const emit = options.onProgress ?? (() => undefined);
     const fix = input.fix!;
+    let started: string | null = null;
     try {
       if (!input.packageId) throw new ScriptPackageError('修复需要已有脚本包', 'invalid');
       if (input.baseVersion == null)
         throw new ScriptPackageError('修复需要基于一个版本', 'invalid');
-      if (!generator.fix) throw new ScriptPackageError('当前生成器不支持修复', 'invalid');
       const id = input.packageId;
       emit({ phase: 'source_summary', kind: 'message', text: '读取报错与当前草稿的文件。' });
       const summary = await this.summary(id);
       const base = await this.versionDetail(id, input.baseVersion);
       const files = base.files.filter((file) => file.path !== '.gitignore');
-      const result = await generator.fix({
-        name: input.name?.trim() || summary.name,
+      const name = input.name?.trim() || summary.name;
+      const dir = await this.beginAgentEdit(id, files);
+      started = id;
+      const outcome = await generator.fix({
+        name,
         runtime: base.runtime,
         rulePrompt: base.source === 'rule' ? base.rulePrompt : undefined,
         files,
@@ -410,26 +509,37 @@ export class ScriptPackageService {
           maxRounds: fix.maxRounds,
           previousAttempts: fix.previousAttempts,
         },
+        workspace: { dir, test: () => this.checkWorkingTree(id) },
         runtimeConfig: options.runtimeConfig,
-        onProgress: (phase, kind, text) => emit({ phase, kind, text }),
+        signal: options.signal,
+        onProgress: (phase, text) => emit({ phase, kind: 'message', text }),
       });
+      if (outcome.stop === 'error' && outcome.selfTests === 0)
+        throw new ScriptPackageError(`AI 修复失败：${outcome.error ?? '模型出错'}`, 'invalid');
+      const after = await this.normalizeWorkingManifest(id, { name, runtime: base.runtime });
+      const changedFiles = changedFilePaths(files, after);
+      if (changedFiles.length === 0)
+        throw new ScriptPackageError('AI 修复没有改动任何文件', 'invalid');
       emit({
         phase: 'saving',
         kind: 'message',
-        text: `修改 ${result.changedFiles.join('、')}，写入 AI 修复草稿。`,
+        text: `修改 ${changedFiles.join('、')}，写入 AI 修复草稿。`,
       });
-      const saved = await this.saveDraft(id, {
+      const check = await this.checkWorkingTree(id);
+      const saved = await this.endAgentEdit(id, {
         source: 'ai_repair',
         rulePrompt: [
-          result.summary,
-          `报错：${result.payload.error}`,
+          outcome.summary,
+          `报错：${outcome.payload?.error ?? fix.error}`,
           fix.note ? `补充：${fix.note}` : '',
         ]
           .filter(Boolean)
           .join('\n'),
         baseVersion: base.version,
-        files: result.files,
+        rows: check.passed ? check.rows : undefined,
       });
+      started = null;
+      if (!saved) throw new ScriptPackageError('保存 AI 修复草稿失败', 'invalid');
       emit({
         phase: 'complete',
         kind: 'message',
@@ -438,30 +548,32 @@ export class ScriptPackageService {
       return {
         summary: await this.summaryUnsynced(id, this.packageDir(id)),
         version: await this.versionDetail(id, saved.version.version),
-        changedFiles: result.changedFiles,
-        fixSummary: result.summary || result.analysis,
+        changedFiles,
+        fixSummary: outcome.summary,
         replaced: saved.replaced,
+        check,
+        agentSummary: outcome.summary,
       };
     } catch (error) {
-      emit({
-        phase: 'error',
-        kind: 'message',
-        text: error instanceof Error ? error.message : String(error),
-      });
+      if (started) await this.endAgentEdit(started, null).catch(() => undefined);
+      emit({ phase: 'error', kind: 'message', text: errorText(error) });
       throw error;
     }
   }
 
+  /**
+   * 规则生成: an agent explores the source, writes the package into its folder and self-tests
+   * until the trial run passes. A final trial run checks the result; when it still fails, up to
+   * AUTO_FIX_ROUNDS fix turns continue from that failure. The result is saved as one draft.
+   */
   async generateDraft(
     input: ScriptGenerateDraftInput,
     generator: ScriptFilesGenerator,
-    options: {
-      runtimeConfig?: AgentRuntimeConfig;
-      onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
-    } = {}
+    options: GenerateDraftOptions = {}
   ): Promise<ScriptGenerateDraftResult> {
     const emit = options.onProgress ?? (() => undefined);
     if (input.fix) return this.fixDraft(input, generator, options);
+    let started: string | null = null;
     try {
       const name = input.name?.trim() || '';
       const id = input.packageId || (await this.newPackageId(name || '新脚本包'));
@@ -491,28 +603,92 @@ export class ScriptPackageService {
         emit({ phase: 'source_summary', kind: 'message', text: '新建脚本包，从头生成' });
       }
       emit({
-        phase: 'code_generation',
+        phase: 'source_summary',
         kind: 'message',
-        text: `语言：${input.runtime === 'node' ? 'Node.js' : 'Python'}`,
+        text: `语言：${input.runtime === 'node' ? 'Node.js' : 'Python'} · 智能体可联网探查、写文件、试运行`,
       });
-      const files = await generator.generate({
-        name: displayName || id,
+      const packageName = displayName || id;
+      const dir = await this.beginAgentEdit(id, baseFiles);
+      started = id;
+      const workspace = { dir, test: () => this.checkWorkingTree(id) };
+      const onProgress = (phase: ScriptAgentPhase, text: string) =>
+        emit({ phase, kind: 'message', text });
+      const outcome = await generator.generate({
+        name: packageName,
         rulePrompt: input.rulePrompt,
         runtime: input.runtime,
         baseFiles,
         baseLabel: input.baseVersion != null ? `v${input.baseVersion}` : undefined,
         lastError,
+        workspace,
         runtimeConfig: options.runtimeConfig,
-        onDelta: (text) => emit({ phase: 'code_generation', kind: 'delta', text }),
+        signal: options.signal,
+        onProgress,
       });
+      if (outcome.stop === 'error' && !existsSync(path.join(dir, 'manifest.json')))
+        throw new ScriptPackageError(`生成失败：${outcome.error ?? '模型出错'}`, 'invalid');
+      if (outcome.stop === 'max_turns' || outcome.stop === 'timeout')
+        emit({
+          phase: 'verify',
+          kind: 'message',
+          text: `智能体${outcome.error ?? '已停止'}，检查当前结果`,
+        });
+      let files = await this.normalizeWorkingManifest(id, {
+        name: packageName,
+        runtime: input.runtime,
+      });
+      emit({ phase: 'verify', kind: 'message', text: '最终试运行…' });
+      let check = await workspace.test();
+      emit({ phase: 'verify', kind: 'message', text: checkLine(check) });
+      let summaryText = outcome.summary;
+      const attempts: string[] = [];
+      let rounds = 0;
+      while (!check.passed && rounds < AUTO_FIX_ROUNDS && !options.signal?.aborted) {
+        rounds += 1;
+        attempts.push(`第 ${rounds} 轮前：${check.reason ?? ''}`.slice(0, 1800));
+        emit({
+          phase: 'verify',
+          kind: 'message',
+          text: `自动修复 第 ${rounds} / ${AUTO_FIX_ROUNDS} 轮：${check.reason ?? ''}`,
+        });
+        const fixed = await generator.fix({
+          name: packageName,
+          runtime: input.runtime,
+          rulePrompt: input.rulePrompt,
+          files,
+          baseLabel: '本次生成的草稿',
+          request: {
+            error: `${check.reason ?? '试运行失败'}${check.preview ? `\n输出预览：\n${check.preview}` : ''}`,
+            log: check.log,
+            exitCode: check.exitCode,
+            durationMs: check.durationMs,
+            round: rounds,
+            maxRounds: AUTO_FIX_ROUNDS,
+            previousAttempts: attempts,
+          },
+          workspace,
+          runtimeConfig: options.runtimeConfig,
+          signal: options.signal,
+          onProgress,
+        });
+        if (fixed.summary) summaryText = fixed.summary;
+        files = await this.normalizeWorkingManifest(id, {
+          name: packageName,
+          runtime: input.runtime,
+        });
+        check = await workspace.test();
+        emit({ phase: 'verify', kind: 'message', text: checkLine(check) });
+      }
+      options.signal?.throwIfAborted();
       emit({ phase: 'saving', kind: 'message', text: `保存为草稿 · ${files.length} 个文件` });
-      await mkdir(this.packageDir(id), { recursive: true });
-      const saved = await this.saveDraft(id, {
+      const saved = await this.endAgentEdit(id, {
         source: 'rule',
         rulePrompt: input.rulePrompt,
         baseVersion: input.baseVersion,
-        files,
+        rows: check.passed ? check.rows : undefined,
       });
+      started = null;
+      if (!saved) throw new ScriptPackageError('保存草稿失败', 'invalid');
       await this.patchState(this.packageDir(id), {
         editor: {
           rulePrompt: input.rulePrompt,
@@ -524,13 +700,13 @@ export class ScriptPackageService {
       return {
         summary: await this.summaryUnsynced(id, this.packageDir(id)),
         version: await this.versionDetail(id, saved.version.version),
+        check,
+        agentSummary: summaryText,
+        autoFixRounds: rounds,
       };
     } catch (error) {
-      emit({
-        phase: 'error',
-        kind: 'message',
-        text: error instanceof Error ? error.message : String(error),
-      });
+      if (started) await this.endAgentEdit(started, null).catch(() => undefined);
+      emit({ phase: 'error', kind: 'message', text: errorText(error) });
       throw error;
     }
   }
@@ -857,6 +1033,17 @@ export class ScriptPackageService {
           log
         );
       }
+      // 0 rows / empty expected columns fail like a crash: the raw table keeps its last data.
+      const verdict = judgeOutput(parsed, manifest.output?.columns ?? []);
+      if (!verdict.ok) {
+        throw new ScriptPackageError(
+          verdict.reason ?? '通过但结果异常',
+          'output',
+          [log, `输出预览：\n${parsed.csv.split(/\r?\n/).slice(0, 6).join('\n')}`]
+            .filter(Boolean)
+            .join('\n')
+        );
+      }
       const csvPath = path.join(packageDir, STATE_DIR, 'output.csv');
       const info = { at: this.now(), rows: parsed.rows, durationMs };
       if (!options.dryRun) {
@@ -1175,4 +1362,61 @@ export function formatTimeout(ms: number): string {
 function processLog(result: { stdout: string; stderr: string }): string {
   const text = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n');
   return text.length > 4000 ? text.slice(-4000) : text;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function checkLine(check: ScriptDraftCheck): string {
+  return check.passed
+    ? `✓ 试运行通过：${check.rows ?? 0} 行 · ${check.columns?.length ?? 0} 列`
+    : `✕ 试运行未通过：${check.reason ?? ''}`;
+}
+
+/** The 输出预览 block a failed verdict appends to the run log. */
+function previewFromLog(log: string | undefined): string | undefined {
+  const index = log?.lastIndexOf('输出预览：\n') ?? -1;
+  return log && index >= 0 ? log.slice(index + '输出预览：\n'.length) : undefined;
+}
+
+/** Shared pass criteria (evaluatePass) applied to a parsed script output. */
+export function judgeOutput(
+  parsed: ParsedScriptOutput,
+  manifestColumns: string[]
+): { ok: boolean; reason?: string } {
+  const table = parseCsv(parsed.csv);
+  const columns = parsed.columns;
+  const rows = table.slice(1).map((row) => {
+    const record: Record<string, string> = {};
+    columns.forEach((column, index) => (record[column] = row[index] ?? ''));
+    return record;
+  });
+  return evaluatePass({
+    ok: true,
+    columns,
+    rows,
+    totalRows: parsed.rows,
+    expectedColumns: expectedColumnsFromManifest(
+      JSON.stringify({ output: { columns: manifestColumns } })
+    ),
+  });
+}
+
+/** Read the files of a working tree (runtime folders, .gitignore and binary-looking files skipped). */
+async function readWorkingFiles(dir: string, prefix = ''): Promise<ScriptPackageFile[]> {
+  const result: ScriptPackageFile[] = [];
+  if (!existsSync(dir)) return result;
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (RUNTIME_DIRS.has(entry.name) || (!prefix && entry.name === '.gitignore')) continue;
+    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) result.push(...(await readWorkingFiles(full, rel)));
+    else if (entry.isFile()) {
+      const content = await readFile(full);
+      if (content.includes(0)) continue;
+      result.push({ path: rel, content: content.toString('utf8') });
+    }
+  }
+  return result.sort((a, b) => a.path.localeCompare(b.path));
 }

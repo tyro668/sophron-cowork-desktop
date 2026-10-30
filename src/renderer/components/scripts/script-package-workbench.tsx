@@ -186,6 +186,8 @@ export function ScriptPackageWorkbench({
   // 补充 notes and follow-up requests from earlier fix turns on this draft: each turn resends
   // them (oldest first) so a later request does not undo an earlier fix.
   const fixNotesRef = useRef<string[]>([]);
+  /** progressId of the running 规则生成 / AI 修复 agent, for 取消. */
+  const activeProgressRef = useRef<string | null>(null);
   const initialised = useRef(false);
 
   const refresh = useCallback(
@@ -363,6 +365,7 @@ export function ScriptPackageWorkbench({
     setGenerating(true);
     fixNotesRef.current = [];
     const progressId = createNormalizerGenerationProgressId();
+    activeProgressRef.current = progressId;
     const unsubscribe = api.onGenerateProgress((event) => {
       if (event.progressId !== progressId || event.phase === 'complete') return;
       applyNormalizerGenerationProgress(log, event);
@@ -380,29 +383,66 @@ export function ScriptPackageWorkbench({
       });
       for (const item of log.steps) if (item.status === 'active') item.status = 'done';
       log.finishedAt = Date.now();
+      const check = result.check;
+      const checkText = check
+        ? check.passed
+          ? t('scripts.editor.generatedTrialPassed', {
+              rows: check.rows ?? 0,
+              cols: check.columns?.length ?? 0,
+            })
+          : t('scripts.editor.generatedTrialFailed', {
+              reason: check.reason ?? '',
+              rounds: result.autoFixRounds ?? 0,
+            })
+        : '';
       log.outcome = {
-        status: 'success',
+        status: check && !check.passed ? 'error' : 'success',
         title: t('scripts.editor.generated', {
           version: result.version.version,
           count: result.version.files.length,
         }),
-        details: [],
+        details: [checkText, result.agentSummary ?? ''].filter(Boolean),
         files: result.version.files.map((file) => file.path),
       };
       setPackageId(result.summary.id);
       setNameEditing(false);
       await refresh(result.summary.id);
       setViewVersion(result.version.version);
-      setStep('review');
+      if (check) {
+        // The final trial run of the saved draft: a failure opens on the 报错 bar like 试运行.
+        setTrialVersion(result.version.version);
+        setTrialSuspicious(null);
+        setTrial({
+          ok: check.passed,
+          version: result.version.version,
+          rows: check.rows,
+          columns: check.columns,
+          durationMs: check.durationMs,
+          installedDeps: false,
+          preview: check.preview,
+          previewRows: check.previewRows,
+          log: check.log,
+          ...(check.passed ? {} : { error: check.reason ?? '' }),
+          ...(check.exitCode !== undefined ? { exitCode: check.exitCode } : {}),
+        });
+      }
+      // A failed final check stays on the console so the reason is visible.
+      if (!check || check.passed) setStep('review');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
       setError(message);
     } finally {
       unsubscribe();
+      if (activeProgressRef.current === progressId) activeProgressRef.current = null;
       setGenerating(false);
       flushLog();
     }
+  };
+
+  const cancelAgent = () => {
+    const progressId = activeProgressRef.current;
+    if (progressId) void api.cancelGenerate(progressId).catch(() => undefined);
   };
 
   const runTrial = async (version: number | 'published' | null = viewVersion) => {
@@ -518,6 +558,7 @@ export function ScriptPackageWorkbench({
     logRef.current = log;
     setGenerationLog({ ...log });
     const progressId = createNormalizerGenerationProgressId();
+    activeProgressRef.current = progressId;
     const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
       Boolean
     );
@@ -632,6 +673,7 @@ export function ScriptPackageWorkbench({
       setError(message);
     } finally {
       unsubscribe();
+      if (activeProgressRef.current === progressId) activeProgressRef.current = null;
       setFixing(false);
       flushLog();
     }
@@ -873,9 +915,14 @@ export function ScriptPackageWorkbench({
       <>
         {backCell}
         {noteCell(t('fixError.fixingHintTrial'))}
-        <button type="button" disabled className="ui-accent-cell border-l border-border-subtle">
-          <FileCode2 className="h-3.5 w-3.5" />
-          {t('fixError.viewChanges')}
+        <button
+          type="button"
+          onClick={cancelAgent}
+          data-testid="script-agent-cancel"
+          className="ui-accent-cell border-l border-border-subtle"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          {t('scripts.editor.cancelAgent')}
         </button>
       </>
     );
@@ -929,7 +976,17 @@ export function ScriptPackageWorkbench({
               ? t('data.rawTables.editor.customizeErrorHint')
               : t('data.rawTables.editor.customizeDoneHint')
         )}
-        {failed ? (
+        {generating ? (
+          <button
+            type="button"
+            onClick={cancelAgent}
+            data-testid="script-agent-cancel"
+            className="ui-accent-cell border-l border-border-subtle"
+          >
+            <XCircle className="h-3.5 w-3.5" />
+            {t('scripts.editor.cancelAgent')}
+          </button>
+        ) : failed && viewVersion == null ? (
           <button
             type="button"
             onClick={() => void generate()}
@@ -1327,7 +1384,9 @@ export function ScriptPackageWorkbench({
                   modelLabel={modelLabel}
                   stepTitles={{
                     source_summary: t('scripts.editor.stepBase'),
+                    source_analysis: t('scripts.editor.stepExplore'),
                     code_generation: t('scripts.editor.stepCode'),
+                    verify: t('scripts.editor.stepVerify'),
                     saving: t('scripts.editor.stepSave'),
                   }}
                   t={t}

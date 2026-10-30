@@ -22,6 +22,9 @@ import { appContext } from '../../app/context';
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
 
+/** Running normalizer generation / fix agents by progressId, for 取消. */
+const runningNormalizerDrafts = new Map<string, AbortController>();
+
 export function registerRawTablesIpc({
   requireDataPipelineStore,
   requireDataCommandService,
@@ -130,11 +133,19 @@ export function registerRawTablesIpc({
     }
   );
 
+  handleIpc('data.cancelRawTableNormalizerDraft', (_event, progressId: string) => {
+    const controller = runningNormalizerDrafts.get(progressId);
+    controller?.abort();
+    return { cancelled: Boolean(controller) };
+  });
+
   handleIpc(
     'data.generateRawTableNormalizerDraft',
     async (event, payload: DataGenerateRawTableNormalizerDraftInput) => {
+      const progressId = payload.progressId?.trim();
+      const controller = new AbortController();
+      if (progressId) runningNormalizerDrafts.set(progressId, controller);
       try {
-        const progressId = payload.progressId?.trim();
         const modelConfigSetId =
           typeof payload.modelConfigSetId === 'string' ? payload.modelConfigSetId.trim() : '';
         const runtimeConfig = modelConfigSetId
@@ -143,6 +154,7 @@ export function registerRawTablesIpc({
         return await requireDataCommandService().generateRawTableNormalizerDraft({
           ...payload,
           runtimeConfig,
+          signal: controller.signal,
           onProgress: progressId
             ? (progress) => {
                 if (typeof progress.text !== 'string' || progress.text.length === 0) return;
@@ -156,6 +168,8 @@ export function registerRawTablesIpc({
       } catch (error) {
         logError('[Data] Error generating input table normalizer draft:', error);
         throw error;
+      } finally {
+        if (progressId) runningNormalizerDrafts.delete(progressId);
       }
     }
   );

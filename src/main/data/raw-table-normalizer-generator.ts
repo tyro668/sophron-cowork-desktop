@@ -3,6 +3,11 @@ import { parse } from 'acorn';
 import { spawnSync } from 'node:child_process';
 import type { AppConfig } from '../config/config-store';
 import { runPiAiOneShot } from '../agent/pi-ai-one-shot';
+import {
+  runNormalizerAgent,
+  type NormalizerPreviewCheck,
+  type NormalizerPreviewFn,
+} from './raw-table-normalizer-agent';
 import type {
   AgentRuntimeConfig,
   DataRawTableSourceSummary,
@@ -36,7 +41,13 @@ export interface GenerateRawTableNormalizerProjectInput {
 
 export type RawTableNormalizerSourceStructureAnalysis = Record<string, unknown>;
 export type RawTableNormalizerProjectProgressPhase =
-  'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
+  | 'source_summary'
+  | 'source_analysis'
+  | 'code_generation'
+  | 'verify'
+  | 'saving'
+  | 'complete'
+  | 'error';
 export interface RawTableNormalizerProjectProgressEvent {
   phase: RawTableNormalizerProjectProgressPhase;
   kind: 'message' | 'delta';
@@ -57,6 +68,30 @@ export interface FixRawTableNormalizerProjectInput {
   sourceSummary?: DataRawTableSourceSummary;
   runtimeConfig?: AgentRuntimeConfig;
   onProgress?: RawTableNormalizerProjectProgressCallback;
+  /** Preview unsaved files on the real source: the fix then runs as a self-testing agent. */
+  preview?: NormalizerPreviewFn;
+  signal?: AbortSignal;
+}
+
+/** 规则生成 follow-up: the first preview of a generated draft failed; iterate until it passes. */
+export interface RefineRawTableNormalizerProjectInput {
+  name: string;
+  primaryLanguage: DataNormalizerLanguage;
+  rulePrompt: string;
+  files: DataNormalizerProjectFile[];
+  failure: string;
+  sourceSummary?: DataRawTableSourceSummary;
+  runtimeConfig?: AgentRuntimeConfig;
+  onProgress?: RawTableNormalizerProjectProgressCallback;
+  preview: NormalizerPreviewFn;
+  signal?: AbortSignal;
+}
+
+export interface RefineRawTableNormalizerProjectResult {
+  files: DataNormalizerProjectFile[];
+  changedFiles: string[];
+  summary: string;
+  lastCheck?: NormalizerPreviewCheck;
 }
 
 export interface FixRawTableNormalizerProjectResult {
@@ -74,6 +109,10 @@ export interface RawTableNormalizerProjectGenerator {
   ): Promise<RawTableNormalizerProjectTemplate>;
   /** Follow-up turn: fix the current draft's files from a preview failure. */
   fix?(input: FixRawTableNormalizerProjectInput): Promise<FixRawTableNormalizerProjectResult>;
+  /** Self-test loop after 规则生成 when the first preview fails. */
+  refine?(
+    input: RefineRawTableNormalizerProjectInput
+  ): Promise<RefineRawTableNormalizerProjectResult>;
 }
 
 export function createLlmRawTableNormalizerProjectGenerator(
@@ -144,6 +183,32 @@ export function createLlmRawTableNormalizerProjectGenerator(
         }),
       };
     },
+    async refine(input) {
+      const runtimeConfig = input.runtimeConfig ?? (await getConfig());
+      const result = await runNormalizerAgent({
+        mode: 'generate',
+        name: input.name,
+        language: input.primaryLanguage,
+        rulePrompt: input.rulePrompt,
+        files: input.files,
+        failure: input.failure,
+        sourceSummary: input.sourceSummary ? compactSourceSummary(input.sourceSummary) : undefined,
+        preview: input.preview,
+        validate: (files) => validateGeneratedNormalizerProjectFiles(files, input.primaryLanguage),
+        systemRules: buildCodeGenerationSystemPrompt(input.primaryLanguage),
+        config: runtimeConfig,
+        signal: input.signal,
+        onProgress: (phase, text) => {
+          if (text) input.onProgress?.({ phase, kind: 'message', text });
+        },
+      });
+      return {
+        files: result.files,
+        changedFiles: result.changedFiles,
+        summary: result.summary,
+        lastCheck: result.lastCheck,
+      };
+    },
     async fix(input) {
       const config = await getConfig();
       const runtimeConfig = input.runtimeConfig ?? config;
@@ -156,6 +221,40 @@ export function createLlmRawTableNormalizerProjectGenerator(
       const emit = (event: RawTableNormalizerProjectProgressEvent) => {
         if (event.text) input.onProgress?.(event);
       };
+      if (input.preview) {
+        emit({
+          phase: 'source_summary',
+          kind: 'message',
+          text: `读取 ${input.files.length} 个文件（${input.baseLabel}）· 智能体会预览自测`,
+        });
+        const result = await runNormalizerAgent({
+          mode: 'fix',
+          name: input.name,
+          language: input.primaryLanguage,
+          rulePrompt: input.rulePrompt,
+          files: input.files,
+          failure: payload.error,
+          payload,
+          sourceSummary: input.sourceSummary
+            ? compactSourceSummary(input.sourceSummary)
+            : undefined,
+          preview: input.preview,
+          validate: (files) =>
+            validateGeneratedNormalizerProjectFiles(files, input.primaryLanguage),
+          systemRules: buildCodeGenerationSystemPrompt(input.primaryLanguage),
+          config: runtimeConfig,
+          signal: input.signal,
+          onProgress: (phase, text) => emit({ phase, kind: 'message', text }),
+        });
+        if (result.changedFiles.length === 0) throw new Error('AI 修复没有改动任何文件');
+        return {
+          files: result.files,
+          changedFiles: result.changedFiles,
+          summary: result.summary,
+          analysis: '',
+          payload,
+        };
+      }
       emit({
         phase: 'source_summary',
         kind: 'message',
@@ -381,7 +480,7 @@ function buildCodeGenerationSystemPrompt(language: DataNormalizerLanguage): stri
     'Do not assume that the first non-empty row is always the header. Choose header rows, data start rows, and column names from sourceStructureAnalysis and runtime rows.',
     'The transform must write output/normalized.csv and return a manifest object with output, format="csv", rowCount, columns, warnings.',
     'Manifest columns must be an array of objects: [{"name":"column name","type":"string"}]. Do not return columns as a string array.',
-    'If no data rows are found, still return the detected output columns and rowCount=0. Never return an empty columns array for a readable source.',
+    'If no data rows are found, still return the detected output columns and rowCount=0 (the app treats 0 rows as a failed preview, so make sure real data rows are recognised). Never return an empty columns array for a readable source.',
     'Generate code tailored to the user rule prompt, sourceStructureAnalysis, and source summary. Do not leave TODOs or scaffold placeholders.',
   ].join('\n');
 }

@@ -6,7 +6,7 @@ import {
   resolveAppConfigForAuth,
   resolveModelRuntimeConfigForAutomation,
 } from '../../app/runtime-config';
-import { createLlmScriptFilesGenerator } from '../../automation/script-packages/generator';
+import { createAgentScriptFilesGenerator } from '../../automation/script-packages/generator';
 import type {
   ScriptGenerateDraftInput,
   ScriptPackageEditorState,
@@ -18,11 +18,18 @@ function requireScripts() {
   return appContext.scriptPackages;
 }
 
-const generator = createLlmScriptFilesGenerator(() =>
+const generator = createAgentScriptFilesGenerator(() =>
   resolveAppConfigForAuth(configStore.getAll())
 );
 
+/** Running 规则生成 / AI 修复 agents by progressId, for 取消. */
+const running = new Map<string, AbortController>();
+
 export function registerScriptPackageIpc(): void {
+  handleIpc('automation.scripts.cancelGenerate', (_event, progressId: string) => {
+    running.get(progressId)?.abort();
+    return { cancelled: running.has(progressId) };
+  });
   handleIpc('automation.scripts.list', () => requireScripts().list());
   handleIpc('automation.scripts.get', (_event, id: string) => requireScripts().summary(id));
   handleIpc('automation.scripts.open', async (_event, id: string) => {
@@ -62,17 +69,24 @@ export function registerScriptPackageIpc(): void {
     const runtimeConfig = configSetId
       ? ((await resolveModelRuntimeConfigForAutomation(configSetId)) ?? undefined)
       : undefined;
-    return requireScripts().generateDraft(input, generator, {
-      runtimeConfig,
-      onProgress: input.progressId
-        ? (progress) => {
-            if (!event.sender.isDestroyed())
-              event.sender.send('automation.scripts.generateProgress', {
-                progressId: input.progressId,
-                ...progress,
-              });
-          }
-        : undefined,
-    });
+    const controller = new AbortController();
+    if (input.progressId) running.set(input.progressId, controller);
+    try {
+      return await requireScripts().generateDraft(input, generator, {
+        runtimeConfig,
+        signal: controller.signal,
+        onProgress: input.progressId
+          ? (progress) => {
+              if (!event.sender.isDestroyed())
+                event.sender.send('automation.scripts.generateProgress', {
+                  progressId: input.progressId,
+                  ...progress,
+                });
+            }
+          : undefined,
+      });
+    } finally {
+      if (input.progressId) running.delete(input.progressId);
+    }
   });
 }
