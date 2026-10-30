@@ -708,6 +708,19 @@ function formatDeliveryStatus(
   return tr(`schedule.deliveryStatus.${status}`, status);
 }
 
+function runNodeLabel(
+  node: { type: string; label?: string; config?: Record<string, unknown> },
+  tr: (key: string, fallback: string) => string
+): string {
+  if (node.label) return node.label;
+  if (node.type === 'cloud.sync') {
+    return node.config?.direction === 'input'
+      ? tr('schedule.cloudInput.title', '云端表同步到原始表')
+      : tr('schedule.cloudSync.title', '结果表写入网盘文件');
+  }
+  return tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type);
+}
+
 function RunLogRow({
   automationName,
   graph,
@@ -805,8 +818,7 @@ function RunLogRow({
             >
               <td className="truncate pl-8 pr-3 text-text-secondary">
                 <span className="mr-2 tabular-nums text-text-muted">{index + 1}</span>
-                {node.label ||
-                  tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type)}
+                {runNodeLabel(node, tr)}
               </td>
               <td className="px-3">
                 <span
