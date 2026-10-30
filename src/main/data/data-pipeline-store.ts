@@ -314,6 +314,11 @@ export class DataPipelineStore {
   ): Promise<DataRawTableNormalizerVersionSaveResult> {
     return this.normalizerService.saveRawTableNormalizerDraft(input);
   }
+  saveRawTableNormalizerFixDraft(
+    input: Parameters<NormalizerService['saveRawTableNormalizerFixDraft']>[0]
+  ): ReturnType<NormalizerService['saveRawTableNormalizerFixDraft']> {
+    return this.normalizerService.saveRawTableNormalizerFixDraft(input);
+  }
   publishRawTableNormalizerArtifactVersion(
     versionId: string
   ): Promise<DataRawTableNormalizerVersionSaveResult> {

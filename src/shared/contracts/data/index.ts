@@ -112,7 +112,7 @@ export type DataNormalizerLanguage = 'python' | 'node';
 export type DataNormalizerArtifactVersionStatus = 'draft' | 'published' | 'archived';
 
 /** 来源 of a normalizer version: generated from the rule, or edited in the repo folder. */
-export type DataNormalizerVersionSource = 'rule' | 'manual';
+export type DataNormalizerVersionSource = 'rule' | 'manual' | 'ai_repair';
 
 export interface DataNormalizerDependencySpec {
   name: string;
@@ -211,12 +211,30 @@ export interface DataGenerateRawTableNormalizerDraftInput {
   model?: string | null;
   primaryLanguage?: DataNormalizerLanguage;
   progressId?: string;
+  /** 交给 AI 修复: a follow-up turn that edits `baseVersionId`'s files instead of regenerating. */
+  fix?: DataNormalizerFixInput;
+}
+
+/** A preview failure handed to the model as a fix turn on the current draft. */
+export interface DataNormalizerFixInput {
+  baseVersionId: string;
+  /** Raw preview error (the main process strips prefixes, paths and secrets). */
+  error: string;
+  note?: string;
+  durationMs?: number;
+  round?: number;
+  maxRounds?: number;
+  previousAttempts?: string[];
 }
 
 export interface DataGenerateRawTableNormalizerDraftResult {
   artifact: DataRawTableNormalizerArtifact;
   version: DataRawTableNormalizerArtifactVersion;
   summary: DataRawTableSourceSummary;
+  /** Fix turns: files the model changed, its one-line explanation, and whether the AI 修复 draft was overwritten. */
+  changedFiles?: string[];
+  fixSummary?: string;
+  replaced?: boolean;
 }
 
 export type DataRawTableNormalizerDraftProgressPhase =

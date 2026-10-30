@@ -346,6 +346,7 @@ export class RawTablesCommandService {
       'Normalizer rule prompt is required'
     );
     const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
+    if (input.fix) return this.fixRawTableNormalizerDraft(input, name, rulePrompt);
     let summary: SummarizeRawTableSourceResult['summary'];
     try {
       input.onProgress?.({
@@ -409,6 +410,115 @@ export class RawTablesCommandService {
       return {
         ...result,
         summary,
+      };
+    } catch (error) {
+      input.onProgress?.({
+        phase: 'error',
+        kind: 'message',
+        text: error instanceof Error ? error.message : String(error),
+      });
+      throw toCommandError(error, 'RUN_FAILED');
+    }
+  }
+
+  /**
+   * 交给 AI 修复: a follow-up turn on the current draft. Reads the draft's files and the preview
+   * failure, lets the model change only what is needed, and saves the result to the AI 修复
+   * draft (overwritten on later fixes). Rule-based generation above stays from scratch.
+   */
+  private async fixRawTableNormalizerDraft(
+    input: GenerateRawTableNormalizerDraftCommand,
+    name: string,
+    rulePrompt: string
+  ): Promise<GenerateRawTableNormalizerDraftResult> {
+    const fix = input.fix!;
+    const generator = this.normalizerProjectGenerator;
+    if (!generator.fix) {
+      throw new DataCommandError('INVALID_ARGUMENT', 'Normalizer generator cannot fix drafts');
+    }
+    let base: NonNullable<
+      Awaited<ReturnType<DataPipelineStore['getRawTableNormalizerArtifactVersion']>>
+    >;
+    let summary: SummarizeRawTableSourceResult['summary'];
+    try {
+      input.onProgress?.({
+        phase: 'source_summary',
+        kind: 'message',
+        text: '读取报错、当前草稿的项目文件和输入样本。',
+      });
+      const found = await this.store.getRawTableNormalizerArtifactVersion(fix.baseVersionId);
+      if (!found) {
+        throw new DataCommandError(
+          'INVALID_ARGUMENT',
+          `Normalizer version not found: ${fix.baseVersionId}`
+        );
+      }
+      base = found;
+      if (input.artifactId && base.artifactId !== input.artifactId) {
+        throw new DataCommandError(
+          'INVALID_ARGUMENT',
+          'Fix base version belongs to another artifact'
+        );
+      }
+      summary = await this.store.summarizeRawTableSource({
+        sourcePath: input.sourcePath,
+        sourceKind: input.sourceKind,
+        config: input.config,
+        maxFiles: 8,
+        maxSheetsPerFile: 12,
+        maxRowsPerSheet: 20,
+        maxColumnsPerRow: 80,
+      });
+    } catch (error) {
+      throw toCommandError(error, 'FILE_ACCESS_DENIED');
+    }
+    try {
+      const result = await generator.fix({
+        name,
+        primaryLanguage: base.runtime.language === 'node' ? 'node' : 'python',
+        rulePrompt: base.rulePrompt || rulePrompt,
+        files: base.files.filter((file) => file.path !== '.gitignore'),
+        baseLabel: `v${base.version} ${base.status === 'published' ? '已发布' : '草稿'}`,
+        request: {
+          error: fix.error,
+          note: fix.note,
+          durationMs: fix.durationMs,
+          round: fix.round,
+          maxRounds: fix.maxRounds,
+          previousAttempts: fix.previousAttempts,
+        },
+        sourceSummary: summary,
+        runtimeConfig: input.runtimeConfig,
+        onProgress: input.onProgress,
+      });
+      input.onProgress?.({
+        phase: 'saving',
+        kind: 'message',
+        text: `修改 ${result.changedFiles.join('、')}，写入 AI 修复草稿。`,
+      });
+      const saved = await this.store.saveRawTableNormalizerFixDraft({
+        baseVersionId: base.id,
+        files: result.files,
+        reason: [
+          result.summary,
+          `报错：${result.payload.error}`,
+          fix.note ? `补充：${fix.note}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      });
+      input.onProgress?.({
+        phase: 'complete',
+        kind: 'message',
+        text: `${saved.replaced ? '已覆盖' : '已保存'} v${saved.version.version} AI 修复草稿。`,
+      });
+      return {
+        artifact: saved.artifact,
+        version: saved.version,
+        summary,
+        changedFiles: result.changedFiles,
+        fixSummary: result.summary || result.analysis,
+        replaced: saved.replaced,
       };
     } catch (error) {
       input.onProgress?.({

@@ -227,7 +227,8 @@ export function GlassDataGridPreview({
             className="truncate font-normal"
             style={{ color: 'var(--data-grid-text-secondary)' }}
           >
-            {preview ? labels.total(totalRows) : labels.pageSize(RAW_TABLE_FALLBACK_PAGE_SIZE)}
+            {/* The page size already shows on the right; without data there is no total yet. */}
+            {preview ? labels.total(totalRows) : ''}
           </span>
         </div>
         {pageSizeOptions && onPageSizeChange ? (

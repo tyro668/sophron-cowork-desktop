@@ -21,6 +21,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Send,
   Sparkles,
   Trash2,
   Upload,
@@ -40,6 +41,7 @@ import type {
   DataRawTableExcelConfig,
   DataRawTableCsvConfig,
   DataRawTableFolderConfig,
+  DataNormalizerProjectFile,
   DataRawTableNormalizerArtifactVersion,
   DataRawTableNormalizerDraftProgressEvent,
   DataRawTablePreview,
@@ -75,6 +77,24 @@ import { CodePreview, getCodePreviewLanguageLabel } from './raw-table-code-previ
 import { RawTableGenerationConsole } from './raw-table-generation-console';
 import { NormalizerProjectTree, RawTableVersionHistoryPanel } from './raw-table-version-history';
 import { RawTablePreviewDialog } from './raw-table-preview-dialog';
+import { FixErrorPanel, type AutoFixRounds } from './fix-error-panel';
+import { CodeDiffView, fileDiffStats } from './code-diff-view';
+import {
+  createFixLog,
+  failureHistoryItem,
+  historyFromLog,
+  runFixFlow,
+  type FixFailure,
+} from './fix-error-flow';
+import {
+  changedFilePaths,
+  evaluatePass,
+  expectedColumnsFromAnalysis,
+  parseErrorReport,
+  predictFixDraft,
+  summarizeError,
+  type FixErrorReport,
+} from '../../../shared/fix-error';
 import {
   applyNormalizerGenerationProgress,
   createNormalizerGenerationLog,
@@ -210,6 +230,31 @@ export function RawTableEditorWorkbench({
   );
   const [versionsDialogOpen, setVersionsDialogOpen] = useState(false);
   const [selectedNormalizerFilePath, setSelectedNormalizerFilePath] = useState('');
+  // 报错修复: which version the last preview ran, how long it took, a 通过但结果异常 verdict,
+  // the panel inputs, and the result of the last fix turn (for the 差异 view and step bar).
+  const [previewRun, setPreviewRun] = useState<{
+    versionId: string;
+    durationMs: number;
+    suspicious?: { reason: string; sample: string };
+  } | null>(null);
+  const [fixNote, setFixNote] = useState('');
+  const [autoFixRounds, setAutoFixRounds] = useState<AutoFixRounds>(0);
+  const [fixing, setFixing] = useState(false);
+  const [fixInfo, setFixInfo] = useState<{
+    versionId: string;
+    version: number;
+    rounds: number;
+    passed: boolean;
+    text: string;
+    baseFiles: DataNormalizerProjectFile[];
+  } | null>(null);
+  const [codeView, setCodeView] = useState<'diff' | 'full'>('full');
+  const [focusLine, setFocusLine] = useState<{ path: string; line: number } | null>(null);
+  const [continueText, setContinueText] = useState('');
+  const lastFixFailureRef = useRef<FixFailure | null>(null);
+  // 补充 notes and follow-up requests from earlier fix turns on this draft: each turn resends
+  // them (oldest first) so a later request does not undo an earlier fix.
+  const fixNotesRef = useRef<string[]>([]);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   // Last customize config seen while editing — restored when the strategy
   // select toggles back to 自定义, so the generated-draft linkage survives
@@ -274,17 +319,30 @@ export function RawTableEditorWorkbench({
     // Code is read from the normalizer's git repo (via the version list), never from config.
     return currentNormalizerVersion?.files ?? [];
   }, [currentNormalizerVersion, dataProcessing]);
+  const showingFix = Boolean(
+    fixInfo && currentNormalizerVersion && currentNormalizerVersion.id === fixInfo.versionId
+  );
   const normalizerChangeMarkers = useMemo(
     () =>
-      getNormalizerChangeMarkers(
-        currentNormalizerVersion,
-        normalizerVersions.find((version) => version.status === 'published'),
-        {
-          modified: t('scripts.editor.markerModified'),
-          added: t('scripts.editor.markerAdded'),
-        }
-      ),
-    [currentNormalizerVersion, normalizerVersions, t]
+      showingFix && fixInfo && currentNormalizerVersion
+        ? // After an AI 修复 the markers show what this fix changed against the version it edited.
+          Object.fromEntries(
+            changedFilePaths(fixInfo.baseFiles, currentNormalizerVersion.files).map((path) => [
+              path,
+              fixInfo.baseFiles.some((file) => file.path === path)
+                ? t('scripts.editor.markerModified')
+                : t('scripts.editor.markerAdded'),
+            ])
+          )
+        : getNormalizerChangeMarkers(
+            currentNormalizerVersion,
+            normalizerVersions.find((version) => version.status === 'published'),
+            {
+              modified: t('scripts.editor.markerModified'),
+              added: t('scripts.editor.markerAdded'),
+            }
+          ),
+    [currentNormalizerVersion, fixInfo, normalizerVersions, showingFix, t]
   );
   const normalizerProjectFileSignature = useMemo(
     () => normalizerProjectFiles.map((file) => file.path).join('\n'),
@@ -513,6 +571,7 @@ export function RawTableEditorWorkbench({
     generationLogRef.current = log;
     setGenerationLog({ ...log, steps: [...log.steps] });
     setCustomizeGenerating(true);
+    fixNotesRef.current = [];
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
     const unsubscribeProgress = dataClient.onRawTableNormalizerDraftProgress(
@@ -569,6 +628,82 @@ export function RawTableEditorWorkbench({
       setCustomizeGenerating(false);
       flushGenerationLog();
     }
+  };
+
+  const previewVersion = previewRun
+    ? normalizerVersions.find((version) => version.id === previewRun.versionId)
+    : undefined;
+  const previewVersionLabel = previewVersion
+    ? t(
+        previewVersion.status === 'published'
+          ? 'fixError.baseLabelPublished'
+          : 'fixError.baseLabelDraft',
+        { version: previewVersion.version }
+      )
+    : '';
+  const normalizerReport = useMemo((): FixErrorReport | null => {
+    if (!previewRun || previewLoading) return null;
+    if (previewRun.suspicious)
+      return {
+        ...parseErrorReport({
+          error: previewRun.suspicious.reason,
+          durationMs: previewRun.durationMs,
+        }),
+        message: previewRun.suspicious.reason,
+        traceback: previewRun.suspicious.sample,
+        exitCode: 0,
+      };
+    if (!previewError) return null;
+    return parseErrorReport(
+      { error: previewError, durationMs: previewRun.durationMs },
+      previewVersion?.files.map((file) => file.path)
+    );
+  }, [previewError, previewLoading, previewRun, previewVersion]);
+  const previewFailedHere = Boolean(
+    normalizerReport && previewRun && previewRun.versionId === customizeArtifactVersionId
+  );
+  const normalizerFixTarget = predictFixDraft(normalizerVersions);
+  const sourceInputLabel = rawTable
+    ? [
+        rawTable.sourcePath.split(/[\\/]/).filter(Boolean).pop() ?? rawTable.sourcePath,
+        localSourceKind === 'excel'
+          ? 'Excel'
+          : localSourceKind === 'folder'
+            ? t('data.rawTables.editor.sourceKindFolder', { defaultValue: 'Folder' })
+            : localSourceKind.toUpperCase(),
+      ].join(' · ')
+    : '';
+  const startPreviewFix = () => {
+    if (!normalizerReport || !previewRun) return;
+    void startNormalizerFix({
+      failure: {
+        message: normalizerReport.message,
+        error: previewRun.suspicious
+          ? `${previewRun.suspicious.reason}\n${previewRun.suspicious.sample}`
+          : (previewError ?? ''),
+        durationMs: previewRun.durationMs,
+      },
+      report: normalizerReport,
+      note: fixNote,
+      maxRounds: Math.max(1, autoFixRounds),
+      baseVersionId: previewRun.versionId,
+    });
+  };
+  const sendNormalizerContinue = () => {
+    const text = continueText.trim();
+    if (!text || !fixInfo) return;
+    const failure = lastFixFailureRef.current ?? {
+      message: t('fixError.continueNoError'),
+      error: t('fixError.continueNoError'),
+    };
+    setContinueText('');
+    void startNormalizerFix({
+      failure,
+      report: parseErrorReport({ error: failure.error, log: failure.log }),
+      request: text,
+      maxRounds: Math.max(1, autoFixRounds),
+      baseVersionId: fixInfo.versionId,
+    });
   };
 
   const saveRawTable = () => {
@@ -681,30 +816,305 @@ export function RawTableEditorWorkbench({
     }
   }, [rawTable?.sourcePath]);
 
-  const previewCustomizeDraft = async () => {
+  /** Pass check on a normalizer preview: 通过但结果异常 (missing / all-empty columns, 0 行) fails. */
+  const judgeNormalizerPreview = (
+    preview: DataRawTablePreview,
+    files: DataNormalizerProjectFile[] | undefined
+  ) => {
+    const verdict =
+      preview.totalRows === 0 && preview.columns.length > 0
+        ? { ok: false, reason: t('fixError.emptyOutput') }
+        : evaluatePass({
+            ok: true,
+            columns: preview.columns,
+            rows: preview.rows,
+            totalRows: preview.totalRows,
+            expectedColumns: expectedColumnsFromAnalysis(
+              files?.find((file) => file.path === 'docs/source-structure-analysis.json')?.content
+            ),
+          });
+    if (verdict.ok) return null;
+    const head = preview.columns.join(',');
+    const lines = preview.rows
+      .slice(0, 5)
+      .map((row) => preview.columns.map((column) => String(row[column] ?? '')).join(','));
+    return {
+      reason: verdict.reason ?? '',
+      sample: `输出预览（共 ${preview.totalRows} 行）：\n${[head, ...lines].join('\n')}`,
+    };
+  };
+
+  const previewCustomizeDraft = async (page = 1) => {
     if (dataProcessing.strategy !== 'customize' || !dataProcessing.artifactVersionId || !rawTable) {
       return;
     }
+    const versionId = dataProcessing.artifactVersionId;
     setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewData(null);
-    setPreviewPage(1);
+    setPreviewPage(page);
+    if (page === 1) setPreviewRun(null);
+    const startedAt = Date.now();
     try {
       const result = await dataClient.previewRawTableNormalizerVersion({
-        versionId: dataProcessing.artifactVersionId,
+        versionId,
         sourcePath: rawTable.sourcePath,
         sourceKind: localSourceKind,
         config: localConfig,
         prepareDependencies: true,
         limit: RAW_TABLE_PREVIEW_PAGE_SIZE,
-        offset: 0,
+        offset: (page - 1) * RAW_TABLE_PREVIEW_PAGE_SIZE,
       });
       setPreviewData(result.preview);
+      if (page === 1) {
+        const suspicious = judgeNormalizerPreview(
+          result.preview,
+          normalizerVersions.find((version) => version.id === versionId)?.files
+        );
+        setPreviewRun({
+          versionId,
+          durationMs: Date.now() - startedAt,
+          suspicious: suspicious ?? undefined,
+        });
+      }
     } catch (err) {
-      setPreviewError(formatDataErrorMessage(err, t));
+      // Keep the raw message: the 报错 panel strips the IPC prefix and absolute paths itself.
+      setPreviewError(err instanceof Error ? err.message : formatDataErrorMessage(err, t));
+      setPreviewRun({ versionId, durationMs: Date.now() - startedAt });
     } finally {
       setPreviewLoading(false);
+    }
+  };
+
+  /**
+   * 交给 AI 修复 / 继续修改: a follow-up turn on the current draft — fix → rerun the preview →
+   * pass check, repeated up to the 自动修复 limit. Fixes overwrite the same AI 修复 draft and the
+   * result stays a draft until 发布.
+   */
+  const startNormalizerFix = async (input: {
+    failure: FixFailure;
+    report: FixErrorReport;
+    note?: string;
+    request?: string;
+    maxRounds: number;
+    baseVersionId: string;
+  }) => {
+    if (dataProcessing.strategy !== 'customize' || !rawTable || fixing || customizeGenerating)
+      return;
+    const processing = dataProcessing;
+    const table = rawTable;
+    const config = localConfig;
+    const baseRecord = normalizerVersions.find((version) => version.id === input.baseVersionId);
+    if (!baseRecord) return;
+    setPreviewOpen(false);
+    setCustomizeStep('generate');
+    setCustomizeGenerationError(null);
+    setFixing(true);
+    const base = t(
+      baseRecord.status === 'published' ? 'fixError.baseLabelPublished' : 'fixError.baseLabelDraft',
+      { version: baseRecord.version }
+    );
+    const versionTitle = t('fixError.historyVersion', {
+      version: baseRecord.version,
+      source: t(
+        baseRecord.source === 'manual'
+          ? 'scripts.source.manual'
+          : baseRecord.source === 'ai_repair'
+            ? 'scripts.source.ai_repair'
+            : 'scripts.source.rule'
+      ),
+    });
+    const previous = generationLogRef.current;
+    const history = previous
+      ? historyFromLog(
+          previous,
+          previous.turnTitle
+            ? versionTitle
+            : t('fixError.historyRule', { version: baseRecord.version })
+        )
+      : [{ title: versionTitle, status: 'success' as const }];
+    if (!input.request) {
+      history.push(
+        failureHistoryItem(
+          t('fixError.historyPreviewFailed', { version: baseRecord.version }),
+          input.report
+        )
+      );
+    }
+    const log = createFixLog({
+      history,
+      turnTitle: input.request
+        ? t('fixError.turnContinue', { base })
+        : input.maxRounds > 1
+          ? t('fixError.turnAutoFix', { count: input.maxRounds, base })
+          : t('fixError.turnFix', { base }),
+      report: input.report,
+      note: input.note,
+      request: input.request,
+      verifyKind: 'preview',
+      t,
+    });
+    generationLogRef.current = log;
+    setGenerationLog({ ...log, steps: [...log.steps] });
+    const progressId = createNormalizerGenerationProgressId();
+    const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
+      Boolean
+    );
+    let forward:
+      ((event: { phase: string; kind: 'message' | 'delta'; text: string }) => void) | null = null;
+    const unsubscribe = dataClient.onRawTableNormalizerDraftProgress(
+      (event: DataRawTableNormalizerDraftProgressEvent) => {
+        if (event.progressId !== progressId) return;
+        if (typeof event.text !== 'string' || event.text.length === 0) return;
+        forward?.(event);
+      }
+    );
+    let targetId = input.baseVersionId;
+    let saved: Awaited<ReturnType<typeof dataClient.generateRawTableNormalizerDraft>> | null = null;
+    try {
+      const result = await runFixFlow({
+        log,
+        flush: scheduleGenerationLogFlush,
+        maxRounds: input.maxRounds,
+        initial: input.failure,
+        note: notes.join('\n') || undefined,
+        verifyKind: 'preview',
+        t,
+        fix: async (request, onProgress) => {
+          forward = onProgress;
+          const fixed = await dataClient.generateRawTableNormalizerDraft({
+            artifactId: processing.artifactId,
+            name: `${table.name} normalizer`,
+            sourcePath: table.sourcePath,
+            sourceKind: localSourceKind,
+            config,
+            rulePrompt: processing.rulePrompt.trim() || baseRecord.rulePrompt,
+            selectedSkillNames: customizeSelectedSkillNames,
+            modelConfigSetId: selectedCustomizeModelConfigSetId,
+            model: getAgentModelLabel(appConfig, '', selectedCustomizeModelConfigSetId),
+            primaryLanguage: normalizerLanguage,
+            progressId,
+            fix: {
+              baseVersionId: targetId,
+              error: [request.error, request.log].filter(Boolean).join('\n'),
+              note: request.note,
+              durationMs: request.durationMs,
+              round: request.round,
+              maxRounds: request.maxRounds,
+              previousAttempts: request.previousAttempts,
+            },
+          });
+          saved = fixed;
+          targetId = fixed.version.id;
+          return {
+            versionNumber: fixed.version.version,
+            changedFiles: fixed.changedFiles ?? [],
+            summary: fixed.fixSummary,
+            replaced: fixed.replaced,
+          };
+        },
+        verify: async () => {
+          const version = saved!.version;
+          const startedAt = Date.now();
+          try {
+            const run = await dataClient.previewRawTableNormalizerVersion({
+              versionId: version.id,
+              sourcePath: table.sourcePath,
+              sourceKind: localSourceKind,
+              config,
+              prepareDependencies: true,
+              limit: RAW_TABLE_PREVIEW_PAGE_SIZE,
+              offset: 0,
+            });
+            setPreviewData(run.preview);
+            setPreviewError(null);
+            setPreviewPage(1);
+            const suspicious = judgeNormalizerPreview(run.preview, version.files);
+            setPreviewRun({
+              versionId: version.id,
+              durationMs: Date.now() - startedAt,
+              suspicious: suspicious ?? undefined,
+            });
+            return suspicious
+              ? {
+                  passed: false,
+                  rows: run.preview.totalRows,
+                  cols: run.preview.columns.length,
+                  failure: {
+                    message: suspicious.reason,
+                    error: `${suspicious.reason}\n${suspicious.sample}`,
+                  },
+                }
+              : { passed: true, rows: run.preview.totalRows, cols: run.preview.columns.length };
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            setPreviewData(null);
+            setPreviewError(message);
+            setPreviewRun({ versionId: version.id, durationMs: Date.now() - startedAt });
+            return {
+              passed: false,
+              failure: {
+                message: summarizeError(message),
+                error: message,
+                durationMs: Date.now() - startedAt,
+              },
+            };
+          }
+        },
+      });
+      const last = saved as Awaited<
+        ReturnType<typeof dataClient.generateRawTableNormalizerDraft>
+      > | null;
+      if (last) {
+        fixNotesRef.current = notes;
+        const version = last.version;
+        updateDataProcessing({
+          ...processing,
+          artifactId: last.artifact.id,
+          artifactVersionId: version.id,
+          artifactVersionStatus: version.status,
+          fileTreeHash: version.fileTreeHash,
+          dependencyLockHash: version.dependencyLockHash ?? undefined,
+          runtime: version.runtime,
+          entrypoint: version.entrypoint,
+          dependencyPrepare: version.dependencyPrepare,
+          sourceSummaryHash: version.sourceSummaryHash ?? last.summary.hash,
+        });
+        await refreshNormalizerVersions(last.artifact.id);
+        lastFixFailureRef.current = result.passed ? null : (result.lastVerify?.failure ?? null);
+        const verdictText = result.passed
+          ? t('fixError.verifyPassed', {
+              rows: result.lastVerify?.rows ?? 0,
+              cols: result.lastVerify?.cols ?? 0,
+            })
+          : t('fixError.verifyFailed', { reason: result.lastVerify?.failure?.message ?? '' });
+        setFixInfo({
+          versionId: version.id,
+          version: version.version,
+          rounds: result.rounds,
+          passed: result.passed,
+          text: t('fixError.reviewFixed', {
+            version: version.version,
+            rounds: result.rounds,
+            result: verdictText,
+          }),
+          baseFiles: baseRecord.files,
+        });
+        setCodeView('diff');
+        setFocusLine(null);
+        if (result.changedFiles[0]) setSelectedNormalizerFilePath(result.changedFiles[0]);
+        if (result.passed) setCustomizeStep('review');
+      }
+      if (result.error) setCustomizeGenerationError(result.error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      markNormalizerGenerationError(log, message);
+      setCustomizeGenerationError(message);
+    } finally {
+      unsubscribe?.();
+      setFixing(false);
+      flushGenerationLog();
     }
   };
 
@@ -1282,7 +1692,7 @@ export function RawTableEditorWorkbench({
 
                   {customizeStep === 'generate' ? (
                     <RawTableGenerationConsole
-                      isStreaming={customizeGenerating}
+                      isStreaming={customizeGenerating || fixing}
                       log={generationLog}
                       modelLabel={getAgentModelLabel(
                         appConfig,
@@ -1308,7 +1718,11 @@ export function RawTableEditorWorkbench({
                       </div>
                     ) : (
                       <div
-                        className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_92px_240px_40px] grid-rows-[36px_minmax(0,1fr)]"
+                        className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${
+                          showingFix
+                            ? 'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'
+                            : 'grid-cols-[minmax(0,1fr)_92px_240px_40px]'
+                        }`}
                         data-testid="raw-customize-review"
                       >
                         <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
@@ -1322,13 +1736,40 @@ export function RawTableEditorWorkbench({
                           </span>
                           {selectedNormalizerFile ? (
                             <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
-                              {t('data.rawTables.editor.codeFileMeta', {
-                                lines: selectedNormalizerFile.content.split('\n').length,
-                                language: getCodePreviewLanguageLabel(selectedNormalizerFile.path),
-                              })}
+                              {showingFix && codeView === 'diff'
+                                ? (() => {
+                                    const stats = fileDiffStats(
+                                      fixInfo?.baseFiles.find(
+                                        (file) => file.path === selectedNormalizerFile.path
+                                      )?.content,
+                                      selectedNormalizerFile.content
+                                    );
+                                    return `+${stats.added} −${stats.removed} · ${getCodePreviewLanguageLabel(selectedNormalizerFile.path)}`;
+                                  })()
+                                : t('data.rawTables.editor.codeFileMeta', {
+                                    lines: selectedNormalizerFile.content.split('\n').length,
+                                    language: getCodePreviewLanguageLabel(
+                                      selectedNormalizerFile.path
+                                    ),
+                                  })}
                             </span>
                           ) : null}
                         </div>
+                        {showingFix ? (
+                          <div className="flex border-b border-l border-border-subtle">
+                            <GlassSelect
+                              ariaLabel={t('fixError.viewDiff')}
+                              value={codeView}
+                              onValueChange={(value) => setCodeView(value as 'diff' | 'full')}
+                              options={[
+                                { value: 'diff', label: t('fixError.viewDiff') },
+                                { value: 'full', label: t('fixError.viewFull') },
+                              ]}
+                              triggerClassName="h-full w-full justify-between rounded-none border-0 bg-transparent px-2.5 text-xs text-text-primary shadow-none"
+                              contentClassName="w-[var(--radix-select-trigger-width)]"
+                            />
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           disabled={!selectedNormalizerFile}
@@ -1364,8 +1805,30 @@ export function RawTableEditorWorkbench({
                         <div className="flex items-center justify-center border-b border-border-subtle text-xs tabular-nums text-text-muted">
                           {normalizerProjectFiles.length}
                         </div>
-                        <div className="col-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
-                          <CodePreview file={selectedNormalizerFile} t={t} />
+                        <div
+                          className={`${showingFix ? 'col-span-3' : 'col-span-2'} flex min-h-0 min-w-0 flex-col overflow-hidden`}
+                        >
+                          {showingFix && codeView === 'diff' && selectedNormalizerFile ? (
+                            <CodeDiffView
+                              before={
+                                fixInfo?.baseFiles.find(
+                                  (file) => file.path === selectedNormalizerFile.path
+                                )?.content
+                              }
+                              after={selectedNormalizerFile.content}
+                              t={t}
+                            />
+                          ) : (
+                            <CodePreview
+                              file={selectedNormalizerFile}
+                              t={t}
+                              focusLine={
+                                focusLine && focusLine.path === selectedNormalizerFile?.path
+                                  ? focusLine.line
+                                  : undefined
+                              }
+                            />
+                          )}
                         </div>
                         <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
                           <NormalizerProjectTree
@@ -1387,7 +1850,7 @@ export function RawTableEditorWorkbench({
                   const backCell = (
                     <button
                       type="button"
-                      disabled={customizeGenerating}
+                      disabled={customizeGenerating || fixing}
                       onClick={() => setCustomizeStep('rules')}
                       data-testid="raw-customize-back"
                       className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
@@ -1454,6 +1917,65 @@ export function RawTableEditorWorkbench({
                         </button>
                       </>
                     );
+                  } else if (customizeStep === 'generate' && fixing) {
+                    cols = '104px minmax(0,1fr) 120px';
+                    cells = (
+                      <>
+                        {backCell}
+                        {noteCell(t('fixError.fixingHint'))}
+                        <button
+                          type="button"
+                          disabled
+                          className="ui-accent-cell border-l border-border-subtle"
+                        >
+                          <FileCode2 className="h-3.5 w-3.5" />
+                          {t('fixError.viewChanges')}
+                        </button>
+                      </>
+                    );
+                  } else if (
+                    customizeStep === 'generate' &&
+                    fixInfo &&
+                    !customizeGenerating &&
+                    generationLog?.turnTitle
+                  ) {
+                    // After a fix turn: keep editing the same draft with a follow-up request.
+                    cols = '104px minmax(0,1fr) 92px 120px';
+                    cells = (
+                      <>
+                        {backCell}
+                        <input
+                          value={continueText}
+                          onChange={(event) => setContinueText(event.target.value.slice(0, 2000))}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' && !event.nativeEvent.isComposing)
+                              sendNormalizerContinue();
+                          }}
+                          placeholder={t('fixError.continuePlaceholder')}
+                          data-testid="fix-continue-input"
+                          className="min-w-0 border-0 border-l border-border-subtle bg-transparent px-2.5 text-xs text-text-primary outline-none placeholder:text-text-muted"
+                        />
+                        <button
+                          type="button"
+                          disabled={!continueText.trim()}
+                          onClick={sendNormalizerContinue}
+                          data-testid="fix-continue-send"
+                          className={toolCell}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          {t('fixError.send')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCustomizeStep('review')}
+                          data-testid="fix-view-changes"
+                          className="ui-accent-cell border-l border-border-subtle"
+                        >
+                          <FileCode2 className="h-3.5 w-3.5" />
+                          {t('fixError.viewChanges')}
+                        </button>
+                      </>
+                    );
                   } else if (customizeStep === 'generate') {
                     cols = '104px minmax(0,1fr) 120px';
                     cells = (
@@ -1506,22 +2028,46 @@ export function RawTableEditorWorkbench({
                     cells = (
                       <>
                         {backCell}
-                        {noteCell(
-                          currentNormalizerVersion ? (
-                            <span data-testid="raw-customize-version-summary">
-                              {[
-                                t('data.rawTables.editor.versionNumber', {
-                                  version: currentNormalizerVersion.version,
-                                }),
-                                summaryStatus,
-                                formatDateTime(currentNormalizerVersion.updatedAt).replace(
-                                  /^\d{4}-/,
-                                  ''
-                                ),
-                              ].join(' · ')}
+                        {previewFailedHere && normalizerReport && !previewOpen ? (
+                          // Step bar failure note: the reason plus the way back to the 报错 panel.
+                          <button
+                            type="button"
+                            role="alert"
+                            onClick={() => setPreviewOpen(true)}
+                            title={normalizerReport.message}
+                            data-testid="raw-customize-preview-failure"
+                            className="flex min-w-0 items-center gap-1.5 border-l border-border-subtle px-2.5 text-left text-xs font-medium text-error hover:bg-error/5"
+                          >
+                            <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                            <span className="truncate">
+                              {t('fixError.previewFailed', { reason: normalizerReport.message })}
                             </span>
-                          ) : (
-                            ''
+                            <span className="ml-auto flex-shrink-0 pl-2 text-accent">
+                              {t('fixError.fix')}
+                            </span>
+                          </button>
+                        ) : (
+                          noteCell(
+                            currentNormalizerVersion ? (
+                              <span data-testid="raw-customize-version-summary">
+                                {showingFix &&
+                                fixInfo &&
+                                currentNormalizerVersion.status === 'draft'
+                                  ? fixInfo.text
+                                  : [
+                                      t('data.rawTables.editor.versionNumber', {
+                                        version: currentNormalizerVersion.version,
+                                      }),
+                                      summaryStatus,
+                                      formatDateTime(currentNormalizerVersion.updatedAt).replace(
+                                        /^\d{4}-/,
+                                        ''
+                                      ),
+                                    ].join(' · ')}
+                              </span>
+                            ) : (
+                              ''
+                            )
                           )
                         )}
                         <button
@@ -1535,7 +2081,9 @@ export function RawTableEditorWorkbench({
                         </button>
                         <button
                           type="button"
-                          disabled={!customizeArtifactVersionId || previewLoading || !rawTable}
+                          disabled={
+                            !customizeArtifactVersionId || previewLoading || !rawTable || fixing
+                          }
                           onClick={() => void previewCustomizeDraft()}
                           data-testid="raw-customize-preview"
                           className={toolCell}
@@ -1931,7 +2479,13 @@ export function RawTableEditorWorkbench({
           onPublish={(version) => void publishSpecificNormalizerVersion(version)}
           publishingVersionId={customizeVersionActionId}
           sourceOf={(version) =>
-            t(version.source === 'manual' ? 'scripts.source.manual' : 'scripts.source.rule')
+            t(
+              version.source === 'manual'
+                ? 'scripts.source.manual'
+                : version.source === 'ai_repair'
+                  ? 'scripts.source.ai_repair'
+                  : 'scripts.source.rule'
+            )
           }
           t={t}
           versions={normalizerVersions}
@@ -1940,11 +2494,48 @@ export function RawTableEditorWorkbench({
       {previewOpen && (
         <RawTablePreviewDialog
           tableKind="raw"
-          preview={previewData}
+          title={
+            normalizerReport
+              ? t('fixError.previewFailedTitle', { version: previewVersionLabel })
+              : undefined
+          }
+          preview={normalizerReport ? null : previewData}
           isLoading={previewLoading}
-          error={previewError}
+          error={normalizerReport ? normalizerReport.message : previewError}
+          errorContent={
+            normalizerReport && previewRun ? (
+              <FixErrorPanel
+                report={normalizerReport}
+                inputLabel={sourceInputLabel}
+                note={fixNote}
+                onNoteChange={setFixNote}
+                autoFixRounds={autoFixRounds}
+                onAutoFixRoundsChange={setAutoFixRounds}
+                onOpenLocation={(location) => {
+                  setPreviewOpen(false);
+                  setCustomizeStep('review');
+                  setSelectedNormalizerFilePath(location.file);
+                  setCodeView('full');
+                  setFocusLine({ path: location.file, line: location.line });
+                }}
+                onFix={startPreviewFix}
+                busy={fixing}
+                disabled={customizeGenerating || !previewVersion}
+                title={t('fixError.previewFailedTitle', { version: previewVersionLabel })}
+                footerNote={
+                  normalizerFixTarget.overwrite
+                    ? t('fixError.footerOverwrite', { base: previewVersionLabel })
+                    : t('fixError.footerNew', {
+                        base: previewVersionLabel,
+                        next: normalizerFixTarget.version,
+                      })
+                }
+                t={t}
+              />
+            ) : undefined
+          }
           currentPage={previewPage}
-          onPageChange={(page) => void loadPreviewPage(page)}
+          onPageChange={(page) => void previewCustomizeDraft(page)}
           onClose={() => setPreviewOpen(false)}
         />
       )}

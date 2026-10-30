@@ -6,7 +6,7 @@ import {
   type StringStream,
 } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
-import { EditorView, lineNumbers } from '@codemirror/view';
+import { Decoration, EditorView, lineNumbers } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
 import type { DataNormalizerProjectFile } from '../../types';
 import type { TranslateFn } from './shared';
@@ -224,7 +224,16 @@ export function getCodePreviewLanguage(filePath: string) {
   return kind === 'text' ? [] : codePreviewLanguages[kind];
 }
 
-export function CodePreview({ file, t }: { file?: DataNormalizerProjectFile; t: TranslateFn }) {
+export function CodePreview({
+  file,
+  t,
+  focusLine,
+}: {
+  file?: DataNormalizerProjectFile;
+  t: TranslateFn;
+  /** 1-based line to scroll to and highlight (报错 位置). */
+  focusLine?: number;
+}) {
   if (!file) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs font-medium text-text-muted">
@@ -232,10 +241,20 @@ export function CodePreview({ file, t }: { file?: DataNormalizerProjectFile; t: 
       </div>
     );
   }
-  return <CodeMirrorFilePreview file={file} />;
+  return <CodeMirrorFilePreview file={file} focusLine={focusLine} />;
 }
 
-export function CodeMirrorFilePreview({ file }: { file: DataNormalizerProjectFile }) {
+const focusLineDecoration = Decoration.line({
+  attributes: { style: 'background-color: rgba(220, 38, 38, 0.12)', 'data-focus-line': 'true' },
+});
+
+export function CodeMirrorFilePreview({
+  file,
+  focusLine,
+}: {
+  file: DataNormalizerProjectFile;
+  focusLine?: number;
+}) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const language = useMemo(() => getCodePreviewLanguage(file.path), [file.path]);
@@ -248,8 +267,18 @@ export function CodeMirrorFilePreview({ file }: { file: DataNormalizerProjectFil
       EditorState.readOnly.of(true),
       EditorView.editable.of(false),
       EditorView.lineWrapping,
+      ...(focusLine
+        ? [
+            EditorView.decorations.of((view) => {
+              if (focusLine < 1 || focusLine > view.state.doc.lines) return Decoration.none;
+              return Decoration.set([
+                focusLineDecoration.range(view.state.doc.line(focusLine).from),
+              ]);
+            }),
+          ]
+        : []),
     ],
-    [language]
+    [language, focusLine]
   );
 
   useEffect(() => {
@@ -259,7 +288,19 @@ export function CodeMirrorFilePreview({ file }: { file: DataNormalizerProjectFil
       state: EditorState.create({ doc: file.content, extensions }),
     });
     viewRef.current = view;
+    // When the editor mounts before its 11px theme/layout settles (e.g. right after a step
+    // switch), CodeMirror keeps the first line-height estimate and the line-number gutter drifts
+    // away from the code. Force one real content measurement once layout has settled.
+    const remeasure = () => {
+      const state = (view as unknown as { viewState?: { mustMeasureContent?: boolean } }).viewState;
+      if (state) state.mustMeasureContent = true;
+      view.requestMeasure();
+    };
+    const frame = window.requestAnimationFrame(remeasure);
+    const timer = window.setTimeout(remeasure, 300);
     return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
       view.destroy();
       viewRef.current = null;
     };
@@ -276,6 +317,13 @@ export function CodeMirrorFilePreview({ file }: { file: DataNormalizerProjectFil
       },
     });
   }, [file.content]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !focusLine || focusLine < 1 || focusLine > view.state.doc.lines) return;
+    const line = view.state.doc.line(focusLine);
+    view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+  }, [focusLine, file.content, extensions]);
 
   return <div ref={hostRef} className="min-h-0 flex-1 overflow-hidden" />;
 }

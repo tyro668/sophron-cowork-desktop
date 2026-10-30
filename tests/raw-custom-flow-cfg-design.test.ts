@@ -31,9 +31,10 @@ describe('raw table 自定义 flow matches config design c15–c19', () => {
     expect(workbench).not.toContain('mx-4 flex-shrink-0 rounded-lg border border-error/20');
   });
   it('review step: shared 36px pane header and flush action cells', () => {
-    expect(workbench).toContain(
-      'grid-cols-[minmax(0,1fr)_92px_240px_40px] grid-rows-[36px_minmax(0,1fr)]'
-    );
+    expect(workbench).toContain('grid-rows-[36px_minmax(0,1fr)]');
+    expect(workbench).toContain("'grid-cols-[minmax(0,1fr)_92px_240px_40px]'");
+    // After an AI 修复 the header gains the 差异/全文 dropdown column.
+    expect(workbench).toContain("'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'");
     expect(workbench).toContain('data-testid="raw-customize-version-summary"');
     expect(workbench).toContain("'104px minmax(0,1fr) 104px 140px 104px'");
     expect(versions).not.toContain('ring-1 ring-inset ring-accent/20');

@@ -67,7 +67,9 @@ export class ScriptPackageError extends Error {
     message: string,
     readonly kind: 'invalid' | 'deps' | 'timeout' | 'script' | 'output',
     /** Tail of the process output, for the AI / test-run details. */
-    readonly log?: string
+    readonly log?: string,
+    /** Exit code of the entry for script failures. */
+    readonly exitCode?: number
   ) {
     super(message);
   }
@@ -367,6 +369,89 @@ export class ScriptPackageService {
   }
 
   /** 规则生成: generate a draft from a rule prompt, based on a version or from scratch. */
+  /**
+   * 交给 AI 修复 from the editor: a follow-up turn that edits the current draft (baseVersion)
+   * using the trial-run failure. The result is saved as the AI 修复 draft, which later fixes
+   * overwrite (a new draft only when the newest version is not an unpublished AI 修复 draft).
+   */
+  private async fixDraft(
+    input: ScriptGenerateDraftInput,
+    generator: ScriptFilesGenerator,
+    options: {
+      runtimeConfig?: AgentRuntimeConfig;
+      onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
+    }
+  ): Promise<ScriptGenerateDraftResult> {
+    const emit = options.onProgress ?? (() => undefined);
+    const fix = input.fix!;
+    try {
+      if (!input.packageId) throw new ScriptPackageError('修复需要已有脚本包', 'invalid');
+      if (input.baseVersion == null)
+        throw new ScriptPackageError('修复需要基于一个版本', 'invalid');
+      if (!generator.fix) throw new ScriptPackageError('当前生成器不支持修复', 'invalid');
+      const id = input.packageId;
+      emit({ phase: 'source_summary', kind: 'message', text: '读取报错与当前草稿的文件。' });
+      const summary = await this.summary(id);
+      const base = await this.versionDetail(id, input.baseVersion);
+      const files = base.files.filter((file) => file.path !== '.gitignore');
+      const result = await generator.fix({
+        name: input.name?.trim() || summary.name,
+        runtime: base.runtime,
+        rulePrompt: base.source === 'rule' ? base.rulePrompt : undefined,
+        files,
+        baseLabel: `v${base.version}（${STATUS_LABEL[base.status]}）`,
+        request: {
+          error: fix.error,
+          log: fix.log,
+          exitCode: fix.exitCode,
+          durationMs: fix.durationMs,
+          note: fix.note,
+          round: fix.round,
+          maxRounds: fix.maxRounds,
+          previousAttempts: fix.previousAttempts,
+        },
+        runtimeConfig: options.runtimeConfig,
+        onProgress: (phase, kind, text) => emit({ phase, kind, text }),
+      });
+      emit({
+        phase: 'saving',
+        kind: 'message',
+        text: `修改 ${result.changedFiles.join('、')}，写入 AI 修复草稿。`,
+      });
+      const saved = await this.saveDraft(id, {
+        source: 'ai_repair',
+        rulePrompt: [
+          result.summary,
+          `报错：${result.payload.error}`,
+          fix.note ? `补充：${fix.note}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+        baseVersion: base.version,
+        files: result.files,
+      });
+      emit({
+        phase: 'complete',
+        kind: 'message',
+        text: `${saved.replaced ? '已覆盖' : '已保存'} v${saved.version.version} AI 修复草稿`,
+      });
+      return {
+        summary: await this.summaryUnsynced(id, this.packageDir(id)),
+        version: await this.versionDetail(id, saved.version.version),
+        changedFiles: result.changedFiles,
+        fixSummary: result.summary || result.analysis,
+        replaced: saved.replaced,
+      };
+    } catch (error) {
+      emit({
+        phase: 'error',
+        kind: 'message',
+        text: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
   async generateDraft(
     input: ScriptGenerateDraftInput,
     generator: ScriptFilesGenerator,
@@ -376,6 +461,7 @@ export class ScriptPackageService {
     } = {}
   ): Promise<ScriptGenerateDraftResult> {
     const emit = options.onProgress ?? (() => undefined);
+    if (input.fix) return this.fixDraft(input, generator, options);
     try {
       const name = input.name?.trim() || '';
       const id = input.packageId || (await this.newPackageId(name || '新脚本包'));
@@ -674,6 +760,9 @@ export class ScriptPackageService {
         durationMs: this.now() - startedAt,
         installedDeps: false,
         log: error instanceof ScriptPackageError ? error.log : undefined,
+        ...(error instanceof ScriptPackageError && error.exitCode !== undefined
+          ? { exitCode: error.exitCode }
+          : {}),
       };
     }
   }
@@ -744,7 +833,13 @@ export class ScriptPackageService {
           log
         );
       }
-      if (result.code !== 0) throw new ScriptPackageError(failureReason(result), 'script', log);
+      if (result.code !== 0)
+        throw new ScriptPackageError(
+          failureReason(result),
+          'script',
+          log,
+          result.code ?? undefined
+        );
       if (!existsSync(outputPath)) {
         throw new ScriptPackageError('脚本没有写出结果文件（SOPHRON_OUTPUT）', 'output', log);
       }

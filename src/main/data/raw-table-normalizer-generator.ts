@@ -15,6 +15,14 @@ import {
 } from '../../shared/raw-table-normalizer/templates';
 import { extractJsonObjectText } from '../../shared/structured-text';
 import { resolveNormalizerPythonExecutable } from './raw-table-normalizer-runner';
+import {
+  buildFixPayload,
+  changedFilePaths,
+  collectSecretValues,
+  type FixErrorRequest,
+  type FixPayload,
+  createFixStreamSplitter,
+} from '../../shared/fix-error';
 
 export interface GenerateRawTableNormalizerProjectInput {
   name: string;
@@ -38,10 +46,34 @@ export type RawTableNormalizerProjectProgressCallback = (
   event: RawTableNormalizerProjectProgressEvent
 ) => void;
 
+export interface FixRawTableNormalizerProjectInput {
+  name: string;
+  primaryLanguage: DataNormalizerLanguage;
+  rulePrompt: string;
+  /** Current files of the draft being fixed (the fix edits these, it never regenerates). */
+  files: DataNormalizerProjectFile[];
+  baseLabel: string;
+  request: FixErrorRequest;
+  sourceSummary?: DataRawTableSourceSummary;
+  runtimeConfig?: AgentRuntimeConfig;
+  onProgress?: RawTableNormalizerProjectProgressCallback;
+}
+
+export interface FixRawTableNormalizerProjectResult {
+  files: DataNormalizerProjectFile[];
+  changedFiles: string[];
+  summary: string;
+  analysis: string;
+  /** Exactly what was sent to the model (redacted), for tests and logs. */
+  payload: FixPayload;
+}
+
 export interface RawTableNormalizerProjectGenerator {
   generate(
     input: GenerateRawTableNormalizerProjectInput
   ): Promise<RawTableNormalizerProjectTemplate>;
+  /** Follow-up turn: fix the current draft's files from a preview failure. */
+  fix?(input: FixRawTableNormalizerProjectInput): Promise<FixRawTableNormalizerProjectResult>;
 }
 
 export function createLlmRawTableNormalizerProjectGenerator(
@@ -112,7 +144,140 @@ export function createLlmRawTableNormalizerProjectGenerator(
         }),
       };
     },
+    async fix(input) {
+      const config = await getConfig();
+      const runtimeConfig = input.runtimeConfig ?? config;
+      const secrets = [
+        ...collectSecretValues(process.env),
+        ...collectSecretValues(config),
+        ...collectSecretValues(input.runtimeConfig),
+      ];
+      const payload = buildNormalizerFixPayload(input, secrets);
+      const emit = (event: RawTableNormalizerProjectProgressEvent) => {
+        if (event.text) input.onProgress?.(event);
+      };
+      emit({
+        phase: 'source_summary',
+        kind: 'message',
+        text: `调用栈 ${payload.callStack.length} 层${payload.location ? ` · 定位 ${payload.location.file}:${payload.location.line}${payload.location.func ? ` ${payload.location.func}()` : ''}` : ''}`,
+      });
+      emit({
+        phase: 'source_summary',
+        kind: 'message',
+        text: `读取 ${input.files.length} 个文件（${input.baseLabel}）`,
+      });
+      // One model call returns {"analysis", "files", "summary"}: stream the analysis part into
+      // 分析原因 and everything from "files" on into 修改文件.
+      const onDelta = createFixStreamSplitter((event) => emit(event));
+      const response = await runPiAiOneShot(
+        buildNormalizerFixUserPrompt(input, payload),
+        buildNormalizerFixSystemPrompt(input.primaryLanguage),
+        runtimeConfig,
+        { temperature: 0.1, maxTokens: 16_000, onTextDelta: onDelta }
+      );
+      if (!response.text.trim()) throw new Error('模型没有返回内容');
+      const parsed = JSON.parse(extractJsonObject(response.text)) as unknown;
+      if (!isRecord(parsed) || !Array.isArray(parsed.files)) {
+        throw new Error('模型返回的不是 {"files": [...]} JSON');
+      }
+      const generated = parseGeneratedProjectFiles(JSON.stringify({ files: parsed.files }));
+      const fileMap = new Map(input.files.map((file) => [file.path, file]));
+      for (const file of generated) fileMap.set(file.path, file);
+      const files = Array.from(fileMap.values()).sort((left, right) =>
+        left.path.localeCompare(right.path)
+      );
+      validateGeneratedNormalizerProjectFiles(files, input.primaryLanguage);
+      const changedFiles = changedFilePaths(input.files, files);
+      if (changedFiles.length === 0) throw new Error('AI 修复没有改动任何文件');
+      return {
+        files,
+        changedFiles,
+        summary: typeof parsed.summary === 'string' ? parsed.summary.trim() : '',
+        analysis: typeof parsed.analysis === 'string' ? parsed.analysis.trim() : '',
+        payload,
+      };
+    },
   };
+}
+
+/** Redacted fix context: error, relative stack, stderr tail, failing file + other names, ≤20 rows. */
+export function buildNormalizerFixPayload(
+  input: Pick<FixRawTableNormalizerProjectInput, 'files' | 'request' | 'sourceSummary'>,
+  secrets: string[] = []
+): FixPayload {
+  const summary = input.sourceSummary;
+  const file = summary?.files[0];
+  const sheet = file?.sheets?.[0];
+  const rows = sheet?.sampleRows ?? file?.sampleRows ?? [];
+  return buildFixPayload({
+    request: input.request,
+    files: input.files.filter((item) => item.path !== 'docs/source-structure-analysis.json'),
+    primaryFile: input.files.some((item) => item.path === 'src/transform.js')
+      ? 'src/transform.js'
+      : 'normalizer/transform.py',
+    input: summary
+      ? {
+          label: [
+            basename(file?.path ?? summary.sourcePath),
+            summary.sourceKind,
+            `${summary.fileCount} 个文件`,
+            file ? `${Math.max(1, Math.round(file.sizeBytes / 1024))} KB` : '',
+            sheet ? `工作表 ${sheet.name}` : '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          rows,
+        }
+      : undefined,
+    secrets,
+  });
+}
+
+function buildNormalizerFixSystemPrompt(language: DataNormalizerLanguage): string {
+  return [
+    buildCodeGenerationSystemPrompt(language),
+    '',
+    'This is a FIX turn on an existing draft, not a regeneration.',
+    'You receive the project files as they are now and the failure of the last preview run (error, call stack with project-relative paths, stderr tail, input sample, optional user note).',
+    'Find the root cause and make the smallest change that fixes it while keeping the rest of the code and the output columns as they are.',
+    'If the run succeeded but the result is wrong (missing columns, a column that is entirely empty), fix the logic so the expected columns are filled from the source.',
+    'Return only strict JSON: {"analysis":"2-4 short Chinese sentences: root cause and what you change","files":[{"path":"relative/path","content":"complete new file content"}],"summary":"one short Chinese sentence describing the change"}.',
+    'failure.failingFile (and failure.stackFiles) hold the full current content of the files involved; failure.otherFiles only lists the names of the remaining project files.',
+    'failure.round.previousAttempts (auto-fix) lists the original error and what each earlier round changed and why it still failed. The files you get already contain those changes: keep everything they fixed (the original error and earlier failures must stay fixed, values stay parsed/typed as before) and only add what the new failure needs.',
+    "failure.userNote holds the user's 补充 notes and follow-up requests for this draft, oldest first. They override the original rule wherever they conflict, and earlier ones stay in force: never undo a fix an earlier note asked for.",
+    'Only change files whose full content you were given, and return each changed file with its complete new content. Files you do not return stay unchanged. Do not rename or delete files.',
+  ].join('\n');
+}
+
+function buildNormalizerFixUserPrompt(
+  input: FixRawTableNormalizerProjectInput,
+  payload: FixPayload
+): string {
+  const docs = input.files.find((file) => file.path === 'docs/source-structure-analysis.json');
+  return JSON.stringify(
+    {
+      task: `Fix the current draft (${input.baseLabel}) of the input table normalizer "${input.name}" so the preview runs and the output is correct.`,
+      language: input.primaryLanguage,
+      rulePrompt: input.rulePrompt,
+      failure: payload,
+      sourceStructureAnalysis: docs ? safeJson(docs.content) : undefined,
+      outputJsonSchema: {
+        analysis: 'root cause and fix, Chinese',
+        files: [{ path: 'relative path', content: 'complete UTF-8 file content' }],
+        summary: 'one sentence, Chinese',
+      },
+    },
+    null,
+    2
+  );
+}
+
+function safeJson(text: string): unknown {
+  try {
+    return (JSON.parse(text) as { sourceStructureAnalysis?: unknown }).sourceStructureAnalysis;
+  } catch {
+    return undefined;
+  }
 }
 
 function normalizeSelectedSkillNames(selectedSkillNames: string[] | undefined): string[] {

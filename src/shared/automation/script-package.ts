@@ -115,6 +115,8 @@ export interface ScriptTestRunResult {
   previewRows?: Array<Record<string, string>>;
   /** Tail of the entry's stdout/stderr. */
   log?: string;
+  /** Exit code of the entry when it ran and failed. */
+  exitCode?: number;
 }
 
 export interface ScriptGenerateDraftInput {
@@ -127,16 +129,34 @@ export interface ScriptGenerateDraftInput {
   runtime: ScriptRuntime;
   modelConfigSetId?: string | null;
   progressId?: string;
+  /** 交给 AI 修复: edit `baseVersion` (the current draft) from a trial-run failure. */
+  fix?: ScriptFixInput;
+}
+
+/** A trial-run failure handed to the model (the main process redacts paths and secrets). */
+export interface ScriptFixInput {
+  error: string;
+  log?: string;
+  exitCode?: number;
+  durationMs?: number;
+  note?: string;
+  round?: number;
+  maxRounds?: number;
+  previousAttempts?: string[];
 }
 
 export interface ScriptGenerateDraftResult {
   summary: ScriptPackageSummary;
   version: ScriptPackageVersionDetail;
+  /** Fix turns: changed files, the model's one-line explanation, and whether the AI 修复 draft was overwritten. */
+  changedFiles?: string[];
+  fixSummary?: string;
+  replaced?: boolean;
 }
 
 export interface ScriptGenerateProgressEvent {
   progressId: string;
-  phase: 'source_summary' | 'code_generation' | 'saving' | 'complete' | 'error';
+  phase: 'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
   kind: 'message' | 'delta';
   text: string;
 }

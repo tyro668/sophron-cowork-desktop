@@ -6,6 +6,7 @@
 import type {
   DataRawTableNormalizerArtifact,
   DataRawTableNormalizerArtifactVersion,
+  DataNormalizerVersionSource,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
 import {
@@ -209,7 +210,7 @@ export class NormalizerRepository {
     artifactId: string;
     version: number;
     commit: string;
-    source: 'rule' | 'manual';
+    source: DataNormalizerVersionSource;
     fileTreeHash: string;
     rulePrompt: string;
     sourceSummaryHash: string | null;

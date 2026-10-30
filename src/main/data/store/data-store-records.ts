@@ -300,7 +300,7 @@ export function mapRawTableNormalizerArtifactVersionRow(
     artifactId: String(row.artifact_id),
     version: toNumber(row.version),
     status: normalizeNormalizerVersionStatus(row.status),
-    source: row.source === 'manual' ? 'manual' : 'rule',
+    source: row.source === 'manual' || row.source === 'ai_repair' ? row.source : 'rule',
     commit: row.commit_oid ? String(row.commit_oid) : '',
     files: [],
     tree: {},
