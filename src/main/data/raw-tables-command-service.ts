@@ -30,8 +30,11 @@ import {
   createNormalizerFileTreeHash,
 } from '../../shared/raw-table-normalizer/templates';
 import type { RawTableNormalizerProjectGenerator } from './raw-table-normalizer-generator';
+import type { NormalizerPreviewCheck, NormalizerPreviewFn } from './raw-table-normalizer-agent';
+import { evaluatePass, expectedColumnsFromAnalysis } from '../../shared/fix-error';
 import type {
   DataRawTableConfig,
+  DataRawTableNormalizerArtifactVersion,
   DataRawTablePreview,
   DataRawTableProcessingConfig,
   DataRawTableSourceKind,
@@ -381,6 +384,31 @@ export class RawTablesCommandService {
         runtimeConfig: input.runtimeConfig,
         onProgress: input.onProgress,
       });
+      // Self-test: preview the generated draft on the real source; a failing preview goes to the
+      // agent, which edits and previews until it passes (or hits its limits).
+      const preview = this.normalizerPreviewFn(input, template);
+      input.onProgress?.({ phase: 'verify', kind: 'message', text: '预览自测…' });
+      let check = await preview(template.files);
+      input.onProgress?.({ phase: 'verify', kind: 'message', text: previewLine(check) });
+      if (!check.passed && this.normalizerProjectGenerator.refine) {
+        input.signal?.throwIfAborted();
+        const refined = await this.normalizerProjectGenerator.refine({
+          name,
+          primaryLanguage,
+          rulePrompt,
+          files: template.files,
+          failure: check.reason ?? '预览失败',
+          sourceSummary: summary,
+          runtimeConfig: input.runtimeConfig,
+          onProgress: input.onProgress,
+          preview,
+          signal: input.signal,
+        });
+        template.files = refined.files;
+        check = await preview(template.files);
+        input.onProgress?.({ phase: 'verify', kind: 'message', text: previewLine(check) });
+      }
+      input.signal?.throwIfAborted();
       input.onProgress?.({
         phase: 'saving',
         kind: 'message',
@@ -490,6 +518,8 @@ export class RawTablesCommandService {
         sourceSummary: summary,
         runtimeConfig: input.runtimeConfig,
         onProgress: input.onProgress,
+        preview: this.normalizerPreviewFn(input, base),
+        signal: input.signal,
       });
       input.onProgress?.({
         phase: 'saving',
@@ -528,6 +558,62 @@ export class RawTablesCommandService {
       });
       throw toCommandError(error, 'RUN_FAILED');
     }
+  }
+
+  /** Preview unsaved project files on the generation input, judged by evaluatePass. */
+  private normalizerPreviewFn(
+    input: GenerateRawTableNormalizerDraftCommand,
+    meta: Pick<
+      DataRawTableNormalizerArtifactVersion,
+      'entrypoint' | 'runtime' | 'dependencyPrepare'
+    >
+  ): NormalizerPreviewFn {
+    return async (files) => {
+      const startedAt = Date.now();
+      try {
+        const preview = await this.store.previewRawTableNormalizerFiles({
+          files,
+          entrypoint: meta.entrypoint,
+          runtime: meta.runtime,
+          dependencyPrepare: meta.dependencyPrepare,
+          sourcePath: input.sourcePath,
+          sourceKind: input.sourceKind,
+          config: input.config,
+          prepareDependencies: true,
+          limit: 50,
+          offset: 0,
+        });
+        const verdict = evaluatePass({
+          ok: true,
+          columns: preview.columns,
+          rows: preview.rows,
+          totalRows: preview.totalRows,
+          expectedColumns: expectedColumnsFromAnalysis(
+            files.find((file) => file.path === 'docs/source-structure-analysis.json')?.content
+          ),
+        });
+        const sample = [
+          preview.columns.join(','),
+          ...preview.rows
+            .slice(0, 5)
+            .map((row) => preview.columns.map((column) => String(row[column] ?? '')).join(',')),
+        ].join('\n');
+        return {
+          passed: verdict.ok,
+          ...(verdict.reason ? { reason: verdict.reason } : {}),
+          rows: preview.totalRows,
+          columns: preview.columns,
+          sample,
+          durationMs: Date.now() - startedAt,
+        };
+      } catch (error) {
+        return {
+          passed: false,
+          reason: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - startedAt,
+        };
+      }
+    };
   }
 
   async previewRawTableNormalizerVersion(
@@ -830,4 +916,10 @@ function wantsSourceBuild(input: CreateRawTableCommand): boolean {
     Boolean(input.folderMode) ||
     Boolean(input.sheetSelector)
   );
+}
+
+function previewLine(check: NormalizerPreviewCheck): string {
+  return check.passed
+    ? `✓ 预览通过：${check.rows ?? 0} 行 · ${check.columns?.length ?? 0} 列`
+    : `✕ 预览未通过：${check.reason ?? ''}`;
 }

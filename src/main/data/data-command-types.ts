@@ -184,6 +184,8 @@ export type GenerateRawTableNormalizerDraftProgressCallback = (
 export type GenerateRawTableNormalizerDraftCommand = DataGenerateRawTableNormalizerDraftInput & {
   runtimeConfig?: AgentRuntimeConfig;
   onProgress?: GenerateRawTableNormalizerDraftProgressCallback;
+  /** 取消 in the editor. */
+  signal?: AbortSignal;
 };
 
 export type GenerateRawTableNormalizerDraftResult = DataGenerateRawTableNormalizerDraftResult;

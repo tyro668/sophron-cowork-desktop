@@ -238,7 +238,13 @@ export interface DataGenerateRawTableNormalizerDraftResult {
 }
 
 export type DataRawTableNormalizerDraftProgressPhase =
-  'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'complete' | 'error';
+  | 'source_summary'
+  | 'source_analysis'
+  | 'code_generation'
+  | 'verify'
+  | 'saving'
+  | 'complete'
+  | 'error';
 
 export interface DataRawTableNormalizerDraftProgressEvent {
   progressId: string;

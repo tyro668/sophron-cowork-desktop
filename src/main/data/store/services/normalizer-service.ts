@@ -376,6 +376,54 @@ export class NormalizerService {
     const version = await this.normalizers.requireRawTableNormalizerArtifactVersion(
       input.versionId
     );
+    return this.previewNormalizerProjectUnsafe(version, input, {
+      projectRoot: await this.checkoutForRun(version),
+      workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(version.artifactId),
+    });
+  }
+
+  /**
+   * Preview unsaved project files (an editor agent's self-test): same run and table
+   * materialisation as a version preview, in throwaway folders.
+   */
+  async previewRawTableNormalizerFiles(
+    input: Omit<DataPreviewRawTableNormalizerVersionInput, 'versionId'> & {
+      files: DataRawTableNormalizerArtifactVersion['files'];
+      entrypoint: DataRawTableNormalizerArtifactVersion['entrypoint'];
+      runtime: DataRawTableNormalizerArtifactVersion['runtime'];
+      dependencyPrepare?: DataRawTableNormalizerArtifactVersion['dependencyPrepare'];
+    }
+  ): Promise<DataRawTablePreview> {
+    const now = Date.now();
+    const version: DataRawTableNormalizerArtifactVersion = {
+      id: `agent-preview-${uuidv4()}`,
+      artifactId: 'agent-preview',
+      version: 0,
+      status: 'draft',
+      source: 'rule',
+      commit: '',
+      files: input.files,
+      tree: {},
+      fileTreeHash: '',
+      rulePrompt: '',
+      entrypoint: input.entrypoint,
+      dependencyPrepare: input.dependencyPrepare,
+      runtime: input.runtime,
+      dependencies: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    return this.ctx.runExclusive(async () => {
+      await this.ctx.ensureReady();
+      return this.previewNormalizerProjectUnsafe(version, { ...input, versionId: version.id }, {});
+    }, 'previewRawTableNormalizerFiles');
+  }
+
+  private async previewNormalizerProjectUnsafe(
+    version: DataRawTableNormalizerArtifactVersion,
+    input: DataPreviewRawTableNormalizerVersionInput,
+    run: { projectRoot?: string; workspaceRoot?: string }
+  ): Promise<DataRawTablePreview> {
     const sourcePath = normalizeImportSourcePath(input.sourcePath);
     const sourceKind = normalizeRawTableSourceKind(input.sourceKind, sourcePath);
     const config = normalizeRawTableConfig(input.config, sourceKind, sourcePath);
@@ -400,8 +448,8 @@ export class NormalizerService {
       const result = await runRawTableNormalizerProject({
         version,
         prepareDependencies: input.prepareDependencies === true,
-        projectRoot: await this.checkoutForRun(version),
-        workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(version.artifactId),
+        projectRoot: run.projectRoot,
+        workspaceRoot: run.workspaceRoot,
         context: {
           sourcePath,
           sourceKind,

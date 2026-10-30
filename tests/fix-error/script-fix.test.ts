@@ -1,19 +1,13 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
 import {
   buildScriptFixPayload,
-  createLlmScriptFilesGenerator,
   type FixScriptFilesInput,
   type ScriptFilesGenerator,
 } from '../../src/main/automation/script-packages/generator';
-import { runPiAiOneShot } from '../../src/main/agent/pi-ai-one-shot';
-import type { AppConfig } from '../../src/main/config/config-store';
-import { evaluatePass, expectedColumnsFromManifest } from '../../src/shared/fix-error';
-
-vi.mock('../../src/main/agent/pi-ai-one-shot', () => ({ runPiAiOneShot: vi.fn() }));
 
 let root: string;
 let source: string;
@@ -63,6 +57,7 @@ afterEach(() => {
   rmSync(source, { recursive: true, force: true });
 });
 
+/** Stands in for the fix agent: edits lib/parse.js in the workspace and self-tests once. */
 function fakeGenerator(parses: string[]) {
   const calls: FixScriptFilesInput[] = [];
   const generator: ScriptFilesGenerator = {
@@ -72,15 +67,9 @@ function fakeGenerator(parses: string[]) {
     async fix(input) {
       calls.push(input);
       const content = parses[calls.length - 1] ?? GOOD_PARSE;
-      return {
-        files: input.files.map((file) =>
-          file.path === 'lib/parse.js' ? { ...file, content } : file
-        ),
-        changedFiles: ['lib/parse.js'],
-        summary: `第 ${calls.length} 次修复`,
-        analysis: '',
-        payload: { error: input.request.error, callStack: [], stderrTail: '', otherFiles: [] },
-      };
+      writeFileSync(path.join(input.workspace.dir, 'lib', 'parse.js'), content);
+      const lastCheck = await input.workspace.test();
+      return { summary: `第 ${calls.length} 次修复`, stop: 'done', lastCheck, selfTests: 1 };
     },
   };
   return { generator, calls };
@@ -122,18 +111,13 @@ describe('script package 交给 AI 修复 (editor)', () => {
     });
     expect(first.replaced).toBe(false);
 
-    // Round 1 runs but leaves 名称 empty: caught by the pass criteria.
+    // Round 1 runs but leaves 名称 empty: the run itself is judged a failure now.
+    expect(first.check).toMatchObject({ passed: false });
+    expect(first.check?.reason).toContain('「名称」列全为空');
     const rerun = await service.testRun('jingpin', { timeoutMs: 20_000, target: 2 });
-    expect(rerun.ok).toBe(true);
-    const manifest = first.version.files.find((file) => file.path === 'manifest.json')?.content;
-    const verdict = evaluatePass({
-      ok: rerun.ok,
-      columns: rerun.columns,
-      rows: rerun.previewRows,
-      expectedColumns: expectedColumnsFromManifest(manifest),
-    });
-    expect(verdict).toMatchObject({ ok: false, suspicious: true });
-    expect(verdict.reason).toContain('「名称」列全为空');
+    expect(rerun.ok).toBe(false);
+    expect(rerun.error).toContain('「名称」列全为空');
+    const verdict = { reason: rerun.error };
 
     const second = await service.generateDraft(
       {
@@ -153,15 +137,9 @@ describe('script package 交给 AI 修复 (editor)', () => {
     expect(second.version.version).toBe(2);
     expect(second.replaced).toBe(true);
     expect(calls[1].files.find((file) => file.path === 'lib/parse.js')?.content).toBe(EMPTY_PARSE);
+    expect(second.check).toMatchObject({ passed: true, rows: 2 });
     const passed = await service.testRun('jingpin', { timeoutMs: 20_000, target: 2 });
-    expect(
-      evaluatePass({
-        ok: passed.ok,
-        columns: passed.columns,
-        rows: passed.previewRows,
-        expectedColumns: expectedColumnsFromManifest(manifest),
-      })
-    ).toEqual({ ok: true });
+    expect(passed).toMatchObject({ ok: true, rows: 2 });
     expect((await service.listVersions('jingpin')).map((version) => version.version)).toEqual([
       2, 1,
     ]);
@@ -215,30 +193,5 @@ describe('script package 交给 AI 修复 (editor)', () => {
     expect(text).not.toContain(secret);
     expect(text).not.toContain('/home/u');
     expect(text).not.toContain('x'.repeat(300));
-  });
-
-  it('LLM fix keeps manifest.json untouched and reports only changed files', async () => {
-    vi.mocked(runPiAiOneShot).mockResolvedValue({
-      text: JSON.stringify({
-        analysis: '字段名为 title',
-        files: [{ path: 'lib/parse.js', content: GOOD_PARSE }],
-        summary: '改用 title',
-      }),
-    } as Awaited<ReturnType<typeof runPiAiOneShot>>);
-    const files = [
-      { path: 'manifest.json', content: MANIFEST },
-      { path: 'main.js', content: BROKEN_MAIN },
-      { path: 'lib/parse.js', content: BROKEN_PARSE },
-    ];
-    const result = await createLlmScriptFilesGenerator(() => ({}) as AppConfig).fix!({
-      name: '竞品价格',
-      runtime: 'node',
-      files,
-      baseLabel: 'v1',
-      request: { error: "KeyError: 'name'" },
-    });
-    expect(result.changedFiles).toEqual(['lib/parse.js']);
-    expect(result.files.find((file) => file.path === 'manifest.json')?.content).toBe(MANIFEST);
-    expect(result.summary).toBe('改用 title');
   });
 });

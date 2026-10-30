@@ -255,6 +255,8 @@ export function RawTableEditorWorkbench({
   // 补充 notes and follow-up requests from earlier fix turns on this draft: each turn resends
   // them (oldest first) so a later request does not undo an earlier fix.
   const fixNotesRef = useRef<string[]>([]);
+  /** progressId of the running generation / fix agent, for 取消. */
+  const activeAgentProgressRef = useRef<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   // Last customize config seen while editing — restored when the strategy
   // select toggles back to 自定义, so the generated-draft linkage survives
@@ -574,6 +576,7 @@ export function RawTableEditorWorkbench({
     fixNotesRef.current = [];
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
+    activeAgentProgressRef.current = progressId;
     const unsubscribeProgress = dataClient.onRawTableNormalizerDraftProgress(
       (event: DataRawTableNormalizerDraftProgressEvent) => {
         if (event.progressId !== progressId) return;
@@ -625,9 +628,16 @@ export function RawTableEditorWorkbench({
       markNormalizerGenerationError(log, message);
     } finally {
       unsubscribeProgress?.();
+      if (activeAgentProgressRef.current === progressId) activeAgentProgressRef.current = null;
       setCustomizeGenerating(false);
       flushGenerationLog();
     }
+  };
+
+  const cancelNormalizerAgent = () => {
+    const progressId = activeAgentProgressRef.current;
+    if (progressId)
+      void dataClient.cancelRawTableNormalizerDraft(progressId).catch(() => undefined);
   };
 
   const previewVersion = previewRun
@@ -958,6 +968,7 @@ export function RawTableEditorWorkbench({
     generationLogRef.current = log;
     setGenerationLog({ ...log, steps: [...log.steps] });
     const progressId = createNormalizerGenerationProgressId();
+    activeAgentProgressRef.current = progressId;
     const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
       Boolean
     );
@@ -1113,6 +1124,7 @@ export function RawTableEditorWorkbench({
       setCustomizeGenerationError(message);
     } finally {
       unsubscribe?.();
+      if (activeAgentProgressRef.current === progressId) activeAgentProgressRef.current = null;
       setFixing(false);
       flushGenerationLog();
     }
@@ -1925,11 +1937,12 @@ export function RawTableEditorWorkbench({
                         {noteCell(t('fixError.fixingHint'))}
                         <button
                           type="button"
-                          disabled
+                          onClick={cancelNormalizerAgent}
+                          data-testid="raw-agent-cancel"
                           className="ui-accent-cell border-l border-border-subtle"
                         >
-                          <FileCode2 className="h-3.5 w-3.5" />
-                          {t('fixError.viewChanges')}
+                          <XCircle className="h-3.5 w-3.5" />
+                          {t('scripts.editor.cancelAgent')}
                         </button>
                       </>
                     );
@@ -1990,7 +2003,17 @@ export function RawTableEditorWorkbench({
                                 ? t('data.rawTables.editor.customizeDoneHint')
                                 : t('data.rawTables.editor.generatedStatusEmpty')
                         )}
-                        {generateFailed ? (
+                        {customizeGenerating ? (
+                          <button
+                            type="button"
+                            onClick={cancelNormalizerAgent}
+                            data-testid="raw-agent-cancel"
+                            className="ui-accent-cell border-l border-border-subtle"
+                          >
+                            <XCircle className="h-3.5 w-3.5" />
+                            {t('scripts.editor.cancelAgent')}
+                          </button>
+                        ) : generateFailed ? (
                           <button
                             type="button"
                             disabled={!canGenerateCustomizeDraft}

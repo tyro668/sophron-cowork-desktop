@@ -573,6 +573,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   ],
   'automation.scripts.editorState': [str],
   'automation.scripts.lastOutput': [str],
+  'automation.scripts.cancelGenerate': [str],
   'automation.scripts.generateDraft': [
     z.looseObject({
       packageId: strOpt,
@@ -775,6 +776,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       maxColumnsPerRow: numOpt,
     }),
   ],
+  'data.cancelRawTableNormalizerDraft': [str],
   'data.generateRawTableNormalizerDraft': [
     z.looseObject({
       name: str,

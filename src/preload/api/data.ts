@@ -206,6 +206,8 @@ export function createDataApi(): ElectronApi['data'] {
       payload: DataGenerateRawTableNormalizerDraftInput
     ): Promise<DataGenerateRawTableNormalizerDraftResult> =>
       ipcRenderer.invoke('data.generateRawTableNormalizerDraft', payload),
+    cancelRawTableNormalizerDraft: (progressId: string): Promise<{ cancelled: boolean }> =>
+      ipcRenderer.invoke('data.cancelRawTableNormalizerDraft', progressId),
     onRawTableNormalizerDraftProgress: (
       callback: (event: DataRawTableNormalizerDraftProgressEvent) => void
     ) => {

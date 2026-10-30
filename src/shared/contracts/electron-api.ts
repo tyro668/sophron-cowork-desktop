@@ -259,6 +259,8 @@ export interface ElectronApi {
     generateRawTableNormalizerDraft: (
       payload: DataGenerateRawTableNormalizerDraftInput
     ) => Promise<DataGenerateRawTableNormalizerDraftResult>;
+    /** 取消 a running normalizer generation / fix agent. */
+    cancelRawTableNormalizerDraft: (progressId: string) => Promise<{ cancelled: boolean }>;
     onRawTableNormalizerDraftProgress: (
       callback: (event: DataRawTableNormalizerDraftProgressEvent) => void
     ) => () => void;
@@ -578,6 +580,8 @@ export interface ElectronApi {
         total: number;
       } | null>;
       generateDraft: (input: ScriptGenerateDraftInput) => Promise<ScriptGenerateDraftResult>;
+      /** 取消 a running 规则生成 / AI 修复 agent. */
+      cancelGenerate: (progressId: string) => Promise<{ cancelled: boolean }>;
       onGenerateProgress: (callback: (event: ScriptGenerateProgressEvent) => void) => () => void;
     };
     groups: {

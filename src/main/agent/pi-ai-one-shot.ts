@@ -1,3 +1,4 @@
+import type { Api, Model } from '@earendil-works/pi-ai';
 import {
   completeSimple,
   streamSimple,
@@ -179,21 +180,10 @@ export interface PiAiOneShotResult {
   usage: Usage;
 }
 
-export async function runPiAiOneShot(
-  prompt: string,
-  systemPrompt: string,
-  config: AppConfig | AgentRuntimeConfig,
-  options?: {
-    temperature?: number;
-    maxTokens?: number;
-    signal?: AbortSignal;
-    reasoning?: NonNullable<Parameters<typeof completeSimple>[2]>['reasoning'] | 'off';
-    thinkingBudgets?: NonNullable<Parameters<typeof completeSimple>[2]>['thinkingBudgets'];
-    onActivity?: () => void;
-    onTextDelta?: (delta: string) => void;
-    onThinkingDelta?: (delta: string) => void;
-  }
-): Promise<PiAiOneShotResult> {
+/** Resolve the pi-ai model and API key for a config (shared by one-shot calls and headless agents). */
+export async function resolvePiAiTarget(
+  config: AppConfig | AgentRuntimeConfig
+): Promise<{ model: Model<Api>; apiKey: string | undefined }> {
   const modelString = resolvePiModelString(config);
   const keyProvider = config.customProtocol || config.provider || 'anthropic';
   const parts = modelString.split('/');
@@ -269,6 +259,26 @@ export async function runPiAiOneShot(
       await setRuntimeApiKey(resolvedModel.provider, apiKey);
     }
   }
+
+  return { model: resolvedModel as Model<Api>, apiKey: apiKey || undefined };
+}
+
+export async function runPiAiOneShot(
+  prompt: string,
+  systemPrompt: string,
+  config: AppConfig | AgentRuntimeConfig,
+  options?: {
+    temperature?: number;
+    maxTokens?: number;
+    signal?: AbortSignal;
+    reasoning?: NonNullable<Parameters<typeof completeSimple>[2]>['reasoning'] | 'off';
+    thinkingBudgets?: NonNullable<Parameters<typeof completeSimple>[2]>['thinkingBudgets'];
+    onActivity?: () => void;
+    onTextDelta?: (delta: string) => void;
+    onThinkingDelta?: (delta: string) => void;
+  }
+): Promise<PiAiOneShotResult> {
+  const { model: resolvedModel, apiKey } = await resolvePiAiTarget(config);
 
   const start = Date.now();
 

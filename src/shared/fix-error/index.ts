@@ -446,7 +446,10 @@ function isBlank(value: unknown): boolean {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
-/** Exit code 0, expected columns present, no expected non-empty column entirely empty. */
+/**
+ * Exit code 0, expected columns present, at least one row, and no expected non-nullable column
+ * entirely empty. Used by trial runs, previews, generation self-tests and automation runs.
+ */
 export function evaluatePass(input: PassCheckInput): PassCheckResult {
   if (!input.ok || (input.exitCode !== undefined && input.exitCode !== 0)) {
     return {
@@ -473,6 +476,16 @@ export function evaluatePass(input: PassCheckInput): PassCheckResult {
     }
   }
   const rows = input.rows ?? [];
+  const total = input.totalRows ?? (input.rows ? rows.length : undefined);
+  if (total === 0) {
+    return { ok: false, suspicious: true, reason: '通过但结果异常：输出 0 行' };
+  }
+  if (rows.length > 0 && expected.length === 0 && columns.length > 0) {
+    // No declared columns: the output still has to carry some data.
+    if (rows.every((row) => columns.every((column) => isBlank(row[column])))) {
+      return { ok: false, suspicious: true, reason: '通过但结果异常：所有列全为空' };
+    }
+  }
   if (rows.length > 0) {
     const empty = expected
       .filter((column) => !column.nullable)
