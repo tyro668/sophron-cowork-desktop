@@ -258,4 +258,20 @@ describe('summarizeStepOutput', () => {
     expect(summarizeStepOutput('x'.repeat(500))!.length).toBe(200);
     expect(summarizeStepOutput(undefined)).toBeUndefined();
   });
+
+  it('summarizes cloud sync results instead of dumping raw JSON', () => {
+    expect(
+      summarizeStepOutput({
+        direction: 'output',
+        spaceId: 'space-1',
+        projectId: 'project-1',
+        resultTableId: 'result-1',
+        fileName: 'report.csv',
+        writeMode: 'replace',
+      })
+    ).toBe('fileName: report.csv · writeMode: replace');
+    expect(
+      summarizeStepOutput({ direction: 'input', tableName: 'cloud', rawTableName: 'local' })
+    ).toBe('tableName: cloud · rawTableName: local');
+  });
 });
