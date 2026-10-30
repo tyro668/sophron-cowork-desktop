@@ -149,6 +149,101 @@ export class NormalizerService {
     };
   }
 
+  /**
+   * Save an AI 修复 turn: the base version's files with the model's changes applied. Repeated
+   * fixes overwrite the same AI 修复 draft (findReusableDraft); a new draft is created only when
+   * the newest version is not an unpublished AI 修复 draft.
+   */
+  async saveRawTableNormalizerFixDraft(input: {
+    baseVersionId: string;
+    files: DataSaveRawTableNormalizerDraftInput['files'];
+    reason: string;
+  }): Promise<DataRawTableNormalizerVersionSaveResult & { replaced: boolean }> {
+    await this.ctx.ensureMetadataReady();
+    const base = await this.normalizers.requireRawTableNormalizerArtifactVersion(
+      input.baseVersionId
+    );
+    const artifactId = base.artifactId;
+    const files = input.files.filter(
+      (file) => file.path.trim() && typeof file.content === 'string'
+    );
+    if (files.length === 0) throw new Error('Normalizer project files are required');
+    return this.withRepoLock(artifactId, async () => {
+      await this.syncManualEdits(artifactId);
+      const records = await this.normalizers.listVersionRecords(artifactId);
+      const latest = records.at(-1);
+      if (!latest) throw new Error(`Normalizer artifact has no versions: ${artifactId}`);
+      const reusable = findReusableDraft(records, 'ai_repair');
+      const versionNumber = reusable?.version ?? latest.version + 1;
+      const repo = this.normalizers.repo(artifactId);
+      await repo.ensure();
+      // The repo HEAD may be another version; write the full tree we want to commit.
+      await repo.writeFiles(files);
+      const reason = input.reason.trim().slice(0, 2000);
+      const commit = await repo.commitAll(
+        `v${versionNumber} AI 修复${reason ? `\n\n${reason}` : ''}`,
+        reusable ? { replace: reusable.commit } : {}
+      );
+      const now = this.ctx.now();
+      if (!commit) {
+        // Same tree as HEAD: the fix changed nothing relative to the newest commit.
+        if (reusable) {
+          await this.normalizers.updateDraftVersion({
+            id: reusable.id,
+            commit: reusable.commit,
+            fileTreeHash: reusable.fileTreeHash,
+            rulePrompt: reusable.rulePrompt,
+            updatedAt: now,
+          });
+          return {
+            artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifactId),
+            version: await this.normalizers.requireRawTableNormalizerArtifactVersion(reusable.id),
+            replaced: true,
+          };
+        }
+        throw new Error('AI 修复没有改动任何文件');
+      }
+      let versionId: string;
+      if (reusable) {
+        versionId = reusable.id;
+        await this.normalizers.updateDraftVersion({
+          id: reusable.id,
+          commit,
+          fileTreeHash: commit,
+          rulePrompt: base.rulePrompt,
+          updatedAt: now,
+        });
+      } else {
+        versionId = uuidv4();
+        await this.normalizers.insertVersion({
+          id: versionId,
+          artifactId,
+          version: versionNumber,
+          commit,
+          source: 'ai_repair',
+          fileTreeHash: commit,
+          rulePrompt: base.rulePrompt,
+          sourceSummaryHash: base.sourceSummaryHash ?? null,
+          entrypointJson: JSON.stringify(base.entrypoint),
+          dependencyPrepareJson: base.dependencyPrepare
+            ? JSON.stringify(base.dependencyPrepare)
+            : null,
+          runtimeJson: JSON.stringify(base.runtime),
+          dependenciesJson: JSON.stringify(base.dependencies ?? []),
+          dependencyLockHash: base.dependencyLockHash ?? null,
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      await this.normalizers.touchArtifact(artifactId, now);
+      return {
+        artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifactId),
+        version: await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId),
+        replaced: Boolean(reusable),
+      };
+    });
+  }
+
   /** Versions newest first, read from git; edits made in the repo folder become a 手动修改 draft. */
   async listRawTableNormalizerArtifactVersions(
     artifactId: string

@@ -45,7 +45,7 @@ export function createNormalizerGenerationProgressId(): string {
  * re-render the markdown pipeline.
  */
 export type NormalizerGenerationStepPhase =
-  'source_summary' | 'source_analysis' | 'code_generation' | 'saving';
+  'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'verify';
 
 export type NormalizerGenerationStepStatus = 'active' | 'done' | 'error';
 
@@ -56,11 +56,37 @@ export interface NormalizerGenerationStep {
   stream: string;
 }
 
+/** An earlier turn of the same generation session, folded into one row. */
+export interface GenerationHistoryItem {
+  title: string;
+  detail?: string;
+  status: 'success' | 'error';
+  lines?: string[];
+}
+
+/** One finished round of an auto-fix loop. */
+export interface GenerationRoundItem {
+  title: string;
+  status: 'success' | 'error';
+  lines: string[];
+  elapsedMs?: number;
+}
+
 export interface NormalizerGenerationLog {
   meta: Array<{ label: string; value: string }>;
   steps: NormalizerGenerationStep[];
   startedAt: number;
   finishedAt?: number;
+  /** Multi-turn sessions: earlier turns (rule generation, preview failures, fixes). */
+  history?: GenerationHistoryItem[];
+  /** Divider above the current turn, e.g. 「修复 · 基于 v1 草稿」. */
+  turnTitle?: string;
+  /** Status row extra, e.g. 「第 2 / 3 轮」. */
+  roundLabel?: string;
+  /** Finished rounds of the current auto-fix turn. */
+  rounds?: GenerationRoundItem[];
+  /** Step titles for this turn (fix turns: 读取报错与当前代码 → 分析原因 → 修改文件 → 重新预览). */
+  stepTitles?: Partial<Record<NormalizerGenerationStepPhase, string>>;
   outcome?: {
     status: 'success' | 'error';
     title: string;
@@ -74,6 +100,7 @@ const NORMALIZER_STEP_PHASE_ORDER: NormalizerGenerationStepPhase[] = [
   'source_analysis',
   'code_generation',
   'saving',
+  'verify',
 ];
 
 export function createNormalizerGenerationLog(input: {

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, CircleDashed, Copy, Loader2, X } from 'lucide-react';
 import {
   formatGenerationElapsed,
+  type GenerationHistoryItem,
+  type GenerationRoundItem,
   type NormalizerGenerationLog,
   type NormalizerGenerationStep,
   type NormalizerGenerationStepPhase,
@@ -14,6 +16,7 @@ const STEP_TITLE_KEYS: Record<NormalizerGenerationStepPhase, string> = {
   source_analysis: 'data.rawTables.editor.generationStepSourceAnalysis',
   code_generation: 'data.rawTables.editor.generationStepCodeGeneration',
   saving: 'data.rawTables.editor.generationStepSaving',
+  verify: 'fixError.stepVerify',
 };
 
 const COLLAPSED_STREAM_TAIL_LINES = 4;
@@ -115,17 +118,109 @@ function GenerationStepView({
   );
 }
 
+/** Folded row for an earlier turn or a finished auto-fix round; click to show its lines. */
+function FoldedTurnRow({
+  item,
+  variant,
+}: {
+  item: GenerationHistoryItem | GenerationRoundItem;
+  variant: 'history' | 'round';
+}) {
+  const lines = item.lines ?? [];
+  const [open, setOpen] = useState(variant === 'round');
+  const detail =
+    'detail' in item
+      ? item.detail
+      : 'elapsedMs' in item && item.elapsedMs !== undefined
+        ? formatGenerationElapsed(item.elapsedMs)
+        : undefined;
+  return (
+    <div
+      className={variant === 'history' ? 'rounded-md' : ''}
+      style={
+        variant === 'history'
+          ? { backgroundColor: 'var(--code-preview-gutter-background)' }
+          : undefined
+      }
+      data-testid={variant === 'history' ? 'generation-history-item' : 'generation-round-item'}
+      data-status={item.status}
+    >
+      <button
+        type="button"
+        disabled={lines.length === 0}
+        onClick={() => setOpen(!open)}
+        className={`flex w-full items-center gap-2 text-left disabled:cursor-default ${variant === 'history' ? 'px-2.5 py-1.5' : 'py-1'}`}
+      >
+        {item.status === 'success' ? (
+          <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+        ) : (
+          <X className="h-3.5 w-3.5 flex-shrink-0 text-error" />
+        )}
+        <span
+          className="min-w-0 truncate text-[13px] font-medium"
+          style={{ color: 'var(--code-preview-text)' }}
+        >
+          {item.title}
+        </span>
+        {detail || lines.length > 0 ? (
+          <span
+            className="ml-auto inline-flex min-w-0 flex-shrink items-center gap-1 pl-3 text-[11px]"
+            style={{ color: 'var(--code-preview-muted)' }}
+          >
+            {detail ? <span className="truncate">{detail}</span> : null}
+            {lines.length > 0 ? (
+              <ChevronDown
+                className={`h-3.5 w-3.5 flex-shrink-0 transition-transform ${open ? '' : '-rotate-90'}`}
+              />
+            ) : null}
+          </span>
+        ) : null}
+      </button>
+      {open && lines.length > 0 ? (
+        <div
+          className={`ml-[7px] border-l pl-3 ${variant === 'history' ? 'mb-1.5 ml-[17px]' : ''}`}
+          style={{ borderColor: 'var(--code-preview-gutter-border)' }}
+        >
+          {lines.map((line, index) => (
+            <div
+              key={index}
+              className="whitespace-pre-wrap break-all py-0.5 text-[12px] leading-5"
+              style={{ color: 'var(--code-preview-muted)' }}
+            >
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function serializeGenerationLog(
   log: NormalizerGenerationLog | null,
   errorMessage: string | null | undefined,
-  t: TranslateFn
+  t: TranslateFn,
+  stepTitles?: Partial<Record<NormalizerGenerationStepPhase, string>>
 ): string {
   const lines: string[] = [];
   if (log) {
+    for (const item of log.history ?? []) {
+      lines.push(
+        `${item.status === 'success' ? '✓' : '✕'} ${item.title}${item.detail ? ` · ${item.detail}` : ''}`
+      );
+      for (const line of item.lines ?? []) lines.push(`  ${line}`);
+    }
+    if (log.turnTitle) lines.push(`── ${log.turnTitle} ──`);
     for (const item of log.meta) lines.push(`${item.label}: ${item.value}`);
+    for (const round of log.rounds ?? []) {
+      lines.push(`${round.status === 'success' ? '✓' : '✕'} ${round.title}`);
+      for (const line of round.lines) lines.push(`  ${line}`);
+    }
     for (const step of log.steps) {
       const mark = step.status === 'active' ? '…' : step.status === 'error' ? '✕' : '✓';
-      lines.push(`${mark} ${t(STEP_TITLE_KEYS[step.phase])}`);
+      lines.push(
+        `${mark} ${log.stepTitles?.[step.phase] ?? stepTitles?.[step.phase] ?? t(STEP_TITLE_KEYS[step.phase])}`
+      );
       for (const note of step.notes) lines.push(`  ${note}`);
       if (step.stream) lines.push(step.stream);
     }
@@ -229,6 +324,14 @@ export function RawTableGenerationConsole({
               {formatGenerationElapsed(elapsedMs)}
             </span>
           ) : null}
+          {log?.roundLabel ? (
+            <span
+              className="truncate text-[11.5px] text-text-muted"
+              data-testid="generation-round-label"
+            >
+              {log.roundLabel}
+            </span>
+          ) : null}
         </div>
         <div
           className="flex min-w-0 items-center border-l border-border-subtle px-2.5 text-xs text-text-muted"
@@ -241,7 +344,9 @@ export function RawTableGenerationConsole({
           disabled={!log && !errorMessage}
           data-testid="generation-copy-log"
           onClick={() => {
-            void navigator.clipboard?.writeText(serializeGenerationLog(log, errorMessage, t));
+            void navigator.clipboard?.writeText(
+              serializeGenerationLog(log, errorMessage, t, stepTitles)
+            );
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1500);
           }}
@@ -271,6 +376,30 @@ export function RawTableGenerationConsole({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {log?.history && log.history.length > 0 ? (
+              <div className="flex flex-col gap-1.5" data-testid="generation-history">
+                {log.history.map((item, index) => (
+                  <FoldedTurnRow key={index} item={item} variant="history" />
+                ))}
+              </div>
+            ) : null}
+            {log?.turnTitle ? (
+              <div
+                className="flex items-center gap-3 py-0.5 text-[11.5px]"
+                style={{ color: 'var(--code-preview-muted)' }}
+                data-testid="generation-turn-divider"
+              >
+                <span
+                  className="h-px flex-1"
+                  style={{ backgroundColor: 'var(--code-preview-gutter-border)' }}
+                />
+                <span className="flex-shrink-0">{log.turnTitle}</span>
+                <span
+                  className="h-px flex-1"
+                  style={{ backgroundColor: 'var(--code-preview-gutter-border)' }}
+                />
+              </div>
+            ) : null}
             {log && log.meta.length > 0 ? (
               <div className="flex flex-wrap gap-x-4 text-[12px] leading-6">
                 {log.meta.map((item, index) => (
@@ -281,14 +410,25 @@ export function RawTableGenerationConsole({
                 ))}
               </div>
             ) : null}
+            {log?.rounds && log.rounds.length > 0 ? (
+              <div className="flex flex-col gap-0.5" data-testid="generation-rounds">
+                {log.rounds.map((round, index) => (
+                  <FoldedTurnRow
+                    key={`${log.startedAt}:round:${index}`}
+                    item={round}
+                    variant="round"
+                  />
+                ))}
+              </div>
+            ) : null}
             {log && log.steps.length > 0 ? (
               <div className="flex flex-col gap-0.5">
                 {log.steps.map((step) => (
                   <GenerationStepView
-                    key={`${log.startedAt}:${step.phase}`}
+                    key={`${log.startedAt}:${log.rounds?.length ?? 0}:${step.phase}`}
                     step={step}
                     t={t}
-                    title={stepTitles?.[step.phase]}
+                    title={log.stepTitles?.[step.phase] ?? stepTitles?.[step.phase]}
                   />
                 ))}
               </div>

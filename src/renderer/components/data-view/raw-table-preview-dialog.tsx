@@ -17,6 +17,7 @@ export function RawTablePreviewDialog({
   onPageChange,
   onClose,
   footer,
+  errorContent,
 }: {
   tableKind?: 'raw' | 'result';
   title?: string;
@@ -28,6 +29,8 @@ export function RawTablePreviewDialog({
   onPageChange: (page: number) => void;
   onClose: () => void;
   footer?: ReactNode;
+  /** Replaces the grid's one-line error state (报错修复 panel). */
+  errorContent?: ReactNode;
 }) {
   const { t } = useTranslation();
   const previewTitle =
@@ -66,20 +69,24 @@ export function RawTablePreviewDialog({
       </div>
 
       <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
-        <GlassDataGridPreview
-          preview={preview}
-          isLoading={isLoading}
-          error={error}
-          currentPage={currentPage}
-          onPageChange={onPageChange}
-          edgeToEdge
-          labels={{
-            loading: t('data.rawTables.editor.previewLoading'),
-            empty: previewEmpty,
-            total: (count) => t('data.rawTables.editor.previewTotal', { count }),
-            pageSize: (count) => t('data.rawTables.editor.previewPageSize', { count }),
-          }}
-        />
+        {error && errorContent && !isLoading ? (
+          errorContent
+        ) : (
+          <GlassDataGridPreview
+            preview={preview}
+            isLoading={isLoading}
+            error={error}
+            currentPage={currentPage}
+            onPageChange={onPageChange}
+            edgeToEdge
+            labels={{
+              loading: t('data.rawTables.editor.previewLoading'),
+              empty: previewEmpty,
+              total: (count) => t('data.rawTables.editor.previewTotal', { count }),
+              pageSize: (count) => t('data.rawTables.editor.previewPageSize', { count }),
+            }}
+          />
+        )}
       </div>
       {footer && (
         <div className="flex h-12 flex-shrink-0 items-center justify-end gap-2 border-t border-border-subtle bg-background px-4">

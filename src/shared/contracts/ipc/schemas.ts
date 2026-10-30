@@ -582,6 +582,18 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       runtime: z.enum(['python', 'node']),
       modelConfigSetId: z.string().nullable().optional(),
       progressId: strOpt,
+      fix: z
+        .looseObject({
+          error: z.string().max(200_000),
+          log: z.string().max(200_000).optional(),
+          exitCode: numOpt,
+          durationMs: numOpt,
+          note: z.string().max(4000).optional(),
+          round: numOpt,
+          maxRounds: numOpt,
+          previousAttempts: z.array(z.string().max(2000)).max(10).optional(),
+        })
+        .optional(),
     }),
   ],
   'automation.groups.list': [],
@@ -777,6 +789,17 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       model: strNullish,
       primaryLanguage: z.enum(['python', 'node']).optional(),
       progressId: strOpt,
+      fix: z
+        .looseObject({
+          baseVersionId: str,
+          error: z.string().max(200_000),
+          note: z.string().max(4000).optional(),
+          durationMs: numOpt,
+          round: numOpt,
+          maxRounds: numOpt,
+          previousAttempts: z.array(z.string().max(2000)).max(10).optional(),
+        })
+        .optional(),
     }),
   ],
   'data.previewRawTableNormalizerVersion': [

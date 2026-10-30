@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Send,
   Sparkles,
   Upload,
   X,
@@ -43,6 +44,24 @@ import {
   type HistoryVersionDiff,
 } from '../data-view/raw-table-version-history';
 import { RawTablePreviewDialog } from '../data-view/raw-table-preview-dialog';
+import { FixErrorPanel, type AutoFixRounds } from '../data-view/fix-error-panel';
+import { CodeDiffView, fileDiffStats } from '../data-view/code-diff-view';
+import {
+  createFixLog,
+  failureHistoryItem,
+  historyFromLog,
+  runFixFlow,
+  type FixFailure,
+} from '../data-view/fix-error-flow';
+import {
+  changedFilePaths,
+  describeConfigInput,
+  evaluatePass,
+  expectedColumnsFromManifest,
+  parseErrorReport,
+  predictFixDraft,
+  type FixErrorReport,
+} from '../../../shared/fix-error';
 import { RawTableConfigRow } from '../data-view/raw-table-editor-workbench';
 import {
   applyNormalizerGenerationProgress,
@@ -144,6 +163,29 @@ export function ScriptPackageWorkbench({
   const [tab, setTab] = useState<'config' | 'data' | 'automation'>('config');
   const [lastOutput, setLastOutput] = useState<DataRawTablePreview | null>(null);
   const [automations, setAutomations] = useState<Automation[] | null>(null);
+  // 报错修复: the version the trial ran, the panel's inputs, and the last fix result.
+  const [trialVersion, setTrialVersion] = useState<number | null>(null);
+  const [fixNote, setFixNote] = useState('');
+  const [autoFixRounds, setAutoFixRounds] = useState<AutoFixRounds>(0);
+  const [fixing, setFixing] = useState(false);
+  const [trialSuspicious, setTrialSuspicious] = useState<{ reason: string; sample: string } | null>(
+    null
+  );
+  const [fixInfo, setFixInfo] = useState<{
+    version: number;
+    baseVersion: number;
+    rounds: number;
+    passed: boolean;
+    text: string;
+  } | null>(null);
+  const [codeView, setCodeView] = useState<'diff' | 'full'>('full');
+  const [diffBase, setDiffBase] = useState<ScriptPackageVersionDetail | null>(null);
+  const [focusLine, setFocusLine] = useState<{ path: string; line: number } | null>(null);
+  const [continueText, setContinueText] = useState('');
+  const lastFailureRef = useRef<FixFailure | null>(null);
+  // 补充 notes and follow-up requests from earlier fix turns on this draft: each turn resends
+  // them (oldest first) so a later request does not undo an earlier fix.
+  const fixNotesRef = useRef<string[]>([]);
   const initialised = useRef(false);
 
   const refresh = useCallback(
@@ -182,7 +224,8 @@ export function ScriptPackageWorkbench({
         setModelConfigSetId(editor?.modelConfigSetId ?? null);
         const lastRule = loadedVersions.find((version) => version.source === 'rule');
         setRulePrompt(editor?.rulePrompt ?? lastRule?.rulePrompt ?? '');
-        setBaseVersion(loadedSummary.published?.version ?? null);
+        // 基于 defaults to the current draft when there is one.
+        setBaseVersion(loadedSummary.draft?.version ?? loadedSummary.published?.version ?? null);
         const initial =
           target.version ??
           loadedSummary.draft?.version ??
@@ -256,7 +299,22 @@ export function ScriptPackageWorkbench({
   };
 
   const published = summary?.published;
+  const currentDraft = summary?.draft;
+  const baseLabelFor = (version: number | null) =>
+    version == null
+      ? t('scripts.editor.baseScratch')
+      : currentDraft && version === currentDraft.version
+        ? t('fixError.baseDraft', { version })
+        : t('scripts.editor.basePublished', { version });
   const baseOptions = [
+    ...(currentDraft
+      ? [
+          {
+            value: String(currentDraft.version),
+            label: t('fixError.baseDraft', { version: currentDraft.version }),
+          },
+        ]
+      : []),
     ...(published
       ? [
           {
@@ -289,10 +347,7 @@ export function ScriptPackageWorkbench({
         { label: t('scripts.editor.metaPackage'), value: name || packageId || '' },
         {
           label: t('scripts.editor.metaBase'),
-          value:
-            baseVersion != null
-              ? t('scripts.editor.basePublished', { version: baseVersion })
-              : t('scripts.editor.baseScratch'),
+          value: baseLabelFor(packageId ? baseVersion : null),
         },
         {
           label: t('scripts.editor.metaLanguage'),
@@ -306,6 +361,7 @@ export function ScriptPackageWorkbench({
     logRef.current = log;
     setGenerationLog({ ...log });
     setGenerating(true);
+    fixNotesRef.current = [];
     const progressId = createNormalizerGenerationProgressId();
     const unsubscribe = api.onGenerateProgress((event) => {
       if (event.progressId !== progressId || event.phase === 'complete') return;
@@ -353,7 +409,11 @@ export function ScriptPackageWorkbench({
     if (!packageId || testing) return;
     setTesting(true);
     setTrial(null);
+    setTrialSuspicious(null);
     setTrialOpen(true);
+    setTrialVersion(
+      version == null || version === 'published' ? (published?.version ?? null) : version
+    );
     try {
       const result = await api.testRun(
         packageId,
@@ -361,6 +421,23 @@ export function ScriptPackageWorkbench({
         version ?? 'published'
       );
       setTrial(result);
+      if (result.ok && result.version != null) {
+        // 通过但结果异常 counts as a failure too (empty expected column, missing columns).
+        const ran = await api.versionDetail(packageId, result.version).catch(() => null);
+        const verdict = evaluatePass({
+          ok: true,
+          columns: result.columns,
+          rows: result.previewRows,
+          expectedColumns: expectedColumnsFromManifest(
+            ran?.files.find((file) => file.path === 'manifest.json')?.content
+          ),
+        });
+        if (!verdict.ok)
+          setTrialSuspicious({
+            reason: verdict.reason ?? '',
+            sample: `输出预览：\n${result.preview ?? ''}`,
+          });
+      }
       void refresh();
     } catch (err) {
       setTrial({
@@ -371,6 +448,192 @@ export function ScriptPackageWorkbench({
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  /**
+   * 交给 AI 修复 / 继续修改: a follow-up turn in the generation console that edits the current
+   * draft, reruns the trial and (自动修复) repeats until it passes or hits the round limit.
+   */
+  const startFix = async (input: {
+    failure: FixFailure;
+    report: FixErrorReport;
+    note?: string;
+    request?: string;
+    maxRounds: number;
+    baseVersion: number;
+  }) => {
+    if (!packageId || fixing || generating) return;
+    const id = packageId;
+    setTrialOpen(false);
+    setStep('generate');
+    setError(null);
+    setFixing(true);
+    const baseRecord = versions.find((version) => version.version === input.baseVersion);
+    const base = t(
+      baseRecord?.status === 'published'
+        ? 'fixError.baseLabelPublished'
+        : 'fixError.baseLabelDraft',
+      { version: input.baseVersion }
+    );
+    const previous = logRef.current;
+    const history = previous
+      ? historyFromLog(
+          previous,
+          t('fixError.historyVersion', {
+            version: input.baseVersion,
+            source: t(SCRIPT_SOURCE_KEYS[baseRecord?.source ?? 'rule']),
+          })
+        )
+      : [
+          {
+            title: t('fixError.historyVersion', {
+              version: input.baseVersion,
+              source: t(SCRIPT_SOURCE_KEYS[baseRecord?.source ?? 'rule']),
+            }),
+            status: 'success' as const,
+          },
+        ];
+    if (!input.request) {
+      history.push(
+        failureHistoryItem(
+          t('fixError.historyTrialFailed', { version: input.baseVersion }),
+          input.report
+        )
+      );
+    }
+    const log = createFixLog({
+      history,
+      turnTitle: input.request
+        ? t('fixError.turnContinue', { base })
+        : input.maxRounds > 1
+          ? t('fixError.turnAutoFix', { count: input.maxRounds, base })
+          : t('fixError.turnFix', { base }),
+      report: input.report,
+      note: input.note,
+      request: input.request,
+      verifyKind: 'trial',
+      t,
+    });
+    logRef.current = log;
+    setGenerationLog({ ...log });
+    const progressId = createNormalizerGenerationProgressId();
+    const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
+      Boolean
+    );
+    let forward:
+      ((event: { phase: string; kind: 'message' | 'delta'; text: string }) => void) | null = null;
+    const unsubscribe = api.onGenerateProgress((event) => {
+      if (event.progressId === progressId) forward?.(event);
+    });
+    let target = input.baseVersion;
+    try {
+      // Snapshot of the files before this turn: the 差异 view compares against it.
+      const baseDetail = await api.versionDetail(id, input.baseVersion);
+      const result = await runFixFlow({
+        log,
+        flush: scheduleFlush,
+        maxRounds: input.maxRounds,
+        initial: input.failure,
+        note: notes.join('\n') || undefined,
+        verifyKind: 'trial',
+        t,
+        fix: async (request, onProgress) => {
+          forward = onProgress;
+          const fixed = await api.generateDraft({
+            packageId: id,
+            name: name.trim() || undefined,
+            rulePrompt: rulePrompt.trim() || t('fixError.fix'),
+            baseVersion: target,
+            runtime,
+            modelConfigSetId,
+            progressId,
+            fix: request,
+          });
+          target = fixed.version.version;
+          return {
+            versionNumber: fixed.version.version,
+            changedFiles: fixed.changedFiles ?? [],
+            summary: fixed.fixSummary,
+            replaced: fixed.replaced,
+          };
+        },
+        verify: async (fixed) => {
+          const run = await api.testRun(id, DEFAULT_SCRIPT_TIMEOUT_MS, fixed.versionNumber);
+          const fixedDetail = await api.versionDetail(id, fixed.versionNumber);
+          setTrial(run);
+          setTrialVersion(fixed.versionNumber);
+          setTrialSuspicious(null);
+          const verdict = evaluatePass({
+            ok: run.ok,
+            error: run.error,
+            exitCode: run.exitCode,
+            columns: run.columns,
+            rows: run.previewRows,
+            expectedColumns: expectedColumnsFromManifest(
+              fixedDetail.files.find((file) => file.path === 'manifest.json')?.content
+            ),
+          });
+          if (verdict.ok) return { passed: true, rows: run.rows, cols: run.columns?.length };
+          if (run.ok)
+            setTrialSuspicious({
+              reason: verdict.reason ?? '',
+              sample: `输出预览：\n${run.preview ?? ''}`,
+            });
+          return {
+            passed: false,
+            rows: run.rows,
+            cols: run.columns?.length,
+            failure: run.ok
+              ? {
+                  message: verdict.reason ?? '',
+                  error: `${verdict.reason ?? ''}\n输出预览：\n${run.preview ?? ''}`,
+                }
+              : {
+                  message: verdict.reason ?? run.error ?? '',
+                  error: run.error ?? '',
+                  log: run.log,
+                  exitCode: run.exitCode,
+                  durationMs: run.durationMs,
+                },
+          };
+        },
+      });
+      flushLog();
+      await refresh(id);
+      if (result.last) {
+        fixNotesRef.current = notes;
+        const version = result.last.versionNumber;
+        setDiffBase(baseDetail);
+        setCodeView('diff');
+        setFocusLine(null);
+        setViewVersion(version);
+        if (result.changedFiles[0]) setSelectedPath(result.changedFiles[0]);
+        lastFailureRef.current = result.passed ? null : (result.lastVerify?.failure ?? null);
+        const verdictText = result.passed
+          ? t('fixError.trialPassed', {
+              rows: result.lastVerify?.rows ?? 0,
+              cols: result.lastVerify?.cols ?? 0,
+            })
+          : t('fixError.verifyFailed', { reason: result.lastVerify?.failure?.message ?? '' });
+        setFixInfo({
+          version,
+          baseVersion: input.baseVersion,
+          rounds: result.rounds,
+          passed: result.passed,
+          text: t('fixError.reviewFixed', { version, rounds: result.rounds, result: verdictText }),
+        });
+        if (result.passed) setStep('review');
+      }
+      if (result.error) setError(result.error);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      markNormalizerGenerationError(log, message);
+      setError(message);
+    } finally {
+      unsubscribe();
+      setFixing(false);
+      flushLog();
     }
   };
 
@@ -422,13 +685,105 @@ export function ScriptPackageWorkbench({
 
   const files = detail?.files ?? [];
   const selectedFile = files.find((file) => file.path === selectedPath) ?? files[0];
+  const showingFix = Boolean(diffBase && fixInfo && detail && detail.version === fixInfo.version);
+  const diffBaseFile = diffBase?.files.find((file) => file.path === selectedFile?.path);
   const markers = useMemo(() => {
     const result: Record<string, string> = {};
+    if (showingFix && diffBase && detail) {
+      // After an AI 修复 the markers show what this fix changed against the version it edited.
+      const before = new Set(diffBase.files.map((file) => file.path));
+      for (const path of changedFilePaths(diffBase.files, detail.files))
+        result[path] = before.has(path)
+          ? t('scripts.editor.markerModified')
+          : t('scripts.editor.markerAdded');
+      return result;
+    }
     if (!detail?.diff) return result;
     for (const file of detail.diff.modified) result[file] = t('scripts.editor.markerModified');
     for (const file of detail.diff.added) result[file] = t('scripts.editor.markerAdded');
     return result;
-  }, [detail, t]);
+  }, [detail, diffBase, showingFix, t]);
+
+  const trialVersionNumber = trial?.version ?? trialVersion;
+  const trialRecord = versions.find((version) => version.version === trialVersionNumber);
+  const trialVersionLabel = trialVersionNumber
+    ? `v${trialVersionNumber}${trialRecord ? ` ${t(`scripts.status.${trialRecord.status}`)}` : ''}`
+    : '';
+  const trialFiles = detail && detail.version === trialVersionNumber ? detail.files : undefined;
+  const trialReport = useMemo(
+    (): FixErrorReport | null =>
+      trial?.ok && trialSuspicious
+        ? {
+            ...parseErrorReport({ error: trialSuspicious.reason, durationMs: trial.durationMs }),
+            message: trialSuspicious.reason,
+            traceback: trialSuspicious.sample,
+            exitCode: 0,
+          }
+        : trial && !trial.ok
+          ? parseErrorReport(
+              {
+                error: trial.error ?? '',
+                log: trial.log,
+                exitCode: trial.exitCode,
+                durationMs: trial.durationMs,
+              },
+              trialFiles?.map((file) => file.path)
+            )
+          : null,
+    [trial, trialFiles, trialSuspicious]
+  );
+  const trialFailedHere =
+    Boolean(trialReport) &&
+    !testing &&
+    trialVersionNumber != null &&
+    trialVersionNumber === viewVersion;
+  const fixTarget = predictFixDraft(versions);
+  const fixBaseLabel = trialVersionNumber
+    ? t(
+        trialRecord?.status === 'published'
+          ? 'fixError.baseLabelPublished'
+          : 'fixError.baseLabelDraft',
+        { version: trialVersionNumber }
+      )
+    : '';
+  const startTrialFix = () => {
+    if (!trial || !trialReport || trialVersionNumber == null) return;
+    void startFix({
+      failure: {
+        message: trialReport.message,
+        error: trial.ok
+          ? `${trialReport.message}\n${trialSuspicious?.sample ?? ''}`
+          : (trial.error ?? ''),
+        log: trial.log,
+        exitCode: trial.exitCode,
+        durationMs: trial.durationMs,
+      },
+      report: trialReport,
+      note: fixNote,
+      maxRounds: Math.max(1, autoFixRounds),
+      baseVersion: trialVersionNumber,
+    });
+  };
+  const sendContinue = () => {
+    const text = continueText.trim();
+    if (!text || !fixInfo) return;
+    const failure = lastFailureRef.current ?? {
+      message: t('fixError.continueNoError'),
+      error: t('fixError.continueNoError'),
+    };
+    setContinueText('');
+    void startFix({
+      failure,
+      report: parseErrorReport({
+        error: failure.error,
+        log: failure.log,
+        exitCode: failure.exitCode,
+      }),
+      request: text,
+      maxRounds: Math.max(1, autoFixRounds),
+      baseVersion: fixInfo.version,
+    });
+  };
 
   const statusBadge = published
     ? {
@@ -445,7 +800,7 @@ export function ScriptPackageWorkbench({
     {
       value: 'generate',
       label: t('data.rawTables.editor.customizeStepGenerate'),
-      reachable: generating || generationLog !== null,
+      reachable: generating || fixing || generationLog !== null,
     },
     {
       value: 'review',
@@ -478,7 +833,7 @@ export function ScriptPackageWorkbench({
   const backCell = (
     <button
       type="button"
-      disabled={generating}
+      disabled={generating || fixing}
       onClick={() => setStep('rules')}
       className="inline-flex items-center justify-center gap-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
     >
@@ -509,6 +864,55 @@ export function ScriptPackageWorkbench({
           {generating
             ? t('data.rawTables.editor.generateProjectDrafting')
             : t('scripts.editor.generate')}
+        </button>
+      </>
+    );
+  } else if (step === 'generate' && fixing) {
+    actionCols = '104px minmax(0,1fr) 120px';
+    actionCells = (
+      <>
+        {backCell}
+        {noteCell(t('fixError.fixingHintTrial'))}
+        <button type="button" disabled className="ui-accent-cell border-l border-border-subtle">
+          <FileCode2 className="h-3.5 w-3.5" />
+          {t('fixError.viewChanges')}
+        </button>
+      </>
+    );
+  } else if (step === 'generate' && fixInfo && !generating && generationLog?.turnTitle) {
+    // After a fix turn: keep editing the same draft with a follow-up request.
+    actionCols = '104px minmax(0,1fr) 92px 120px';
+    actionCells = (
+      <>
+        {backCell}
+        <input
+          value={continueText}
+          onChange={(event) => setContinueText(event.target.value.slice(0, 2000))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) sendContinue();
+          }}
+          placeholder={t('fixError.continuePlaceholder')}
+          data-testid="fix-continue-input"
+          className="min-w-0 border-0 border-l border-border-subtle bg-transparent px-2.5 text-xs text-text-primary outline-none placeholder:text-text-muted"
+        />
+        <button
+          type="button"
+          disabled={!continueText.trim()}
+          onClick={sendContinue}
+          data-testid="fix-continue-send"
+          className={toolCell}
+        >
+          <Send className="h-3.5 w-3.5" />
+          {t('fixError.send')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setStep('review')}
+          data-testid="fix-view-changes"
+          className="ui-accent-cell border-l border-border-subtle"
+        >
+          <FileCode2 className="h-3.5 w-3.5" />
+          {t('fixError.viewChanges')}
         </button>
       </>
     );
@@ -553,18 +957,38 @@ export function ScriptPackageWorkbench({
     actionCells = (
       <>
         {backCell}
-        {noteCell(
-          detail ? (
-            <span data-testid="script-version-summary">
-              {[
-                t('data.rawTables.editor.versionNumber', { version: detail.version }),
-                t(`scripts.status.${detail.status}`),
-                t(SCRIPT_SOURCE_KEYS[detail.source]),
-                shortTime(detail.updatedAt),
-              ].join(' · ')}
+        {trialFailedHere && !error && trialReport ? (
+          // Step bar failure note: the reason plus the way back to the 报错 panel.
+          <button
+            type="button"
+            role="alert"
+            onClick={() => setTrialOpen(true)}
+            title={trialReport.message}
+            data-testid="script-trial-failure"
+            className="flex min-w-0 items-center gap-1.5 border-l border-border-subtle px-2.5 text-left text-xs font-medium text-error hover:bg-error/5"
+          >
+            <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="truncate">
+              {t('fixError.trialFailed', { reason: trialReport.message })}
             </span>
-          ) : (
-            ''
+            <span className="ml-auto flex-shrink-0 pl-2 text-accent">{t('fixError.fix')}</span>
+          </button>
+        ) : (
+          noteCell(
+            detail ? (
+              <span data-testid="script-version-summary">
+                {showingFix && fixInfo && detail.status === 'draft'
+                  ? fixInfo.text
+                  : [
+                      t('data.rawTables.editor.versionNumber', { version: detail.version }),
+                      t(`scripts.status.${detail.status}`),
+                      t(SCRIPT_SOURCE_KEYS[detail.source]),
+                      shortTime(detail.updatedAt),
+                    ].join(' · ')}
+              </span>
+            ) : (
+              ''
+            )
           )
         )}
         <button
@@ -898,7 +1322,7 @@ export function ScriptPackageWorkbench({
 
               {step === 'generate' ? (
                 <RawTableGenerationConsole
-                  isStreaming={generating}
+                  isStreaming={generating || fixing}
                   log={generationLog}
                   modelLabel={modelLabel}
                   stepTitles={{
@@ -922,7 +1346,11 @@ export function ScriptPackageWorkbench({
                   </div>
                 ) : (
                   <div
-                    className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_92px_200px_40px] grid-rows-[36px_minmax(0,1fr)]"
+                    className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${
+                      showingFix
+                        ? 'grid-cols-[minmax(0,1fr)_150px_92px_200px_40px]'
+                        : 'grid-cols-[minmax(0,1fr)_92px_200px_40px]'
+                    }`}
                     data-testid="script-review"
                   >
                     <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
@@ -932,13 +1360,36 @@ export function ScriptPackageWorkbench({
                       </span>
                       {selectedFile ? (
                         <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
-                          {t('data.rawTables.editor.codeFileMeta', {
-                            lines: selectedFile.content.split('\n').length,
-                            language: getCodePreviewLanguageLabel(selectedFile.path),
-                          })}
+                          {showingFix && codeView === 'diff'
+                            ? (() => {
+                                const stats = fileDiffStats(
+                                  diffBaseFile?.content,
+                                  selectedFile.content
+                                );
+                                return `+${stats.added} −${stats.removed} · ${getCodePreviewLanguageLabel(selectedFile.path)}`;
+                              })()
+                            : t('data.rawTables.editor.codeFileMeta', {
+                                lines: selectedFile.content.split('\n').length,
+                                language: getCodePreviewLanguageLabel(selectedFile.path),
+                              })}
                         </span>
                       ) : null}
                     </div>
+                    {showingFix ? (
+                      <div className="flex border-b border-l border-border-subtle">
+                        <GlassSelect
+                          ariaLabel={t('fixError.viewDiff')}
+                          value={codeView}
+                          onValueChange={(value) => setCodeView(value as 'diff' | 'full')}
+                          options={[
+                            { value: 'diff', label: t('fixError.viewDiff') },
+                            { value: 'full', label: t('fixError.viewFull') },
+                          ]}
+                          triggerClassName="h-full w-full justify-between rounded-none border-0 bg-transparent px-2.5 text-xs text-text-primary shadow-none"
+                          contentClassName="w-[var(--radix-select-trigger-width)]"
+                        />
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       disabled={!selectedFile}
@@ -967,8 +1418,26 @@ export function ScriptPackageWorkbench({
                     <div className="flex items-center justify-center border-b border-border-subtle text-xs tabular-nums text-text-muted">
                       {files.length}
                     </div>
-                    <div className="col-span-2 flex min-h-0 min-w-0 flex-col overflow-hidden">
-                      <CodePreview file={selectedFile} t={t} />
+                    <div
+                      className={`${showingFix ? 'col-span-3' : 'col-span-2'} flex min-h-0 min-w-0 flex-col overflow-hidden`}
+                    >
+                      {showingFix && codeView === 'diff' && selectedFile ? (
+                        <CodeDiffView
+                          before={diffBaseFile?.content}
+                          after={selectedFile.content}
+                          t={t}
+                        />
+                      ) : (
+                        <CodePreview
+                          file={selectedFile}
+                          t={t}
+                          focusLine={
+                            focusLine && focusLine.path === selectedFile?.path
+                              ? focusLine.line
+                              : undefined
+                          }
+                        />
+                      )}
                     </div>
                     <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
                       <NormalizerProjectTree
@@ -1114,25 +1583,28 @@ export function ScriptPackageWorkbench({
 
       {trialOpen ? (
         <RawTablePreviewDialog
-          title={t('scripts.editor.trialTitle', {
-            version: trial?.version ? `v${trial.version}` : '',
-            status:
-              detail && trial?.version === detail.version
-                ? t(`scripts.status.${detail.status}`)
-                : '',
-          })}
+          title={
+            trialReport
+              ? t('fixError.trialFailedTitle', { version: trialVersionLabel })
+              : t('scripts.editor.trialTitle', {
+                  version: trialVersionNumber ? `v${trialVersionNumber}` : '',
+                  status: trialRecord ? t(`scripts.status.${trialRecord.status}`) : '',
+                })
+          }
           subtitle={
-            trial
-              ? trial.ok
-                ? t('scripts.editor.trialOk', {
-                    count: trial.rows ?? 0,
-                    seconds: (trial.durationMs / 1000).toFixed(1),
-                  }) + (trial.installedDeps ? ` · ${t('scripts.editor.depsInstalled')}` : '')
-                : trial.error
-              : t('schedule.script.testing')
+            trialReport
+              ? undefined
+              : trial
+                ? trial.ok
+                  ? t('scripts.editor.trialOk', {
+                      count: trial.rows ?? 0,
+                      seconds: (trial.durationMs / 1000).toFixed(1),
+                    }) + (trial.installedDeps ? ` · ${t('scripts.editor.depsInstalled')}` : '')
+                  : undefined
+                : t('schedule.script.testing')
           }
           preview={
-            trial?.ok && trial.columns
+            trial?.ok && trial.columns && !trialSuspicious
               ? toPreview({
                   columns: trial.columns,
                   rows: trial.previewRows ?? [],
@@ -1141,7 +1613,41 @@ export function ScriptPackageWorkbench({
               : null
           }
           isLoading={testing}
-          error={trial && !trial.ok ? [trial.error, trial.log].filter(Boolean).join('\n') : null}
+          error={
+            trialReport ? trialReport.message : trial && !trial.ok ? (trial.error ?? '') : null
+          }
+          errorContent={
+            trialReport ? (
+              <FixErrorPanel
+                report={trialReport}
+                inputLabel={describeConfigInput(
+                  trialFiles?.find((file) => file.path === 'config.json')?.content
+                )}
+                note={fixNote}
+                onNoteChange={setFixNote}
+                autoFixRounds={autoFixRounds}
+                onAutoFixRoundsChange={setAutoFixRounds}
+                onOpenLocation={(location) => {
+                  setTrialOpen(false);
+                  setStep('review');
+                  if (trialVersionNumber != null) setViewVersion(trialVersionNumber);
+                  setSelectedPath(location.file);
+                  setCodeView('full');
+                  setFocusLine({ path: location.file, line: location.line });
+                }}
+                onFix={startTrialFix}
+                busy={fixing}
+                disabled={generating || trialVersionNumber == null}
+                title={t('fixError.trialFailedTitle', { version: trialVersionLabel })}
+                footerNote={
+                  fixTarget.overwrite
+                    ? t('fixError.footerOverwrite', { base: fixBaseLabel })
+                    : t('fixError.footerNew', { base: fixBaseLabel, next: fixTarget.version })
+                }
+                t={t}
+              />
+            ) : undefined
+          }
           currentPage={1}
           onPageChange={() => undefined}
           onClose={() => setTrialOpen(false)}
