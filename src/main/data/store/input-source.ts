@@ -1,4 +1,5 @@
 import { normalizeCsvEncoding } from './csv-encoding';
+import { detectDriveFileHeader } from '../drive-preview-header';
 import * as fs from 'fs';
 import * as os from 'os';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path';
@@ -959,14 +960,21 @@ export function parseWorkbookRows(
   }
   const sheet = workbook.Sheets[sheetName];
   const matrix = sheetToExpandedMatrix(sheet);
-  const headerIndex =
-    config.headerMode === 'manual'
-      ? Math.max(0, config.headerRow - 1)
-      : matrix.findIndex((row) => row.some(hasCellValue));
-  if (headerIndex < 0) {
-    throw new Error(`E_NO_HEADER_ROW: Excel 工作表没有表头（空表）：${filePath}`);
+  if (config.headerMode !== 'manual') {
+    if (matrix.length === 0) {
+      throw new Error(`E_NO_HEADER_ROW: Excel 工作表没有表头（空表）：${filePath}`);
+    }
+    // 智能识别: skip title / note rows and merge a two-row (merged-cell) header.
+    const width = Math.max(0, ...matrix.map((row) => row.length));
+    const detected = detectDriveFileHeader(matrix, width);
+    const columns = normalizeWorkbookColumns(detected.columns);
+    const rows = matrix
+      .slice(detected.dataStart)
+      .filter((row) => row.some(hasCellValue))
+      .map((row) => columns.map((_, index) => normalizeWorkbookCell(row[index])));
+    return { columns, rows, sheetName, sheetNames };
   }
-
+  const headerIndex = Math.max(0, config.headerRow - 1);
   const headerRow = matrix[headerIndex];
   if (!headerRow) {
     throw new Error(`Excel header row does not exist: ${filePath}`);
@@ -1095,20 +1103,33 @@ export function readWorkbookFile(
 export function sheetToExpandedMatrix(
   sheet: XLSX.WorkSheet
 ): Array<Array<string | number | boolean | null>> {
+  // Read blank rows too so merge ranges (absolute sheet coordinates) line up with
+  // the matrix; blank rows are dropped only after the merged values are filled in.
   const matrix = XLSX.utils.sheet_to_json<Array<string | number | boolean | null>>(sheet, {
     header: 1,
-    blankrows: false,
+    blankrows: true,
     defval: null,
     raw: false,
   });
   const expanded = matrix.map((row) => [...row]);
+  const ref = typeof sheet['!ref'] === 'string' ? XLSX.utils.decode_range(sheet['!ref']) : null;
+  const rowOffset = ref?.s.r ?? 0;
+  const columnOffset = ref?.s.c ?? 0;
   const merges = Array.isArray(sheet['!merges']) ? sheet['!merges'] : [];
   for (const merge of merges) {
-    const sourceValue = expanded[merge.s.r]?.[merge.s.c] ?? null;
-    for (let rowIndex = merge.s.r; rowIndex <= merge.e.r; rowIndex += 1) {
+    const startRow = merge.s.r - rowOffset;
+    const startColumn = merge.s.c - columnOffset;
+    const sourceValue = expanded[startRow]?.[startColumn] ?? null;
+    for (let rowIndex = startRow; rowIndex <= merge.e.r - rowOffset; rowIndex += 1) {
+      if (rowIndex < 0) continue;
       const row = expanded[rowIndex] ?? [];
       expanded[rowIndex] = row;
-      for (let columnIndex = merge.s.c; columnIndex <= merge.e.c; columnIndex += 1) {
+      for (
+        let columnIndex = startColumn;
+        columnIndex <= merge.e.c - columnOffset;
+        columnIndex += 1
+      ) {
+        if (columnIndex < 0) continue;
         if (
           row[columnIndex] === null ||
           row[columnIndex] === undefined ||
@@ -1119,7 +1140,7 @@ export function sheetToExpandedMatrix(
       }
     }
   }
-  return expanded;
+  return expanded.filter((row) => Array.isArray(row) && row.some(hasCellValue));
 }
 
 export function summarizeDelimitedFileRows(

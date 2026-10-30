@@ -2126,7 +2126,7 @@
         "sheetEmpty": "{{rows}} 行 · 无表格数据",
         "tableName": "原始表名",
         "headerRow": "标题行",
-        "headerAuto": "智能识别（第 1 行）",
+        "headerAuto": "智能识别（跳过标题行）",
         "headerManual": "第 {{row}} 行",
         "size": "行 × 列",
         "sizeValue": "{{rows}} 行 · {{cols}} 列",

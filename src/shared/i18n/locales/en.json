@@ -2126,7 +2126,7 @@
         "sheetEmpty": "{{rows}} rows · no table data",
         "tableName": "Table name",
         "headerRow": "Header row",
-        "headerAuto": "Auto (row 1)",
+        "headerAuto": "Auto (skips title rows)",
         "headerManual": "Row {{row}}",
         "size": "Rows × columns",
         "sizeValue": "{{rows}} rows · {{cols}} columns",
