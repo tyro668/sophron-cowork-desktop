@@ -54,14 +54,15 @@ export function detectDriveFileHeader(rows: Cell[][], columnCount: number): Dete
     subFilled.every((v) => !isNumericLike(v)) &&
     // Sub-header cells only sit under merged (repeated) parents, or under empty parents.
     sub.every((v, i) => {
-      if (!v) return true;
+      // A vertically merged parent (e.g. 门店 spanning both header rows) repeats itself.
+      if (!v || v === header[i]) return true;
       const p = header[i];
       return !p || header[i - 1] === p || header[i + 1] === p;
     });
   if (parentRepeats && subLooksLikeHeader) {
     names = header.map((p, i) => {
       const s = sub[i];
-      if (!s) return p;
+      if (!s || s === p) return p;
       if (!p) return s;
       const merged = header[i - 1] === p || header[i + 1] === p;
       return merged ? `${p}_${s}` : p;
