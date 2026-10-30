@@ -74,7 +74,13 @@ export interface ToolCallDescriptor {
 }
 
 export type LoopGuardAction =
-  'none' | 'hash_warn' | 'hash_halt' | 'hash_abort' | 'freq_warn' | 'freq_halt' | 'freq_abort';
+  | 'none'
+  | 'hash_warn'
+  | 'hash_halt'
+  | 'hash_abort'
+  | 'freq_warn'
+  | 'freq_halt'
+  | 'freq_abort';
 
 export interface LoopGuardDecision {
   action: LoopGuardAction;
