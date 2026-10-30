@@ -57,6 +57,11 @@ export interface HeadlessToolAgentOptions {
   maxTokens?: number;
   temperature?: number;
   onEvent?: (event: HeadlessAgentEvent) => void;
+  /**
+   * Called after every turn; a returned string is injected as a user message before the next
+   * turn (budget reminders such as "6 turns left, write the files now").
+   */
+  budgetNotice?: (state: { turn: number; maxTurns: number; msLeft: number }) => string | undefined;
   /** Tests: replace the provider stream. */
   streamFn?: StreamFn;
 }
@@ -86,12 +91,14 @@ export class HeadlessToolAgent {
   private timedOut = false;
   private aborted = false;
   private turnsThisPrompt = 0;
+  private maxTurnsThisPrompt: number;
   private toolCalls = 0;
   private readonly toolArgs = new Map<string, Record<string, unknown>>();
   private readonly unsubscribeAbort?: () => void;
 
   constructor(private readonly options: HeadlessToolAgentOptions) {
     this.deadline = this.startedAt + options.timeoutMs;
+    this.maxTurnsThisPrompt = options.maxTurns;
     const signal = options.signal;
     if (signal) {
       const onAbort = () => {
@@ -107,7 +114,6 @@ export class HeadlessToolAgent {
   private async ensureAgent(): Promise<Agent> {
     if (this.agent) return this.agent;
     const { model, apiKey } = await resolvePiAiTarget(this.options.config);
-    const maxTurns = this.options.maxTurns;
     const agent = new Agent({
       initialState: {
         systemPrompt: this.options.systemPrompt,
@@ -132,8 +138,21 @@ export class HeadlessToolAgent {
       finishTurn: () => {
         this.turnsThisPrompt += 1;
         this.options.onEvent?.({ type: 'turn', turn: this.turnsThisPrompt });
+        const maxTurns = this.maxTurnsThisPrompt;
         if (this.turnsThisPrompt >= maxTurns) return { action: 'end' };
         if (Date.now() >= this.deadline) return { action: 'end' };
+        const notice = this.options.budgetNotice?.({
+          turn: this.turnsThisPrompt,
+          maxTurns,
+          msLeft: this.deadline - Date.now(),
+        });
+        if (notice) {
+          this.agent?.steer({
+            role: 'user',
+            content: [{ type: 'text', text: notice }],
+            timestamp: Date.now(),
+          } as AgentMessage);
+        }
         return undefined;
       },
     });
@@ -167,8 +186,9 @@ export class HeadlessToolAgent {
   }
 
   /** Send a prompt (the first one or a follow-up in the same conversation) and run to the end. */
-  async prompt(text: string): Promise<HeadlessAgentResult> {
+  async prompt(text: string, options?: { maxTurns?: number }): Promise<HeadlessAgentResult> {
     this.turnsThisPrompt = 0;
+    this.maxTurnsThisPrompt = options?.maxTurns ?? this.options.maxTurns;
     if (this.aborted) return this.result('', 'aborted');
     const remaining = this.deadline - Date.now();
     if (remaining <= 0) return this.result('', 'timeout', '超过时间上限');
@@ -200,7 +220,7 @@ export class HeadlessToolAgent {
     }
     if (last?.stopReason === 'aborted') return this.result(finalText, 'aborted');
     const hitTurnCap =
-      this.turnsThisPrompt >= this.options.maxTurns &&
+      this.turnsThisPrompt >= this.maxTurnsThisPrompt &&
       (last?.content ?? []).some((block) => block.type === 'toolCall');
     if (hitTurnCap) return this.result(finalText, 'max_turns', '达到轮次上限');
     if (Date.now() >= this.deadline) return this.result(finalText, 'timeout', '超过时间上限');

@@ -301,3 +301,27 @@ describe('agent generator tools', () => {
     expect(prompt).toContain('script_package_test');
   });
 });
+
+describe('describeCommand', () => {
+  it('turns bash probes into readable console lines without headers', async () => {
+    const { describeCommand } = await import('../../src/main/automation/script-packages/generator');
+    expect(
+      describeCommand(
+        `cd /tmp && UA="Mozilla/5.0 (X)"; curl -s -m 60 -A "$UA" -H "Referer: https://www.oschina.net/" "https://www.oschina.net/project" -o p.html`
+      )
+    ).toBe('请求 https://www.oschina.net/project');
+    expect(
+      describeCommand(
+        `cd /tmp && curl -s -A "Mozilla/5.0 (Windows NT 10.0)" https://a.com/x.js | grep foo`
+      )
+    ).toBe('请求 https://a.com/x.js');
+    expect(describeCommand(`cd /tmp && grep -o 'x' idx.js | head`)).toBe(
+      "执行：grep -o 'x' idx.js | head"
+    );
+    expect(
+      describeCommand(
+        `python3 - <<'EOF'\nurl="https://apiv1.oschina.net/oschinapi/project/ranking"\nEOF`
+      )
+    ).toBe('运行 Python 探查 https://apiv1.oschina.net/oschinapi/project/ranking');
+  });
+});

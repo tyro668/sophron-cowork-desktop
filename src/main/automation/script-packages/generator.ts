@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Type } from 'typebox';
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type { AppConfig } from '../../config/config-store';
@@ -22,6 +24,9 @@ import {
 } from '../../../shared/fix-error';
 
 /** Limits of one generation / fix agent run (each self-test counts as a tool call). */
+/** Extra turns after the cap when the agent has not written / tested the package yet. */
+const GRACE_TURNS = 8;
+
 export const SCRIPT_AGENT_LIMITS = {
   generate: { maxTurns: 40, timeoutMs: 12 * 60 * 1000 },
   fix: { maxTurns: 30, timeoutMs: 8 * 60 * 1000 },
@@ -139,6 +144,24 @@ function safeParse(text: string): unknown {
   }
 }
 
+/** One readable console line for a bash call: "请求 <url>" for curl, otherwise the trimmed command. */
+export function describeCommand(command: string): string {
+  const text = command
+    .replace(/^\s*cd\s+\S+\s*&&\s*/, '')
+    .replace(/\b(UA|USER_AGENT)=("[^"]*"|'[^']*')\s*;?\s*/g, '')
+    .replace(/(-A|--user-agent|-H|--header|-e|--referer)\s+("[^"]*"|'[^']*'|\S+)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const urls = [...text.matchAll(/https?:\/\/[^\s"'\\)]+/g)].map((match) => match[0]);
+  if (/^(curl|wget)\b/.test(text) && urls.length > 0) {
+    return `请求 ${clip(urls[0], 200)}${urls.length > 1 ? ` 等 ${urls.length} 个地址` : ''}`;
+  }
+  if (/^python3?\b/.test(text) && urls.length > 0) {
+    return `运行 Python 探查 ${clip(urls[0], 160)}`;
+  }
+  return `执行：${clip(text)}`;
+}
+
 /** Agent-based 规则生成 / AI 修复: the same tools as chat (bash, web, files, trial run). */
 export function createAgentScriptFilesGenerator(
   getConfig: () => AppConfig | Promise<AppConfig>
@@ -206,10 +229,30 @@ async function runScriptAgent(
     signal: input.signal,
     maxTokens: 16_000,
     onEvent: (event) => describeAgentEvent(event, progress),
+    budgetNotice: ({ turn, maxTurns }) => {
+      const left = maxTurns - turn;
+      const hasEntry = fs.existsSync(path.join(input.workspace.dir, 'manifest.json'));
+      if (!hasEntry && (turn === Math.floor(maxTurns / 3) || left === 8)) {
+        return `[budget] 已用 ${turn}/${maxTurns} 轮，还没有写 manifest.json。停止探查，立即用已掌握的信息写出可运行的完整脚本包，再调用 script_package_test。`;
+      }
+      if (left === 5 && lastCheck?.passed !== true) {
+        return `[budget] 只剩 ${left} 轮。集中修复最后一次试运行的问题并再次调用 script_package_test，然后结束。`;
+      }
+      return undefined;
+    },
   });
   try {
-    const result = await agent.prompt(options.prompt);
+    let result = await agent.prompt(options.prompt);
     if (result.stop === 'aborted') throw new ScriptAgentCancelled();
+    const missingManifest = !fs.existsSync(path.join(input.workspace.dir, 'manifest.json'));
+    if (result.stop === 'max_turns' && (missingManifest || lastCheck === undefined)) {
+      progress('verify', '轮次用尽，要求智能体立即写出脚本并试运行');
+      result = await agent.prompt(
+        '[budget] 轮次已用尽。不要再探查：用已掌握的信息立即写出完整脚本包（manifest.json、入口、config.json），调用一次 script_package_test，然后用 2-4 句中文总结。',
+        { maxTurns: GRACE_TURNS }
+      );
+      if (result.stop === 'aborted') throw new ScriptAgentCancelled();
+    }
     return {
       summary: result.text.slice(0, 1200),
       stop: result.stop,
@@ -275,7 +318,7 @@ export function describeAgentEvent(event: HeadlessAgentEvent, progress: ScriptAg
     const pathArg = typeof args.path === 'string' ? args.path : '';
     switch (event.name) {
       case 'bash':
-        progress('source_analysis', `执行：${clip(String(args.command ?? ''))}`);
+        progress('source_analysis', describeCommand(String(args.command ?? '')));
         return;
       case 'webfetch':
         progress('source_analysis', `请求 ${clip(String(args.url ?? ''), 200)}`);
@@ -351,7 +394,7 @@ const AGENT_WORKFLOW = [
   'You work like a developer in a terminal. Your cwd is the package folder: write/edit files there with the write and edit tools (paths relative to it). Do not touch .git, .sophron, .venv or node_modules; keep scratch downloads in /tmp, not in the package folder.',
   'Tools: bash (curl, python3, grep… for exploring), webfetch (GET/POST with custom headers), websearch, read/ls, write/edit, script_package_test (trial run + verdict).',
   'Workflow: 1) explore the data source first and find the real endpoint, parameters and required headers; 2) write the package; 3) run script_package_test; 4) if it fails or the data looks wrong, investigate (look at the actual responses again) and fix; repeat until script_package_test PASSES. Do not stop while the last script_package_test failed, unless the source is genuinely unusable — then say exactly why.',
-  'Be efficient: you have a limited number of turns. Do not print huge files; grep bundles for what you need.',
+  'Be efficient: you have a limited number of turns (about 40) and minutes. Explore for at most ~12 turns, then WRITE a first runnable version and run script_package_test — a failing trial run tells you more than more exploring. Combine probes into one bash call (e.g. a short python3 script that fetches the endpoint and prints only the keys / first items you need). Do not print huge files; grep bundles for what you need.',
   'Finish with a short Chinese summary (2-4 sentences): data source (endpoint + key params), output columns, and the on_empty behaviour. No markdown tables, no code.',
 ];
 
