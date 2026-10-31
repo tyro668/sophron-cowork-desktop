@@ -50,6 +50,9 @@ describe('deleting a script package', () => {
     rmSync(path.join(root, 'fx'), { recursive: true, force: true });
     const listed = await scripts.list();
     expect(listed).toEqual([expect.objectContaining({ id: 'fx', missing: true })]);
+    // Opening it does not recreate an empty folder.
+    expect(await scripts.summary('fx')).toMatchObject({ missing: true });
+    expect(existsSync(path.join(root, 'fx'))).toBe(false);
     await scripts.deletePackage('fx');
     expect(await scripts.list()).toEqual([]);
     // The id is free again.

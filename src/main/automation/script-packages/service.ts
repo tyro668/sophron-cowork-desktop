@@ -258,7 +258,9 @@ export class ScriptPackageService {
       draft: draft && toVersion(draft),
       versionCount: records.length,
       ...(state.origin ? { origin: state.origin } : {}),
-      ...(records.length > 0 && !existsSync(dir) ? { missing: true } : {}),
+      ...(records.length > 0 && !existsSync(path.join(dir, 'manifest.json'))
+        ? { missing: true }
+        : {}),
     };
     let manifest: ScriptManifest;
     try {
@@ -888,6 +890,9 @@ export class ScriptPackageService {
     if (this.repairing.has(id)) return Promise.resolve(null);
     return this.withLock(id, async () => {
       if (this.repairing.has(id)) return null;
+      // Folder deleted outside the app: don't recreate an empty repo for its versions.
+      if (!existsSync(path.join(this.packageDir(id), '.git')) && this.store.list(id).length > 0)
+        return null;
       const repo = this.repo(id);
       const fresh = await this.ensureRepo(id);
       if (fresh) return null;
