@@ -392,11 +392,15 @@
         "examplesLabel": "示例",
         "copyShort": "复制",
         "copiedShort": "已复制",
-        "versionsColumnSource": "来源"
+        "versionsColumnSource": "来源",
+        "abnormalBanner": "数据异常：{{reason}}。表里保留的是上次的数据。",
+        "abnormalFix": "交给 AI 修复",
+        "abnormalOpenScript": "打开脚本"
       },
       "status": {
         "available": "可用",
-        "draft": "待配置"
+        "draft": "待配置",
+        "abnormal": "数据异常"
       },
       "actions": {
         "preview": "预览",

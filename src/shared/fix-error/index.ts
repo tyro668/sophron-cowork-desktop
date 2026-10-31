@@ -418,10 +418,15 @@ export function buildFixPayload(input: FixPayloadInput): FixPayload {
 
 // ── pass criteria ──────────────────────────────────────────────────────
 
+export const OUTPUT_COLUMN_TYPES = ['string', 'number', 'integer', 'date', 'boolean'] as const;
+export type OutputColumnType = (typeof OUTPUT_COLUMN_TYPES)[number];
+
 export interface ExpectedColumn {
   name: string;
   /** Columns that may legitimately be empty. */
   nullable?: boolean;
+  /** Declared value type (manifest output.columns[].type); checked on the sample rows. */
+  type?: OutputColumnType;
 }
 
 export interface PassCheckInput {
@@ -432,6 +437,10 @@ export interface PassCheckInput {
   rows?: Array<Record<string, unknown>>;
   totalRows?: number;
   expectedColumns?: ExpectedColumn[];
+  /** Data rows whose field count differs from the header (CSV outputs). */
+  raggedRows?: number;
+  /** Notices the run printed (SOPHRON_NOTICE: …), e.g. an on_empty fallback was used. */
+  notices?: string[];
 }
 
 export interface PassCheckResult {
@@ -440,6 +449,8 @@ export interface PassCheckResult {
   reason?: string;
   /** True when the run itself succeeded but the result looks wrong. */
   suspicious?: boolean;
+  /** Passed, but worth a yellow warning (fallback used, single-value / duplicate rows). */
+  warnings?: string[];
 }
 
 function isBlank(value: unknown): boolean {
@@ -499,7 +510,124 @@ export function evaluatePass(input: PassCheckInput): PassCheckResult {
       };
     }
   }
-  return { ok: true };
+  const shape = inspectOutputShape(input, columns, rows, expected);
+  if (shape.reason)
+    return { ok: false, suspicious: true, reason: `通过但结果异常：${shape.reason}` };
+  const warnings = [...(input.notices ?? []).filter(Boolean), ...shape.warnings];
+  return warnings.length > 0 ? { ok: true, warnings } : { ok: true };
+}
+
+const PLACEHOLDER_VALUE =
+  /^(?:n\/?a|na|null|none|nil|undefined|nan|-+|—+|_+|\?+|\.{2,}|…|todo|tbd|xxx+|placeholder|example|sample|lorem.*|test|示例|样例|暂无|待定|待补充|未知|占位|无数据)$/i;
+
+function isPlaceholder(value: unknown): boolean {
+  return PLACEHOLDER_VALUE.test(String(value ?? '').trim());
+}
+
+const NUMBER_VALUE =
+  /^[-+]?(?:[$¥￥€£]\s?)?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][-+]?\d+)?%?$/;
+const INTEGER_VALUE = /^[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)$/;
+const DATE_VALUE =
+  /^(?:\d{4}[-/.年]\d{1,2}(?:[-/.月]\d{1,2}日?)?(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?|\d{1,2}[-/]\d{1,2}[-/]\d{4}|\d{10}|\d{13})$/;
+const BOOLEAN_VALUE = /^(?:true|false|yes|no|y|n|0|1|是|否|对|错)$/i;
+
+function matchesType(value: string, type: OutputColumnType): boolean {
+  const text = value.trim();
+  if (type === 'number') return NUMBER_VALUE.test(text);
+  if (type === 'integer') return INTEGER_VALUE.test(text);
+  if (type === 'date') return DATE_VALUE.test(text);
+  if (type === 'boolean') return BOOLEAN_VALUE.test(text);
+  return true;
+}
+
+const TYPE_LABEL: Record<OutputColumnType, string> = {
+  string: '文本',
+  number: '数字',
+  integer: '整数',
+  date: '日期',
+  boolean: '是/否',
+};
+
+/**
+ * Shape checks shared by every output: duplicate / ragged headers, a header row repeated in the
+ * data, declared column types, placeholder-only columns (failures) and single-value columns or
+ * many duplicate rows (warnings).
+ */
+function inspectOutputShape(
+  input: PassCheckInput,
+  columns: string[],
+  rows: Array<Record<string, unknown>>,
+  expected: ExpectedColumn[]
+): { reason?: string; warnings: string[] } {
+  const warnings: string[] = [];
+  const seen = new Set<string>();
+  const duplicates = columns.filter((column) => {
+    const key = column.trim();
+    if (!key) return false;
+    if (seen.has(key)) return true;
+    seen.add(key);
+    return false;
+  });
+  if (duplicates.length > 0)
+    return { reason: `列名重复：${[...new Set(duplicates)].slice(0, 6).join('、')}`, warnings };
+  if ((input.raggedRows ?? 0) > 0)
+    return { reason: `${input.raggedRows} 行的列数与表头不一致`, warnings };
+  if (rows.length === 0 || columns.length === 0) return { warnings };
+  const named = columns.filter((column) => column.trim());
+  const headerRepeats = rows.filter(
+    (row) =>
+      named.length >= 2 &&
+      named.filter((column) => String(row[column] ?? '').trim() === column.trim()).length >=
+        Math.max(2, Math.ceil(named.length * 0.8))
+  ).length;
+  if (headerRepeats > 0) return { reason: `数据中出现了 ${headerRepeats} 行重复的表头`, warnings };
+
+  for (const column of expected) {
+    if (!column.type || column.type === 'string') continue;
+    const values = rows.map((row) => String(row[column.name] ?? '')).filter((v) => v.trim());
+    if (values.length === 0) continue;
+    const bad = values.filter((value) => !matchesType(value, column.type as OutputColumnType));
+    if (bad.length > Math.max(0, Math.floor(values.length * 0.2))) {
+      return {
+        reason: `「${column.name}」应为${TYPE_LABEL[column.type]}，${bad.length}/${values.length} 行不是（如「${bad[0].slice(0, 30)}」）`,
+        warnings,
+      };
+    }
+  }
+
+  const required = expected.length > 0 ? expected.filter((column) => !column.nullable) : [];
+  const requiredNames = new Set(required.map((column) => column.name));
+  for (const column of named) {
+    const values = rows.map((row) => String(row[column] ?? '').trim()).filter(Boolean);
+    if (values.length < 2) continue;
+    if (values.every(isPlaceholder)) {
+      if (requiredNames.has(column))
+        return { reason: `「${column}」列全是占位值（如「${values[0]}」）`, warnings };
+      warnings.push(`「${column}」列全是占位值（如「${values[0]}」）`);
+      continue;
+    }
+    if (rows.length >= 5 && values.length === rows.length && new Set(values).size === 1) {
+      warnings.push(`「${column}」列所有行都是同一个值「${values[0].slice(0, 30)}」`);
+    }
+  }
+  if (rows.length >= 5) {
+    const keys = rows.map((row) => named.map((column) => String(row[column] ?? '')).join('\u0001'));
+    const duplicateRows = keys.length - new Set(keys).size;
+    if (duplicateRows > 0 && duplicateRows >= Math.ceil(rows.length * 0.3)) {
+      warnings.push(`${duplicateRows} 行与其他行完全重复`);
+    }
+  }
+  return { warnings };
+}
+
+/** `SOPHRON_NOTICE: …` lines a script prints (on_empty fallback and similar degraded modes). */
+export function extractRunNotices(log: string | undefined): string[] {
+  if (!log) return [];
+  const notices: string[] = [];
+  for (const match of log.matchAll(/^\s*SOPHRON_NOTICE:\s*(.+?)\s*$/gm)) {
+    if (!notices.includes(match[1])) notices.push(match[1].slice(0, 300));
+  }
+  return notices.slice(0, 5);
 }
 
 /** Expected columns from a normalizer project's docs/source-structure-analysis.json. */
@@ -509,13 +637,7 @@ export function expectedColumnsFromAnalysis(content: string | undefined): Expect
     const parsed = JSON.parse(content) as { sourceStructureAnalysis?: { outputColumns?: unknown } };
     const list = parsed?.sourceStructureAnalysis?.outputColumns;
     if (!Array.isArray(list)) return [];
-    return list.flatMap((item): ExpectedColumn[] => {
-      if (typeof item === 'string') return item.trim() ? [{ name: item.trim() }] : [];
-      if (!item || typeof item !== 'object') return [];
-      const record = item as { name?: unknown; nullable?: unknown };
-      if (typeof record.name !== 'string' || !record.name.trim()) return [];
-      return [{ name: record.name.trim(), nullable: record.nullable === true }];
-    });
+    return normalizeManifestColumns(list);
   } catch {
     return [];
   }
@@ -526,15 +648,29 @@ export function expectedColumnsFromManifest(content: string | undefined): Expect
   if (!content) return [];
   try {
     const parsed = JSON.parse(content) as { output?: { columns?: unknown } };
-    const list = parsed?.output?.columns;
-    return Array.isArray(list)
-      ? list
-          .filter((name): name is string => typeof name === 'string' && name.trim() !== '')
-          .map((name) => ({ name: name.trim() }))
-      : [];
+    return normalizeManifestColumns(parsed?.output?.columns);
   } catch {
     return [];
   }
+}
+
+/** manifest output.columns: names or { name, type?, nullable? } objects. */
+export function normalizeManifestColumns(list: unknown): ExpectedColumn[] {
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((item): ExpectedColumn[] => {
+    if (typeof item === 'string') return item.trim() ? [{ name: item.trim() }] : [];
+    if (!item || typeof item !== 'object') return [];
+    const record = item as { name?: unknown; type?: unknown; nullable?: unknown };
+    if (typeof record.name !== 'string' || !record.name.trim()) return [];
+    const type = OUTPUT_COLUMN_TYPES.find((value) => value === record.type);
+    return [
+      {
+        name: record.name.trim(),
+        ...(record.nullable === true ? { nullable: true } : {}),
+        ...(type ? { type } : {}),
+      },
+    ];
+  });
 }
 
 // ── auto-fix loop ──────────────────────────────────────────────────────

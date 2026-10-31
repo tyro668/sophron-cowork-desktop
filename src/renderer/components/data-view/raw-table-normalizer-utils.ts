@@ -88,7 +88,8 @@ export interface NormalizerGenerationLog {
   /** Step titles for this turn (fix turns: 读取报错与当前代码 → 分析原因 → 修改文件 → 重新预览). */
   stepTitles?: Partial<Record<NormalizerGenerationStepPhase, string>>;
   outcome?: {
-    status: 'success' | 'error';
+    /** warning: passed, but e.g. the on_empty fallback was used (yellow). */
+    status: 'success' | 'warning' | 'error';
     title: string;
     details: string[];
     files: string[];

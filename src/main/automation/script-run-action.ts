@@ -116,6 +116,12 @@ export function registerScriptRunAction(
         summary: `${output.rows} rows, ${output.columns.length} columns`,
         dataRef: { kind: 'raw_table', id: rawTableId },
       });
+      if (output.warnings?.length) {
+        // Passed with a fallback / suspicious shape: a yellow line in the run log, not a plain ✓.
+        for (const warning of output.warnings)
+          context.log({ level: 'warning', message: `${name}：${warning}` });
+        return `${name} · ${output.rows} 行 · ⚠ ${output.warnings.join('；')}`;
+      }
       return `${name} · ${output.rows} 行`;
     },
   });

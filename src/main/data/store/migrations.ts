@@ -1058,6 +1058,12 @@ export const METADATA_MIGRATIONS: readonly MetadataMigration[] = [
     name: 'normalizer_code_to_git',
     up: (ctx) => migrateNormalizerCodeToGit(ctx),
   },
+  {
+    version: 33,
+    name: 'raw_table_health',
+    // 数据异常 after a refresh whose result failed the checks (the table keeps its old rows).
+    up: (ctx) => ctx.ensureMetadataColumn('data_raw_tables', 'health_json', 'VARCHAR'),
+  },
 ];
 
 /**

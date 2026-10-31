@@ -294,7 +294,7 @@ export class ScriptAgentCancelled extends Error {
 export function formatScriptCheck(check: ScriptCheck): string {
   return [
     check.passed
-      ? `PASSED · ${check.rows ?? 0} rows · columns: ${(check.columns ?? []).join(', ')}`
+      ? `PASSED · ${check.rows ?? 0} rows · columns: ${(check.columns ?? []).join(', ')}${check.warnings?.length ? `\nwarnings: ${check.warnings.join('; ')}` : ''}`
       : `FAILED: ${check.reason ?? 'unknown'}${check.exitCode !== undefined ? ` (exit ${check.exitCode})` : ''}`,
     `duration: ${Math.round(check.durationMs / 100) / 10}s`,
     check.preview ? `output head:\n${check.preview}` : '',
@@ -394,7 +394,7 @@ const COMMON_RULES = (runtime: ScriptRuntime): string[] => {
   const entry = runtime === 'node' ? 'main.js' : 'main.py';
   return [
     'You build executable "script packages": small multi-file projects that an automation runs on a schedule WITHOUT any model call.',
-    `manifest.json: {"name", "description", "entry": "${entry}", "runtime": "${runtime}", "output": {"format": "csv", "columns": [...]}}. Keep runtime "${runtime}". Declare every output column.`,
+    `manifest.json: {"name", "description", "entry": "${entry}", "runtime": "${runtime}", "output": {"format": "csv", "columns": [{"name": "...", "type": "string" | "number" | "integer" | "date" | "boolean", "nullable": true?}, ...]}}. Keep runtime "${runtime}". Declare every output column with its type (checked after every run: values must match, no placeholder-only columns, no repeated header rows); mark columns that may be empty "nullable": true.`,
     'The entry reads parameters from the JSON file at env SOPHRON_CONFIG (keep URLs, endpoints, query params, headers, ids and limits in config.json), writes the result to the path in env SOPHRON_OUTPUT (CSV with a header row, UTF-8) and exits non-zero with a one-line reason on stderr when it fails. The working directory is the package folder.',
     runtime === 'node'
       ? 'Node.js 20+: use CommonJS (require) unless package.json sets "type": "module"; global fetch is available. Put npm libraries in package.json "dependencies" with exact versions; never rely on globally installed modules.'
@@ -404,7 +404,7 @@ const COMMON_RULES = (runtime: ScriptRuntime): string[] => {
     'Authentication failures (HTTP 401/403, an "invalid key / unauthorized / quota" response) are failures: exit non-zero with a clear Chinese reason. NEVER switch to another data source, endpoint or website, and never fabricate data, when the requested source rejects the request.',
     'No logins with user passwords and no headless browsers. Every HTTP request has a timeout and sends a real browser User-Agent (e.g. Chrome on Windows), an Accept header, and the Referer / Origin of the site the data belongs to; put these headers in config.json.',
     'Front-end rendered pages (an HTML shell with little text, a root <div id="app"> and script bundles): do NOT scrape the static HTML. Find the XHR/JSON API the page actually calls: download the JS bundles (browser UA + the site Referer; static hosts often return 403 without them), search them for apiBaseUrl / baseURL / fetch( / axios / "/api" / endpoint paths and the component that renders the data you need, then call the candidate endpoints and inspect the JSON. Prefer a JSON/CSV API over HTML scraping; fall back to embedded JSON (__NEXT_DATA__, window.__INITIAL_STATE__) before parsing HTML.',
-    'Empty results are failures: the script must never write a header-only table. If the requested slice can be legitimately empty (e.g. "today" / daily ranking has no entries yet), config.json must state the behaviour explicitly under "on_empty": {"action": "fallback" | "error", "fallback": {...the params to use instead, e.g. a weekly or monthly ranking...}, "note": "Chinese, one sentence"}. With "fallback" the script retries the SAME source with the fallback params (never a different source) and writes a column (e.g. 榜单/数据范围) saying which slice the rows come from; with "error" it exits non-zero with a clear Chinese reason.',
+    'Empty results are failures: the script must never write a header-only table. If the requested slice can be legitimately empty (e.g. "today" / daily ranking has no entries yet), config.json must state the behaviour explicitly under "on_empty": {"action": "fallback" | "error", "fallback": {...the params to use instead, e.g. a weekly or monthly ranking...}, "note": "Chinese, one sentence"}. With "fallback" the script retries the SAME source with the fallback params (never a different source) and writes a column (e.g. 榜单/数据范围) saying which slice the rows come from; with "error" it exits non-zero with a clear Chinese reason. Whenever the fallback is used the script prints one line "SOPHRON_NOTICE: <Chinese sentence, e.g. 今日榜单为空，已改用本周榜单>" to stdout so the app shows a warning instead of a plain success.',
     'Check that the values match the request (dates really are today when asked for today, rankings are in order, no navigation/ads rows).',
     'No TODOs or placeholders.',
   ];

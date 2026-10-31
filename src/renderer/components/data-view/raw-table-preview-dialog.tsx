@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { TriangleAlert, X } from 'lucide-react';
 import type { DataRawTablePreview } from '../../types';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Button } from '../ui/button';
@@ -18,6 +18,7 @@ export function RawTablePreviewDialog({
   onClose,
   footer,
   errorContent,
+  warnings,
 }: {
   tableKind?: 'raw' | 'result';
   title?: string;
@@ -31,6 +32,8 @@ export function RawTablePreviewDialog({
   footer?: ReactNode;
   /** Replaces the grid's one-line error state (报错修复 panel). */
   errorContent?: ReactNode;
+  /** Passed with warnings (on_empty fallback used, single-value columns): yellow strip. */
+  warnings?: string[];
 }) {
   const { t } = useTranslation();
   const previewTitle =
@@ -68,6 +71,15 @@ export function RawTablePreviewDialog({
         </Button>
       </div>
 
+      {warnings?.length && !error && !isLoading ? (
+        <div
+          className="flex flex-shrink-0 items-start gap-2 border-b border-border-subtle bg-warning/10 px-4 py-1.5 text-[12px] leading-5 text-warning"
+          data-testid="preview-warnings"
+        >
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+          <span className="min-w-0">{warnings.join('；')}</span>
+        </div>
+      ) : null}
       <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
         {error && errorContent && !isLoading ? (
           errorContent

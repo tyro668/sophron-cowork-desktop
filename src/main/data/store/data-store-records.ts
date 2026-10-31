@@ -2,6 +2,7 @@ import type {
   CloudOutputAction,
   DataPipeline,
   DataRawTable,
+  DataRawTableHealth,
   DataRawSource,
   DataRawSourceBuildMode,
   DataRawSourceConfig,
@@ -83,6 +84,7 @@ export interface DataRawTableRow {
   source_id?: string | null;
   member_key?: string | null;
   member_status?: string | null;
+  health_json?: string | null;
   created_at: number | string;
   updated_at: number | string;
 }
@@ -212,6 +214,18 @@ export function mapPipelineRow(row: DataPipelineRow): DataPipeline {
   };
 }
 
+function parseRawTableHealth(value: string | null | undefined): DataRawTableHealth | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<DataRawTableHealth>;
+    return parsed?.status === 'abnormal' && typeof parsed.reason === 'string'
+      ? { status: 'abnormal', reason: parsed.reason, at: Number(parsed.at) || 0 }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function mapRawTableRow(row: DataRawTableRow): DataRawTable {
   const sourcePath = String(row.source_path);
   const sourceKind = normalizeStoredRawTableSourceKind(row.source_kind, sourcePath);
@@ -230,6 +244,7 @@ export function mapRawTableRow(row: DataRawTableRow): DataRawTable {
     sourceId: row.source_id ? String(row.source_id) : null,
     memberKey: row.member_key ? String(row.member_key) : null,
     memberStatus: row.member_status === 'missing' ? 'missing' : 'ok',
+    health: parseRawTableHealth(row.health_json),
     createdAt: toNumber(row.created_at),
     updatedAt: toNumber(row.updated_at),
   };

@@ -25,7 +25,9 @@ import {
   Send,
   Sparkles,
   Trash2,
+  TriangleAlert,
   Upload,
+  Wand2,
   X,
   XCircle,
 } from 'lucide-react';
@@ -693,6 +695,22 @@ export function RawTableEditorWorkbench({
             : localSourceKind.toUpperCase(),
       ].join(' · ')
     : '';
+  /** 数据异常 → 交给 AI 修复: open the fix panel on the published version with the refresh reason. */
+  const openHealthFix = (reason: string) => {
+    if (dataProcessing.strategy !== 'customize' || !dataProcessing.artifactVersionId) return;
+    setPreviewData(null);
+    setPreviewError(null);
+    setPreviewRun({
+      versionId: dataProcessing.artifactVersionId,
+      durationMs: 0,
+      suspicious: { reason: `通过但结果异常：刷新检查未通过：${reason}`, sample: '' },
+    });
+    setPreviewOpen(true);
+  };
+  const scriptPackageOfTable = rawTable
+    ? (/[\\/]scripts[\\/]([^\\/]+)[\\/]\.sophron[\\/]output\.csv$/.exec(rawTable.sourcePath)?.[1] ??
+      null)
+    : null;
   const startPreviewFix = () => {
     if (!normalizerReport || !previewRun) return;
     void startNormalizerFix({
@@ -1260,11 +1278,14 @@ export function RawTableEditorWorkbench({
             <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
               <RawTableStatusBadge
                 label={
-                  isConfigured
-                    ? t('data.rawTables.status.available')
-                    : t('data.rawTables.status.draft')
+                  rawTable?.health
+                    ? t('data.rawTables.status.abnormal')
+                    : isConfigured
+                      ? t('data.rawTables.status.available')
+                      : t('data.rawTables.status.draft')
                 }
-                tone={isConfigured ? 'success' : 'warning'}
+                title={rawTable?.health?.reason}
+                tone={rawTable?.health ? 'error' : isConfigured ? 'success' : 'warning'}
               />
               {isNameEditing ? (
                 <input
@@ -1376,6 +1397,39 @@ export function RawTableEditorWorkbench({
             ) : null}
           </div>
         </div>
+        {rawTable?.health ? (
+          <div
+            className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-error/10 px-3 py-1.5 text-[12.5px] text-error"
+            data-testid="raw-table-abnormal"
+          >
+            <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0" />
+            <span className="min-w-0 flex-1 truncate" title={rawTable.health.reason}>
+              {t('data.rawTables.editor.abnormalBanner', { reason: rawTable.health.reason })}
+            </span>
+            {dataProcessing.strategy === 'customize' && dataProcessing.artifactVersionId ? (
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => openHealthFix(rawTable.health?.reason ?? '')}
+                className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 bg-surface px-2.5 text-[12px] font-medium text-error hover:bg-error/10 disabled:opacity-50"
+              >
+                <Wand2 className="h-3.5 w-3.5" />
+                {t('data.rawTables.editor.abnormalFix')}
+              </button>
+            ) : scriptPackageOfTable ? (
+              <button
+                type="button"
+                onClick={() =>
+                  useAppStore.getState().openScriptEditor({ packageId: scriptPackageOfTable })
+                }
+                className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 bg-surface px-2.5 text-[12px] font-medium text-error hover:bg-error/10"
+              >
+                <FileCode2 className="h-3.5 w-3.5" />
+                {t('data.rawTables.editor.abnormalOpenScript')}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <Tabs
           value={activeViewTab}

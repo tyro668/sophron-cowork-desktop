@@ -68,6 +68,8 @@ export interface ParsedScriptOutput {
   csv: string;
   columns: string[];
   rows: number;
+  /** Data rows whose field count differs from the header. */
+  raggedRows?: number;
 }
 
 export function readScriptOutput(
@@ -82,5 +84,6 @@ export function readScriptOutput(
   if (columns.every((column) => !column)) throw new Error('结果文件缺少表头');
   const missing = requiredColumns.filter((column) => !columns.includes(column));
   if (missing.length > 0) throw new Error(`结果缺少列：${missing.join('、')}`);
-  return { csv, columns, rows: table.length - 1 };
+  const raggedRows = table.slice(1).filter((row) => row.length !== columns.length).length;
+  return { csv, columns, rows: table.length - 1, raggedRows };
 }

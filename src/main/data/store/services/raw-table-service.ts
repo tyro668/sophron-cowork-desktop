@@ -52,6 +52,35 @@ import type { DataColumnTypeInfo } from '../../../../shared/data-field-types';
 import type { DataRawFolderMergeReport } from '../../../../shared/contracts';
 import { getWorkbookSheetNames, resolveSheetBySelector } from '../input-source';
 import { v4 as uuidv4 } from 'uuid';
+import { evaluatePass } from '../../../../shared/fix-error';
+
+const REFRESH_MIN_ROW_RATIO = 0.5;
+const REFRESH_SAMPLE_ROWS = 500;
+
+/** Same source, same settings: a refresh (automation, file watch, 刷新) rather than a user edit. */
+function isRefreshOf(
+  rawTable: DataRawTable,
+  sourcePath: string,
+  sourceKind: DataRawTableSourceKind,
+  config: DataRawTableConfig | undefined
+): boolean {
+  if (sourcePath !== rawTable.sourcePath || sourceKind !== rawTable.sourceKind) return false;
+  if (!config) return true;
+  const comparable = (value: DataRawTableConfig) => {
+    const copy = { ...(value as unknown as Record<string, unknown>) };
+    delete copy.mergeReport;
+    delete copy.missingMergeSheets;
+    return JSON.stringify(copy);
+  };
+  return (
+    comparable(normalizeRawTableConfig(config, sourceKind, sourcePath)) ===
+    comparable(normalizeRawTableConfig(rawTable.inputConfig, sourceKind, sourcePath))
+  );
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export class RawTableService {
   /** Fired after a staged table commit completes — 'reimport' carries a raw
@@ -200,12 +229,27 @@ export class RawTableService {
         input.sourceKind ?? rawTable.sourceKind,
         sourcePath
       );
-      const prepared = await this.createRawTableTableFromSource(
-        replacementTable,
-        sourcePath,
-        sourceKind,
-        input.config ?? rawTable.inputConfig
-      );
+      const refresh = isRefreshOf(rawTable, sourcePath, sourceKind, input.config);
+      let prepared: PreparedRawTableImport;
+      try {
+        prepared = await this.createRawTableTableFromSource(
+          replacementTable,
+          sourcePath,
+          sourceKind,
+          input.config ?? rawTable.inputConfig
+        );
+      } catch (error) {
+        // A failed refresh (normalizer crash, unreadable file) keeps the old rows: 数据异常.
+        if (refresh) await this.markAbnormal(rawTable.id, errorText(error));
+        throw error;
+      }
+      if (refresh) {
+        const problem = await this.inspectRefresh(rawTable, replacementTable, prepared.rowCount);
+        if (problem) {
+          await this.markAbnormal(rawTable.id, problem);
+          throw new Error(`E_RAW_TABLE_ABNORMAL: ${problem}。原始表保留上次的数据`);
+        }
+      }
       const now = this.ctx.now();
       await this.commitStagedTable({
         rawTableId: rawTable.id,
@@ -228,12 +272,71 @@ export class RawTableService {
       if (this.sources && isCloudRawTableConfig(prepared.config)) {
         await this.sources.markCloudSource(rawTable.id);
       }
+      if (rawTable.health) await this.rawTables.setRawTableHealth(rawTable.id, null);
       return this.rawTables.requireRawTable(rawTable.id);
     } catch (error) {
       await this.ctx.dropTableIfExists(replacementTable).catch(() => undefined);
       throw error;
     }
   }
+  private async markAbnormal(id: string, reason: string): Promise<void> {
+    await this.rawTables
+      .setRawTableHealth(id, {
+        status: 'abnormal',
+        reason: reason.slice(0, 500),
+        at: this.ctx.now(),
+      })
+      .catch(() => undefined);
+  }
+
+  /**
+   * Refresh checks on the staged table before it replaces the current one: the shared result
+   * criteria (evaluatePass: rows, header repeats, placeholder columns, …), the previous
+   * columns still present and still filled, and no sharp row drop.
+   */
+  private async inspectRefresh(
+    rawTable: DataRawTable,
+    stagingTable: string,
+    rowCount: number
+  ): Promise<string | null> {
+    const previousRows = rawTable.rowCount;
+    if (previousRows === 0) return null;
+    const [previousColumns, columns] = await Promise.all([
+      this.ctx.getTableColumns(rawTable.tableName).catch(() => [] as string[]),
+      this.ctx.getTableColumns(stagingTable),
+    ]);
+    if (rowCount === 0) return `刷新后 0 行（上次 ${previousRows} 行）`;
+    const missing = previousColumns.filter((column) => !columns.includes(column));
+    if (missing.length > 0) return `刷新后缺少列：${missing.slice(0, 6).join('、')}`;
+    if (previousRows >= 10 && rowCount < previousRows * REFRESH_MIN_ROW_RATIO)
+      return `行数从 ${previousRows} 降到 ${rowCount}`;
+    const sample = async (table: string) =>
+      (
+        await this.ctx.queryRows<Record<string, unknown>>(
+          `SELECT * FROM ${quoteIdentifier(table)} LIMIT ${REFRESH_SAMPLE_ROWS}`
+        )
+      ).map((row) => {
+        const record: Record<string, string> = {};
+        for (const [key, value] of Object.entries(row))
+          record[key] = value === null || value === undefined ? '' : String(value);
+        return record;
+      });
+    const before = await sample(rawTable.tableName).catch(() => []);
+    const filledBefore = previousColumns.filter((column) =>
+      before.some((row) => String(row[column] ?? '').trim() !== '')
+    );
+    const verdict = evaluatePass({
+      ok: true,
+      columns,
+      rows: await sample(stagingTable),
+      totalRows: rowCount,
+      expectedColumns: filledBefore.map((name) => ({ name })),
+    });
+    return verdict.ok
+      ? null
+      : (verdict.reason ?? '结果检查未通过').replace(/^通过但结果异常：/, '');
+  }
+
   async updateResultTable(input: DataUpdateResultTableInput): Promise<DataResultTable> {
     return this.ctx.runExclusive(
       () => this.updateResultTableUnsafe(input),

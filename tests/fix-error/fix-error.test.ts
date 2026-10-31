@@ -5,6 +5,7 @@ import {
   diffHunks,
   diffLines,
   evaluatePass,
+  extractRunNotices,
   expectedColumnsFromAnalysis,
   expectedColumnsFromManifest,
   formatErrorReportText,
@@ -228,10 +229,20 @@ describe('pass criteria', () => {
           },
         })
       )
-    ).toEqual([
-      { name: 'a', nullable: false },
-      { name: 'b', nullable: true },
-    ]);
+    ).toEqual([{ name: 'a' }, { name: 'b', nullable: true }]);
+    expect(
+      expectedColumnsFromManifest(
+        JSON.stringify({
+          output: {
+            columns: [
+              'x',
+              { name: 'n', type: 'number', nullable: true },
+              { name: 'z', type: 'bogus' },
+            ],
+          },
+        })
+      )
+    ).toEqual([{ name: 'x' }, { name: 'n', type: 'number', nullable: true }, { name: 'z' }]);
     expect(
       expectedColumnsFromManifest(JSON.stringify({ output: { columns: ['x', 'y'] } }))
     ).toEqual([{ name: 'x' }, { name: 'y' }]);
@@ -386,5 +397,91 @@ describe('pass-check verdict as error', () => {
       error: '通过但结果异常：「store」列全为空\n输出预览：\norder_id,store\nA1,',
     });
     expect(report.message).toBe('通过但结果异常：「store」列全为空');
+  });
+});
+
+describe('output shape checks', () => {
+  const rows = (list: Array<Record<string, string>>) => list;
+  it('fails duplicate columns, ragged rows and repeated header rows', () => {
+    expect(
+      evaluatePass({ ok: true, columns: ['a', 'a'], rows: rows([{ a: '1' }]) }).reason
+    ).toContain('列名重复');
+    expect(
+      evaluatePass({
+        ok: true,
+        columns: ['a', 'b'],
+        rows: rows([{ a: '1', b: '2' }]),
+        raggedRows: 2,
+      }).reason
+    ).toContain('2 行的列数与表头不一致');
+    const repeated = evaluatePass({
+      ok: true,
+      columns: ['名称', '价格'],
+      rows: rows([
+        { 名称: '苹果', 价格: '3' },
+        { 名称: '名称', 价格: '价格' },
+      ]),
+    });
+    expect(repeated).toMatchObject({ ok: false, suspicious: true });
+    expect(repeated.reason).toContain('重复的表头');
+  });
+
+  it('checks declared column types on the sample rows', () => {
+    const bad = evaluatePass({
+      ok: true,
+      columns: ['名称', '价格'],
+      rows: rows([
+        { 名称: 'a', 价格: '3.5' },
+        { 名称: 'b', 价格: '暂无报价' },
+        { 名称: 'c', 价格: '免费' },
+      ]),
+      expectedColumns: [{ name: '名称' }, { name: '价格', type: 'number' }],
+    });
+    expect(bad.reason).toContain('「价格」应为数字，2/3 行不是');
+    expect(
+      evaluatePass({
+        ok: true,
+        columns: ['日期', '数量'],
+        rows: rows([
+          { 日期: '2026-10-31', 数量: '1,200' },
+          { 日期: '2026/10/30 08:00', 数量: '35' },
+        ]),
+        expectedColumns: [
+          { name: '日期', type: 'date' },
+          { name: '数量', type: 'integer' },
+        ],
+      })
+    ).toEqual({ ok: true });
+  });
+
+  it('fails placeholder-only required columns and warns about single values, duplicates and notices', () => {
+    expect(
+      evaluatePass({
+        ok: true,
+        columns: ['名称', '链接'],
+        rows: rows([
+          { 名称: 'a', 链接: 'N/A' },
+          { 名称: 'b', 链接: 'N/A' },
+        ]),
+        expectedColumns: [{ name: '名称' }, { name: '链接' }],
+      }).reason
+    ).toContain('「链接」列全是占位值');
+    const same = Array.from({ length: 6 }, () => ({ 城市: '上海', 名称: 'x' }));
+    const warned = evaluatePass({
+      ok: true,
+      columns: ['城市', '名称'],
+      rows: rows(same),
+      notices: ['今日榜单为空，已改用本周榜单'],
+    });
+    expect(warned.ok).toBe(true);
+    expect(warned.warnings).toEqual([
+      '今日榜单为空，已改用本周榜单',
+      '「城市」列所有行都是同一个值「上海」',
+      '「名称」列所有行都是同一个值「x」',
+      '5 行与其他行完全重复',
+    ]);
+    expect(
+      extractRunNotices('x\nSOPHRON_NOTICE: 已改用周榜\nSOPHRON_NOTICE: 已改用周榜\n')
+    ).toEqual(['已改用周榜']);
   });
 });
