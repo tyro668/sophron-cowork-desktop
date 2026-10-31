@@ -574,6 +574,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'automation.scripts.editorState': [str],
   'automation.scripts.lastOutput': [str],
   'automation.scripts.cancelGenerate': [str],
+  'automation.scripts.chatTurns': [str],
+  'automation.scripts.chatProposal': [z.looseObject({ sessionId: str, messageId: strOpt })],
   'automation.scripts.generateDraft': [
     z.looseObject({
       packageId: strOpt,
@@ -594,6 +596,18 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
           maxRounds: numOpt,
           previousAttempts: z.array(z.string().max(2000)).max(10).optional(),
         })
+        .optional(),
+      origin: z
+        .looseObject({
+          sessionId: str,
+          sessionTitle: z.string().max(500),
+          turn: num,
+          messageId: str,
+        })
+        .optional(),
+      references: z
+        .array(z.looseObject({ name: z.string().max(200), content: z.string().max(20_000) }))
+        .max(4)
         .optional(),
     }),
   ],

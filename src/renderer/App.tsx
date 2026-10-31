@@ -1,3 +1,4 @@
+import { ChatToScriptDialog } from './components/chat-script/ChatToScriptDialog';
 import { Suspense, lazy, useEffect, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from './store';
@@ -332,6 +333,7 @@ function App() {
                     </PanelErrorBoundary>
                   </div>
                 )}
+                <ChatToScriptDialog />
               </main>
 
               {/* Context Panel - only show when in session and not in settings */}

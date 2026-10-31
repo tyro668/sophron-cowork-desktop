@@ -432,7 +432,7 @@ export class AutomationToolService {
     const pkg = await this.scriptPackages.summary(packageId).catch(() => null);
     if (!pkg || pkg.invalid) {
       throw new Error(
-        `Script package not found or invalid: ${packageId}${pkg?.invalid ? ` (${pkg.invalid})` : ''}. Save it with script_package_save first.`
+        `Script package not found or invalid: ${packageId}${pkg?.invalid ? ` (${pkg.invalid})` : ''}. Generate it from the conversation with 「转成脚本」 (script_package_propose) and publish it first.`
       );
     }
     return pkg;

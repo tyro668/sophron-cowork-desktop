@@ -33,7 +33,7 @@ const AUTOMATION_CREATE_PATTERN =
 const SCRIPT_PACKAGE_PATTERN =
   /脚本包|执行脚本|固化|脚本化|(?:保存|存|做|生成|整理|转|变|打包)(?:成|为|一个|个|一下)?.{0,8}脚本|(?:不|别|无需|不需要)(?:要|用|再|会)?(?:消耗|花费?|调用|使用|用|走|经过).{0,6}(?:ai|token|llm|大模型|模型)|零\s*token|省\s*token|script[ -]?package|\b(?:save|turn|convert|make|package|freeze|wrap)\b.{0,24}\bscripts?\b|\bscripted\b|without (?:an? |the |using |spending |calling )?(?:ai|llm|model|tokens?)\b|\bno (?:ai|llm|tokens?)\b|zero[- ]token/i;
 const SCRIPT_RECURRING_FETCH_PATTERN =
-  /(?:每天|每日|每周|每小时|每月|定时|定期|以后|今后|自动)(?:都|自动)?.{0,10}(?:取数|抓取|采集|拉取|获取|爬取|同步|抓|取)|(?:fetch|pull|scrape|download|collect)\b.{0,40}\b(?:daily|every (?:day|hour|week|morning)|hourly|weekly|on a schedule)|(?:daily|every (?:day|hour|week|morning)|hourly|weekly)\b.{0,40}\b(?:fetch|pull|scrape|download|collect)/i;
+  /(?:每天|每日|每周|每小时|每月|定时|定期|以后|今后|自动)(?:都|自动)?.{0,10}(?:取数|抓取|采集|拉取|获取|爬取|同步|抓|取)|(?:每天|每日|每周|每小时|每月|定时|定期)[^，。,.!?！？]{0,10}自动(?:跑|运行|执行)|(?:fetch|pull|scrape|download|collect)\b.{0,40}\b(?:daily|every (?:day|hour|week|morning)|hourly|weekly|on a schedule)|(?:daily|every (?:day|hour|week|morning)|hourly|weekly)\b.{0,40}\b(?:fetch|pull|scrape|download|collect)/i;
 
 const TOOL_USE_SCAN_LIMIT = 30;
 

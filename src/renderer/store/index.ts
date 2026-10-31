@@ -17,6 +17,21 @@ import type {
   CloudTableChatAttachment,
 } from '../types';
 import { applySessionUpdate } from '../utils/session-update';
+import type { ChatScriptLaunch } from '../../shared/chat-to-script';
+
+/** In-flight / failed 对话转脚本 generations, keyed by the turn's anchor message id. */
+export interface ChatScriptJob {
+  status: 'running' | 'failed';
+  sessionId: string;
+  packageId?: string;
+  error?: string;
+}
+export interface ScriptAutomationPrefill {
+  id: string;
+  name: string;
+  /** Daily time "HH:MM". */
+  time: string;
+}
 
 export type GlobalNoticeType = 'info' | 'warning' | 'error' | 'success';
 export type GlobalNoticeAction = 'open_api_settings';
@@ -26,6 +41,8 @@ export interface ScriptEditorTarget {
   /** Version to open (defaults to the newest draft, else the published one). */
   version?: number;
   step?: 'rules' | 'review';
+  /** 对话「转成脚本」: generate from these confirmed key points as soon as the editor opens. */
+  chat?: ChatScriptLaunch;
   /** Bumped on every open so the same target can be reopened. */
   nonce: number;
 }
@@ -145,6 +162,9 @@ interface AppState {
   desktopAuthStatus: DesktopAuthStatus;
   /** Script package editor page shown over the current view (返回 closes it). */
   scriptEditor: ScriptEditorTarget | null;
+  /** 对话「转成脚本」 confirm dialog. */
+  chatScriptDialog: { sessionId: string; messageId?: string; scheduleTime?: string } | null;
+  chatScriptJobs: Record<string, ChatScriptJob>;
 
   // Permission
   pendingPermission: PermissionRequest | null;
@@ -172,6 +192,8 @@ interface AppState {
     newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
     returnTarget?: DataResourceTarget;
+    /** 创建自动化 from the script editor: 执行脚本 with this package, daily at `time`. */
+    scriptPackage?: ScriptAutomationPrefill;
   } | null;
   navigateToTableAutomation: (target: {
     automationId?: string;
@@ -180,6 +202,8 @@ interface AppState {
     newRawTableName?: string;
     cloudSource?: PendingCloudInputSource;
     returnTarget?: DataResourceTarget;
+    /** 创建自动化 from the script editor: 执行脚本 with this package, daily at `time`. */
+    scriptPackage?: ScriptAutomationPrefill;
   }) => void;
   clearTableAutomationNavigation: () => void;
   welcomeCloudTableChatDrafts: CloudTableChatAttachment[];
@@ -263,6 +287,13 @@ interface AppState {
   clearGlobalNotice: () => void;
   navigateToDataElement: (target: DataResourceTarget) => void;
   openScriptEditor: (target: Omit<ScriptEditorTarget, 'nonce'>) => void;
+  openChatScriptDialog: (target: {
+    sessionId: string;
+    messageId?: string;
+    scheduleTime?: string;
+  }) => void;
+  closeChatScriptDialog: () => void;
+  setChatScriptJob: (anchorId: string, job: ChatScriptJob | null) => void;
   closeScriptEditor: () => void;
   navigateToDataTab: (tab: DataWorkspaceTab) => void;
   navigateToCloudData: () => void;
@@ -811,6 +842,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   setGlobalNotice: (notice) => set({ globalNotice: notice }),
   clearGlobalNotice: () => set({ globalNotice: null }),
   openScriptEditor: (target) => set({ scriptEditor: { ...target, nonce: ++scriptEditorSeq } }),
+  chatScriptDialog: null,
+  chatScriptJobs: {},
+  openChatScriptDialog: (target) => set({ chatScriptDialog: target }),
+  closeChatScriptDialog: () => set({ chatScriptDialog: null }),
+  setChatScriptJob: (anchorId, job) =>
+    set((state) => {
+      const next = { ...state.chatScriptJobs };
+      if (job) next[anchorId] = job;
+      else delete next[anchorId];
+      return { chatScriptJobs: next };
+    }),
   closeScriptEditor: () => set({ scriptEditor: null }),
   navigateToDataElement: (target) =>
     set({

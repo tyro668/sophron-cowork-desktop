@@ -2,6 +2,7 @@ import { registerCloudSyncAction } from './cloud-sync-action';
 import { registerScriptRunAction } from './script-run-action';
 import { waitForSession } from './wait-for-session';
 import type { ScriptPackageService } from './script-packages/service';
+import type { ScriptFilesGenerator } from './script-packages/generator';
 import type { AutomationStore } from './automation-store';
 import type { DataPipelineStore } from '../data/data-pipeline-store';
 import type { DataCommandService } from '../data/data-command-service';
@@ -25,6 +26,8 @@ interface DefaultAutomationActionOptions {
   ) => AgentRuntimeConfig | null | Promise<AgentRuntimeConfig | null>;
   sendSessionUpdate?: (session: Awaited<ReturnType<SessionManager['startSession']>>) => void;
   scriptPackages?: ScriptPackageService;
+  /** Script generation agent for 执行脚本's onScriptError 'ai_repair'. */
+  scriptGenerator?: ScriptFilesGenerator;
   now?: () => number;
 }
 
@@ -363,8 +366,7 @@ export function createDefaultAutomationActionRegistry(
       scripts: options.scriptPackages,
       commands: options.dataCommandService,
       store: options.automationStore,
-      sessionManager: options.sessionManager,
-      sendSessionUpdate: options.sendSessionUpdate,
+      generator: options.scriptGenerator,
       now,
     });
   }
