@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomationActionRegistry } from '../../src/main/automation/automation-action-registry';
 import type { AutomationRunContext } from '../../src/main/automation/automation-action-registry';
 import { registerScriptRunAction } from '../../src/main/automation/script-run-action';
+import { BackgroundRepairs } from '../../src/main/automation/script-packages/background-repairs';
+import { SCRIPT_REPAIR_PENDING } from '../../src/shared/automation/script-package';
+import type { AutomationStore } from '../../src/main/automation/automation-store';
+import type { AutomationRun } from '../../src/shared/automation/types';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
 import type { DataCommandService } from '../../src/main/data/data-command-service';
 import type {
@@ -28,7 +32,70 @@ function context(): AutomationRunContext & { artifacts: unknown[] } {
   };
 }
 
-function setup(generator?: ScriptFilesGenerator) {
+let clock = Date.now();
+let repairs: BackgroundRepairs;
+let runs: Map<string, AutomationRun>;
+let lastError: string | null;
+
+/** Minimal run store: the runner records a failed run with the thrown message. */
+const store = {
+  listRuns: () => [...runs.values()],
+  updateRun: (id: string, updates: Partial<AutomationRun>) => {
+    const next = { ...runs.get(id)!, ...updates } as AutomationRun;
+    runs.set(id, next);
+    return next;
+  },
+  get: () => ({ id: 'a1', lastError }),
+  setRuntimeState: (_id: string, updates: { lastError?: string | null }) => {
+    if (updates.lastError !== undefined) lastError = updates.lastError;
+    return null;
+  },
+} as unknown as AutomationStore;
+
+/** Execute like the runner: a throw becomes the failed run's error. */
+async function failRun(
+  action: ReturnType<typeof setup>['action'],
+  config: Record<string, unknown>
+): Promise<string> {
+  const ctx = context();
+  runs.set(ctx.runId, { id: ctx.runId, automationId: 'a1', status: 'running' } as AutomationRun);
+  try {
+    await action.execute(config, ctx, node(config));
+  } catch (error) {
+    const message = (error as Error).message;
+    runs.set(ctx.runId, {
+      ...runs.get(ctx.runId)!,
+      status: 'failed',
+      error: message,
+      executionSummary: {
+        tables: [],
+        executedNodeIds: [],
+        skippedNodeIds: [],
+        steps: [
+          {
+            nodeId: 'n1',
+            type: 'script.run',
+            status: 'failed',
+            startedAt: 0,
+            finishedAt: 0,
+            durationMs: 0,
+            error: message,
+          },
+        ],
+      },
+    });
+    lastError = message;
+    return message;
+  }
+  throw new Error('expected the run to fail');
+}
+
+const settled = async () => {
+  await repairs.idle();
+  return runs.get('r1')!;
+};
+
+function setup(generator?: ScriptFilesGenerator, repairPolicy = { cooldownMs: 0, dailyCap: 100 }) {
   const commands = {
     updateRawTable: vi.fn(async (input: { id: string }) => ({
       rawTable: { id: input.id, name: 'T' },
@@ -43,7 +110,10 @@ function setup(generator?: ScriptFilesGenerator) {
     scripts,
     commands: commands as unknown as DataCommandService,
     generator,
-    now: () => Date.now(),
+    ...(generator ? { store } : {}),
+    repairs,
+    repairPolicy,
+    now: () => clock,
   });
   return { commands, action: registry.get('script.run')! };
 }
@@ -56,6 +126,10 @@ const node = (config: Record<string, unknown>) => ({
 });
 
 beforeEach(() => {
+  clock = Date.now();
+  repairs = new BackgroundRepairs();
+  runs = new Map();
+  lastError = null;
   root = mkdtempSync(path.join(os.tmpdir(), 'script-action-'));
   scripts = new ScriptPackageService({ rootDir: root, node: { command: process.execPath } });
   mkdirSync(path.join(root, 'fx'));
@@ -139,20 +213,20 @@ describe('script.run action', () => {
     expect((await scripts.summary('fx')).draft?.source).toBe('manual');
   });
 
-  it('ai_repair policy: the script generation agent fixes the published version into one AI draft', async () => {
+  it('ai_repair policy: fails right away, repairs in the background and rewrites the run error', async () => {
     await breakPublished();
-    let rate = 7.2;
     const fix = vi.fn(async (input: FixScriptFilesInput) => {
       expect(input.request.error).toContain('选择器失效');
       // The agent fixes the published (broken) code in its workspace.
       expect(input.files.find((file) => file.path === 'main.js')?.content).toContain('选择器失效');
       writeFileSync(
         path.join(input.workspace.dir, 'main.js'),
-        `require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'ccy,rate\\nCNY,${rate}\\n')`
+        "require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'ccy,rate\\nCNY,7.3\\n')"
       );
       return { summary: '修好了选择器', stop: 'done' as const, selfTests: 1 };
     });
     const generate = vi.fn();
+    const check = vi.spyOn(scripts, 'checkWorkingTree');
     const { commands, action } = setup({ generate, fix });
     const config = {
       packageId: 'fx',
@@ -160,18 +234,25 @@ describe('script.run action', () => {
       rawTableId: 'raw-1',
       onScriptError: 'ai_repair',
     };
-    await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      '汇率：选择器失效 · AI 已修复为 v3（试运行 1 行），等你确认使用'
-    );
+    expect(await failRun(action, config)).toBe(`汇率：选择器失效${SCRIPT_REPAIR_PENDING}`);
+    const run = await settled();
+    const outcome = '汇率：选择器失效 · AI 已修复为 v3（试运行 1 行），等你确认使用';
+    expect(run.error).toBe(outcome);
+    expect(run.executionSummary?.steps?.[0]?.error).toBe(outcome);
+    expect(lastError).toBe(outcome);
+    // The self-test uses the node's timeout.
+    expect(check).toHaveBeenCalledWith('fx', 20_000);
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();
-    // Second failure: the same v3 draft is overwritten.
-    rate = 7.3;
-    await expect(action.execute(config, context(), node(config))).rejects.toThrow('AI 已修复为 v3');
+    // Second failure while the v3 draft waits for review: no new repair.
+    expect(await failRun(action, config)).toContain(
+      'AI 已修复为 v3（试运行 1 行），等你确认使用；本次不再修复'
+    );
+    await repairs.idle();
+    expect(fix).toHaveBeenCalledTimes(1);
     const summary = await scripts.summary('fx');
     expect(summary.draft).toMatchObject({ version: 3, source: 'ai_repair', baseVersion: 2 });
-    expect(summary.versionCount).toBe(3);
-    // The published (broken) version keeps running until the draft is published.
+    // The published (broken) version keeps running until the draft is confirmed.
     await expect(scripts.run('fx', { timeoutMs: 20_000 })).rejects.toThrow('选择器失效');
     await scripts.publish('fx', 3);
     const fixed = await scripts.run('fx', { timeoutMs: 20_000 });
@@ -179,13 +260,52 @@ describe('script.run action', () => {
     expect(readFileSync(fixed.csvPath, 'utf8')).toContain('7.3');
   });
 
+  it('ai_repair policy: cooldown and daily cap per package', async () => {
+    await breakPublished();
+    const fix = vi.fn(async () => {
+      throw new Error('模型不可用');
+    });
+    const { action } = setup({ generate: vi.fn(), fix }, { cooldownMs: 60_000, dailyCap: 2 });
+    const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
+    await failRun(action, config);
+    expect((await settled()).error).toContain('AI 修复失败：模型不可用');
+    expect(await failRun(action, config)).toContain('未交给 AI 修复：距上次修复不足 1 分钟');
+    clock += 2 * 60_000;
+    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await repairs.idle();
+    clock += 2 * 60_000;
+    expect(await failRun(action, config)).toContain('未交给 AI 修复：24 小时内已自动修复 2 次');
+    clock += 24 * 60 * 60_000;
+    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await repairs.idle();
+    expect(fix).toHaveBeenCalledTimes(3);
+  });
+
+  it('ai_repair policy: stopping the automation aborts its background repair', async () => {
+    await breakPublished();
+    const fix = vi.fn(
+      (input: FixScriptFilesInput) =>
+        new Promise<never>((_resolve, reject) =>
+          input.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+        )
+    );
+    const { action } = setup({ generate: vi.fn(), fix });
+    const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
+    await failRun(action, config);
+    await vi.waitFor(() => expect(fix).toHaveBeenCalled());
+    expect(repairs.isRunning('fx')).toBe(true);
+    repairs.stop('other-automation');
+    expect(repairs.isRunning('fx')).toBe(true);
+    repairs.stop('a1');
+    expect((await settled()).error).toContain('AI 修复已停止');
+    expect(repairs.isRunning('fx')).toBe(false);
+  });
+
   it('ai_repair policy without a generator reports it is unavailable', async () => {
     await breakPublished();
     const { action } = setup();
     const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
-    await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      'AI 修复不可用'
-    );
+    await expect(action.execute(config, context(), node(config))).rejects.toThrow('AI 修复不可用');
   });
 });
 

@@ -267,3 +267,6 @@ export const scriptRunConfigSchema = z.object({
   onScriptError: z.enum(['notify', 'ai_repair']).default('notify'),
 });
 export type ScriptRunConfig = z.infer<typeof scriptRunConfigSchema>;
+
+/** Run-error suffix while an automation's AI 修复 runs in the background (replaced when done). */
+export const SCRIPT_REPAIR_PENDING = ' · 已交给 AI 修复（后台进行中，完成后更新这条记录）';

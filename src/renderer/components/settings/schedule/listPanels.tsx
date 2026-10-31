@@ -50,6 +50,7 @@ import {
 import { Button } from '../../ui/button';
 import { useAppStore } from '../../../store';
 import { showToast } from '../../../utils/toast';
+import { SCRIPT_REPAIR_PENDING } from '../../../../shared/automation/script-package';
 
 export function AutomationListPanel({
   automations,
@@ -252,7 +253,13 @@ export function AutomationRunLogPanel({
   onRefresh: () => void;
   tr: (key: string, fallback: string) => string;
 }) {
-  const hasRunning = entries.some(({ run }) => run.status === 'running' || run.status === 'queued');
+  // A background AI 修复 rewrites its run's error when done; keep polling until it does.
+  const hasRunning = entries.some(
+    ({ run }) =>
+      run.status === 'running' ||
+      run.status === 'queued' ||
+      Boolean(run.error?.includes(SCRIPT_REPAIR_PENDING))
+  );
   const [runQuery, setRunQuery] = useState('');
   const normalizedRunQuery = runQuery.trim().toLowerCase();
   const [runStatusFilter, setRunStatusFilter] = useState<RunStatusFilter>('all');
