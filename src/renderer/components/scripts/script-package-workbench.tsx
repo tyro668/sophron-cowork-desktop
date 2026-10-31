@@ -26,6 +26,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { ipcErrorMessage } from '../../utils/ipc-error';
 import { showToast } from '../../utils/toast';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import type {
@@ -990,7 +991,7 @@ export function ScriptPackageWorkbench({
       target.onDeleted?.(packageId);
       onClose();
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', ipcErrorMessage(error));
     } finally {
       setDeleting(false);
     }

@@ -49,6 +49,7 @@ import {
 } from '../../data-view/group-ui';
 import { Button } from '../../ui/button';
 import { useAppStore } from '../../../store';
+import { ipcErrorMessage } from '../../../utils/ipc-error';
 import { showToast } from '../../../utils/toast';
 import { SCRIPT_REPAIR_PENDING } from '../../../../shared/automation/script-package';
 
@@ -908,7 +909,7 @@ export function ScriptRepairActions({
       );
     } catch (err) {
       setState('idle');
-      showToast('error', err instanceof Error ? err.message : String(err));
+      showToast('error', ipcErrorMessage(err));
     }
   };
   return (

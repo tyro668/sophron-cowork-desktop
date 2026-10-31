@@ -6,6 +6,7 @@ import type { DataRawTableNormalizerUsage } from '../../../shared/contracts';
 import { dataClient } from '../../features/data/api/data-client';
 import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { Dialog } from '../ui/dialog';
+import { ipcErrorMessage } from '../../utils/ipc-error';
 import { showToast } from '../../utils/toast';
 import { formatDateTime } from './shared';
 
@@ -22,7 +23,7 @@ export function NormalizerManagerDialog({ open, onClose }: { open: boolean; onCl
       setItems(await dataClient.listRawTableNormalizers());
     } catch (error) {
       setItems([]);
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', ipcErrorMessage(error));
     }
   }, []);
 
@@ -47,7 +48,7 @@ export function NormalizerManagerDialog({ open, onClose }: { open: boolean; onCl
       showToast('success', tr('deleted', { name: item.artifact.name }));
       await load();
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', ipcErrorMessage(error));
     } finally {
       setBusyId(null);
     }
