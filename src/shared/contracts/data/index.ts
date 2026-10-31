@@ -206,6 +206,10 @@ export interface DataGenerateRawTableNormalizerDraftInput {
   sourceKind?: DataRawTableSourceKind;
   config?: DataRawTableConfig;
   rulePrompt: string;
+  /** Secrets the user confirmed in the pre-generate dialog (stored encrypted, never sent). */
+  secrets?: Array<{ name: string; value: string }>;
+  /** The user reviewed detection: do not auto-detect more. */
+  secretsReviewed?: boolean;
   selectedSkillNames?: string[];
   modelConfigSetId?: string | null;
   model?: string | null;

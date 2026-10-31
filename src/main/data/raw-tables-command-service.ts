@@ -32,6 +32,12 @@ import {
 import type { RawTableNormalizerProjectGenerator } from './raw-table-normalizer-generator';
 import type { NormalizerPreviewCheck, NormalizerPreviewFn } from './raw-table-normalizer-agent';
 import { evaluatePass, expectedColumnsFromAnalysis } from '../../shared/fix-error';
+import { detectSecretCandidates, replaceSecrets } from '../../shared/secrets';
+import {
+  getSecretStore,
+  normalizerSecretScope,
+  SECRET_NAME_PATTERN,
+} from '../exec-guard/secret-store';
 import type {
   DataRawTableConfig,
   DataRawTableNormalizerArtifactVersion,
@@ -344,12 +350,24 @@ export class RawTablesCommandService {
     input: GenerateRawTableNormalizerDraftCommand
   ): Promise<GenerateRawTableNormalizerDraftResult> {
     const name = normalizeRequiredName(input.name, 'Normalizer artifact name is required');
-    const rulePrompt = normalizeRequiredName(
+    const rawRulePrompt = normalizeRequiredName(
       input.rulePrompt,
       'Normalizer rule prompt is required'
     );
+    // Key-like strings never reach the model: ${SECRET:NAME} placeholders, values stored encrypted.
+    const secretItems = input.fix
+      ? []
+      : [
+          ...(input.secrets ?? []).filter(
+            (item) => SECRET_NAME_PATTERN.test(item.name) && item.value.trim()
+          ),
+          ...(input.secretsReviewed ? [] : detectSecretCandidates(rawRulePrompt)).filter(
+            (item) => !(input.secrets ?? []).some((given) => given.value === item.value)
+          ),
+        ];
+    const rulePrompt = replaceSecrets(rawRulePrompt, secretItems);
     const primaryLanguage = input.primaryLanguage === 'node' ? 'node' : 'python';
-    if (input.fix) return this.fixRawTableNormalizerDraft(input, name, rulePrompt);
+    if (input.fix) return this.fixRawTableNormalizerDraft(input, name, rawRulePrompt);
     let summary: SummarizeRawTableSourceResult['summary'];
     try {
       input.onProgress?.({
@@ -430,6 +448,15 @@ export class RawTablesCommandService {
         dependencies: template.dependencies,
         dependencyLockHash: createNormalizerDependencyLockHash(template.files),
       });
+      const store = getSecretStore();
+      for (const item of secretItems)
+        store?.set(normalizerSecretScope(result.version.artifactId), item.name, item.value);
+      if (secretItems.length > 0)
+        input.onProgress?.({
+          phase: 'saving',
+          kind: 'message',
+          text: `已把 ${secretItems.map((item) => item.name).join('、')} 存为加密密钥（运行时作为环境变量提供，不发送给 AI）`,
+        });
       input.onProgress?.({
         phase: 'complete',
         kind: 'message',

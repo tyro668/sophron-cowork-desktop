@@ -139,3 +139,9 @@ const electron = {
 };
 
 export default electron;
+
+export const safeStorage = {
+  isEncryptionAvailable: (): boolean => false,
+  encryptString: (value: string): Buffer => Buffer.from(value, 'utf8'),
+  decryptString: (value: Buffer): string => value.toString('utf8'),
+};

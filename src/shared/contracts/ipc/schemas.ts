@@ -609,8 +609,21 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
         .array(z.looseObject({ name: z.string().max(200), content: z.string().max(20_000) }))
         .max(4)
         .optional(),
+      secrets: z
+        .array(z.looseObject({ name: z.string().max(64), value: z.string().max(4000) }))
+        .max(10)
+        .optional(),
+      secretsReviewed: z.boolean().optional(),
     }),
   ],
+  'automation.secrets.list': [z.enum(['script', 'normalizer']), str],
+  'automation.secrets.set': [
+    z.enum(['script', 'normalizer']),
+    str,
+    z.string().regex(/^[A-Z][A-Z0-9_]{1,63}$/),
+    z.string().min(1).max(4000),
+  ],
+  'automation.secrets.delete': [z.enum(['script', 'normalizer']), str, str],
   'automation.groups.list': [],
   'automation.groups.create': [z.looseObject({ name: str })],
   'automation.groups.rename': [z.looseObject({ id: str, name: str })],
@@ -805,6 +818,11 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       model: strNullish,
       primaryLanguage: z.enum(['python', 'node']).optional(),
       progressId: strOpt,
+      secrets: z
+        .array(z.looseObject({ name: z.string().max(64), value: z.string().max(4000) }))
+        .max(10)
+        .optional(),
+      secretsReviewed: z.boolean().optional(),
       fix: z
         .looseObject({
           baseVersionId: str,

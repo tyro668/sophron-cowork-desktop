@@ -4630,5 +4630,22 @@
     "endpoints": "{{count}} 个接口",
     "dailyAt": "每天 {{time}}",
     "noTurnYet": "还没有联网取数并产出表格的轮次"
+  },
+  "secrets": {
+    "label": "密钥",
+    "none": "无",
+    "add": "添加",
+    "name": "名称",
+    "value": "值",
+    "save": "保存",
+    "delete": "删除 {{name}}",
+    "hint": "加密保存在本机，运行时作为环境变量提供，不会发给 AI 或写进文件",
+    "pendingHint": "生成后可添加",
+    "reviewTitle": "发现疑似密钥",
+    "reviewDesc": "这些内容不会发给 AI。勾选的会加密保存为密钥，规则里换成 ${SECRET:名称}，脚本运行时从环境变量读取。",
+    "reviewKeep": "按普通文字处理",
+    "reviewConfirm": "保存为密钥并继续",
+    "nameInvalid": "名称只能用大写字母、数字和下划线，以字母开头",
+    "saved": "已保存"
   }
 }

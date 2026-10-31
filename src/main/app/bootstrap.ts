@@ -13,6 +13,7 @@ import { AutomationService } from '../automation/automation-service';
 import { createAutomationStore } from '../automation/automation-store';
 import { createDefaultAutomationActionRegistry } from '../automation/default-actions';
 import { ScriptPackageService } from '../automation/script-packages/service';
+import { setupExecGuard } from '../exec-guard/setup';
 import { createSqliteScriptVersionStore } from '../automation/script-packages/version-store';
 import { createScriptPackageAgentRuntimeExtension } from '../automation/script-packages/agent-tools';
 import { createAutomationAgentRuntimeExtension } from '../automation/tools';
@@ -261,9 +262,14 @@ export async function bootstrap(): Promise<void> {
   ) {
     log('[Automation] Recovered interrupted runs:', recoveredAutomationRuns);
   }
+  const secretStore = setupExecGuard({
+    userData: app.getPath('userData'),
+    appConfig: () => configStore.getAll(),
+  });
   appContext.scriptPackages = new ScriptPackageService({
     rootDir: join(app.getPath('userData'), 'scripts'),
     versions: createSqliteScriptVersionStore(db.raw),
+    secrets: secretStore,
   });
   const automationActionRegistry = createDefaultAutomationActionRegistry({
     scriptPackages: appContext.scriptPackages,

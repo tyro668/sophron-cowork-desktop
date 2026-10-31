@@ -24,6 +24,7 @@ import {
   readNormalizerOutputRelationForPath,
 } from '../input-source';
 import { findReusableDraft, PUBLISHED_TAG } from '../../../versioning/git-repo';
+import { getSecretStore, normalizerSecretScope } from '../../../exec-guard/secret-store';
 import type { DataRawTableNormalizerArtifactVersion } from '../../../../shared/contracts';
 import { NormalizerRepository } from '../repositories/normalizer-repository';
 import { InputSourceSummaryService } from './input-source-summary-service';
@@ -450,6 +451,7 @@ export class NormalizerService {
         prepareDependencies: input.prepareDependencies === true,
         projectRoot: run.projectRoot,
         workspaceRoot: run.workspaceRoot,
+        secrets: normalizerSecrets(config, version.artifactId),
         context: {
           sourcePath,
           sourceKind,
@@ -552,6 +554,7 @@ export class NormalizerService {
         prepareDependencies: false,
         projectRoot: await this.checkoutForRun(version),
         workspaceRoot: this.normalizers.getRawTableNormalizerRunRoot(version.artifactId),
+        secrets: normalizerSecrets(config, version.artifactId),
         context: {
           sourcePath,
           sourceKind,
@@ -600,4 +603,15 @@ export class NormalizerService {
       await this.normalizers.getRawTableNormalizerArtifactVersion(processing.artifactVersionId)
     )?.artifactId;
   }
+}
+
+/** Strategy secrets of the artifact (env vars for the normalizer). */
+function normalizerSecrets(config: DataRawTableConfig, artifactId: string): Record<string, string> {
+  const processing = config.dataProcessing;
+  const id =
+    processing?.strategy === 'customize' && processing.artifactId
+      ? processing.artifactId
+      : artifactId;
+  if (!id || id === 'agent-preview') return {};
+  return getSecretStore()?.env(normalizerSecretScope(id)) ?? {};
 }

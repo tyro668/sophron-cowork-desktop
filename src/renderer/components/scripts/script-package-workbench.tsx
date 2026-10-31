@@ -37,6 +37,7 @@ import { GlassSelect } from '../GlassSelect';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Dialog } from '../ui/dialog';
+import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { CodePreview, getCodePreviewLanguageLabel } from '../data-view/raw-table-code-preview';
 import { RawTableGenerationConsole } from '../data-view/raw-table-generation-console';
@@ -158,6 +159,8 @@ export function ScriptPackageWorkbench({
   const [modelConfigSetId, setModelConfigSetId] = useState<string | null>(null);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const secretReview = useSecretReview();
+  const [secretsKey, setSecretsKey] = useState(0);
   const [generationLog, setGenerationLog] = useState<NormalizerGenerationLog | null>(null);
   const logRef = useRef<NormalizerGenerationLog | null>(null);
   const flushTimer = useRef<number | null>(null);
@@ -381,8 +384,16 @@ export function ScriptPackageWorkbench({
       runtime: ScriptRuntime;
     } | null = null
   ) => {
-    const prompt = (override?.prompt ?? rulePrompt).trim();
-    if (!prompt || generating) return;
+    const rawPrompt = (override?.prompt ?? rulePrompt).trim();
+    if (!rawPrompt || generating) return;
+    // Key-like strings are confirmed as secrets first; the model only sees ${SECRET:NAME}.
+    const reviewed = await secretReview.review(
+      rawPrompt,
+      (chat?.references ?? []).map((item) => item.content)
+    );
+    if (!reviewed) return;
+    const prompt = reviewed.text;
+    if (!override && prompt !== rawPrompt) setRulePrompt(prompt);
     const pkgId = override ? override.packageId : packageId;
     const base = override ? override.baseVersion : baseVersion;
     const pkgName = override ? override.name : name;
@@ -441,8 +452,11 @@ export function ScriptPackageWorkbench({
         runtime: lang,
         modelConfigSetId,
         progressId,
+        secrets: reviewed.secrets,
+        secretsReviewed: reviewed.secretsReviewed,
         ...(chat ? { origin: chat.origin, references: chat.references } : {}),
       });
+      if (result.savedSecrets?.length) setSecretsKey((key) => key + 1);
       if (anchor) setJob(anchor, null);
       for (const item of log.steps) if (item.status === 'active') item.status = 'done';
       log.finishedAt = Date.now();
@@ -1334,6 +1348,14 @@ export function ScriptPackageWorkbench({
                   : '—'}
               </span>
             </RawTableConfigRow>
+            <RawTableConfigRow label={t('secrets.label')}>
+              <SecretsEditor
+                kind="script"
+                ownerId={packageId}
+                refreshKey={secretsKey}
+                disabled={generating}
+              />
+            </RawTableConfigRow>
             {origin && (
               <RawTableConfigRow label={t('chatScript.sourceLabel')}>
                 <div
@@ -1770,6 +1792,7 @@ export function ScriptPackageWorkbench({
           }}
         />
       </Dialog>
+      {secretReview.dialog}
 
       {trialOpen ? (
         <RawTablePreviewDialog

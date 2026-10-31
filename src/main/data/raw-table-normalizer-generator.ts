@@ -20,6 +20,9 @@ import {
 } from '../../shared/raw-table-normalizer/templates';
 import { extractJsonObjectText } from '../../shared/structured-text';
 import { resolveNormalizerPythonExecutable } from './raw-table-normalizer-runner';
+import { describeSecretLeaks, findSecretsInFiles } from '../../shared/secrets';
+import { knownSecretValues } from '../exec-guard/redact';
+import { describeLocalHostRefs, findLocalHostRefs } from '../../shared/network-policy';
 import {
   buildFixPayload,
   changedFilePaths,
@@ -467,6 +470,7 @@ function buildCodeGenerationSystemPrompt(language: DataNormalizerLanguage): stri
     `Update ${transformPath}; you may add helper files if useful.`,
     exportContract,
     'Do not use external dependencies. Use only the standard runtime library.',
+    'Never write keys, tokens or passwords into project files. ${SECRET:NAME} in the rule means: read the environment variable NAME at run time.',
     language === 'python'
       ? 'Generated Python code must run on Python 3.9 or newer. Do not use Python 3.10+ only syntax or APIs.'
       : 'Generated Node.js code must run without npm dependencies unless the project files also include the required dependency declarations and lockfile updates.',
@@ -641,6 +645,13 @@ export function validateGeneratedNormalizerProjectFiles(
     throw new Error(`LLM normalizer response must include ${transformPath}`);
   }
   validateGeneratedTransform(transformFile, language);
+  const leaks = findSecretsInFiles(
+    files.filter((file) => file.path !== 'docs/source-structure-analysis.json'),
+    knownSecretValues()
+  );
+  if (leaks.length > 0) throw new Error(describeSecretLeaks(leaks));
+  const local = findLocalHostRefs(files);
+  if (local.length > 0) throw new Error(describeLocalHostRefs(local));
 }
 
 function upsertGeneratedProjectFile(

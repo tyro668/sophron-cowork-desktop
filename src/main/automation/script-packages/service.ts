@@ -16,6 +16,16 @@ import {
   type ScriptVersionSource,
 } from '../../../shared/automation/script-package';
 import { failureReason, runProcess, type ProcessResult } from './process';
+import { buildExecEnv } from '../../exec-guard/env';
+import { SECRET_NAME_PATTERN, scriptSecretScope } from '../../exec-guard/secret-store';
+import { knownSecretValues, redactOutput } from '../../exec-guard/redact';
+import { describeLocalHostRefs, findLocalHostRefs } from '../../../shared/network-policy';
+import {
+  describeSecretLeaks,
+  detectSecretCandidates,
+  findSecretsInFiles,
+  replaceSecrets,
+} from '../../../shared/secrets';
 import { parseCsv, readScriptOutput, type ParsedScriptOutput } from './output';
 import {
   findReusableDraft,
@@ -110,6 +120,11 @@ export interface ScriptPackageServiceOptions {
   python?: { command: string; args: string[] };
   node?: { command: string; env?: NodeJS.ProcessEnv };
   npmCommand?: string;
+  /** Package secrets (API keys) injected as environment variables at run time. */
+  secrets?: {
+    env(scope: string): Record<string, string>;
+    set?(scope: string, name: string, value: string): unknown;
+  };
 }
 
 export interface SaveDraftOptions {
@@ -328,6 +343,10 @@ export class ScriptPackageService {
     if (!existsSync(path.join(dir, manifest.entry))) {
       throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
     }
+    // Secrets never enter git history: they live in the secret store and arrive as env vars.
+    const leaks = await this.secretLeaks(id);
+    if (leaks.length > 0) throw new ScriptPackageError(describeSecretLeaks(leaks), 'invalid');
+    options = { ...options, rulePrompt: this.sanitizePrompt(id, options.rulePrompt) };
     const records = this.store.list(id);
     const published = records.find((record) => record.status === 'published');
     const reusable = findReusableDraft(records, options.source, {
@@ -445,6 +464,9 @@ export class ScriptPackageService {
     id: string,
     timeoutMs = DEFAULT_CHECK_TIMEOUT_MS
   ): Promise<ScriptDraftCheck> {
+    const leaks = await this.secretLeaks(id);
+    if (leaks.length > 0)
+      return { passed: false, reason: describeSecretLeaks(leaks), durationMs: 0 };
     const run = await this.testRun(id, { timeoutMs, target: 'working' });
     return {
       passed: run.ok,
@@ -516,7 +538,7 @@ export class ScriptPackageService {
           maxRounds: fix.maxRounds,
           previousAttempts: fix.previousAttempts,
         },
-        workspace: { dir, test: () => this.checkWorkingTree(id) },
+        workspace: { dir, test: () => this.checkWorkingTree(id), secrets: this.secretEnv(id) },
         runtimeConfig: options.runtimeConfig,
         signal: options.signal,
         onProgress: (phase, text) => emit({ phase, kind: 'message', text }),
@@ -616,9 +638,22 @@ export class ScriptPackageService {
         text: `语言：${input.runtime === 'node' ? 'Node.js' : 'Python'} · 智能体可联网探查、写文件、试运行`,
       });
       const packageName = displayName || id;
+      // Key-like strings in the rule / references become stored secrets before the model sees them.
+      const captured = this.captureSecrets(id, input);
+      input = { ...input, rulePrompt: captured.rulePrompt, references: captured.references };
+      if (captured.saved.length > 0)
+        emit({
+          phase: 'source_summary',
+          kind: 'message',
+          text: `已把 ${captured.saved.join('、')} 存为加密密钥（运行时作为环境变量提供，不发送给 AI）`,
+        });
       const dir = await this.beginAgentEdit(id, baseFiles);
       started = id;
-      const workspace = { dir, test: () => this.checkWorkingTree(id) };
+      const workspace = {
+        dir,
+        test: () => this.checkWorkingTree(id),
+        secrets: this.secretEnv(id),
+      };
       const onProgress = (phase: ScriptAgentPhase, text: string) =>
         emit({ phase, kind: 'message', text });
       const outcome = await generator.generate({
@@ -714,6 +749,7 @@ export class ScriptPackageService {
         check,
         agentSummary: summaryText,
         autoFixRounds: rounds,
+        ...(captured.saved.length > 0 ? { savedSecrets: captured.saved } : {}),
       };
     } catch (error) {
       if (started) await this.endAgentEdit(started, null).catch(() => undefined);
@@ -987,6 +1023,9 @@ export class ScriptPackageService {
     if (!existsSync(entryPath)) {
       throw new ScriptPackageError(`入口文件不存在：${manifest.entry}`, 'invalid');
     }
+    // Sandboxed code shares the host network: refuse code addressing this computer's services.
+    const local = findLocalHostRefs(await readWorkingFiles(dir).catch(() => []));
+    if (local.length > 0) throw new ScriptPackageError(describeLocalHostRefs(local), 'invalid');
     const installedDeps = await this.ensureDeps(dir, manifest);
     const outDir = path.join(packageDir, STATE_DIR, 'runs', String(this.now()));
     await mkdir(outDir, { recursive: true });
@@ -997,19 +1036,23 @@ export class ScriptPackageService {
     const isPublished = target === 'published';
     try {
       const command = this.entryCommand(dir, manifest, entryPath);
+      const secretEnv = this.secretEnv(id);
       const result = await runProcess(command.command, command.args, {
         cwd: dir,
         timeoutMs: options.timeoutMs,
-        env: {
-          ...process.env,
-          ...command.env,
+        // Allowlisted env only: the app's API keys never reach generated code.
+        env: buildExecEnv({
+          ...stringEnv(command.env),
+          ...secretEnv,
           SOPHRON_OUTPUT: outputPath,
           SOPHRON_PACKAGE_DIR: dir,
           SOPHRON_CONFIG: existsSync(configPath) ? configPath : '',
           PYTHONIOENCODING: 'utf-8',
           PYTHONUNBUFFERED: '1',
           PYTHONDONTWRITEBYTECODE: '1',
-        },
+        }),
+        sandbox: { writable: [dir, outDir] },
+        redact: Object.values(secretEnv),
       });
       const durationMs = this.now() - startedAt;
       const log = processLog(result);
@@ -1161,12 +1204,13 @@ export class ScriptPackageService {
       const venv = await runProcess(python.command, [...python.args, '-m', 'venv', '.venv'], {
         cwd: dir,
         timeoutMs: INSTALL_TIMEOUT_MS,
+        sandbox: { writable: [dir] },
       });
       if (venv.code !== 0) fail('venv', venv);
       const pip = await runProcess(
         venvPython(dir),
         ['-m', 'pip', 'install', '--disable-pip-version-check', '-r', 'requirements.txt'],
-        { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS }
+        { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS, sandbox: { writable: [dir] } }
       );
       if (pip.code !== 0) fail('pip', pip);
     } else {
@@ -1175,7 +1219,11 @@ export class ScriptPackageService {
       const args = existsSync(path.join(dir, 'package-lock.json'))
         ? ['ci', '--no-audit', '--no-fund', '--omit=dev']
         : ['install', '--no-audit', '--no-fund', '--omit=dev', '--no-package-lock'];
-      const install = await runProcess(npm, args, { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS });
+      const install = await runProcess(npm, args, {
+        cwd: dir,
+        timeoutMs: INSTALL_TIMEOUT_MS,
+        sandbox: { writable: [dir] },
+      });
       if (install.code !== 0) fail('npm', install);
     }
     await this.patchState(dir, {
@@ -1191,7 +1239,7 @@ export class ScriptPackageService {
       const result = await runProcess(node.command, ['--version'], {
         cwd: dir,
         timeoutMs: 15_000,
-        env: { ...process.env, ...node.env },
+        env: buildExecEnv(stringEnv(node.env)),
       });
       const match = /v?(\d+)\.\d+/.exec(result.stdout);
       return match ? `Node ${match[1]}` : undefined;
@@ -1216,7 +1264,87 @@ export class ScriptPackageService {
 
   private nodeCommand(): { command: string; env?: NodeJS.ProcessEnv } {
     // Electron's own binary runs plain Node scripts — no system Node required.
-    return this.options.node ?? { command: process.execPath, env: { ELECTRON_RUN_AS_NODE: '1' } };
+    const node = this.options.node ?? { command: process.execPath };
+    // The exec env is an allowlist, so Electron's run-as-node flag must be set explicitly.
+    return node.command === process.execPath && process.versions.electron
+      ? { ...node, env: { ELECTRON_RUN_AS_NODE: '1', ...node.env } }
+      : node;
+  }
+
+  /**
+   * Store the secrets the user confirmed (plus, unless reviewed, key-like strings found in the
+   * rule prompt / references) under the package and replace them by ${SECRET:NAME}.
+   */
+  private captureSecrets(
+    id: string,
+    input: ScriptGenerateDraftInput
+  ): { rulePrompt: string; references?: ScriptGenerateDraftInput['references']; saved: string[] } {
+    const scope = scriptSecretScope(id);
+    const existing = this.secretEnv(id);
+    const taken = new Set(Object.keys(existing));
+    const provided = (input.secrets ?? []).filter(
+      (item) => item.value?.trim() && SECRET_NAME_PATTERN.test(item.name)
+    );
+    for (const item of provided) taken.add(item.name);
+    const text = [input.rulePrompt, ...(input.references ?? []).map((file) => file.content)].join(
+      '\n'
+    );
+    const detected = input.secretsReviewed
+      ? []
+      : detectSecretCandidates(text)
+          .filter(
+            (item) =>
+              !provided.some((known) => known.value === item.value) &&
+              !Object.values(existing).includes(item.value)
+          )
+          .map((item) => {
+            let name = item.name;
+            for (let index = 2; taken.has(name); index += 1) name = `${item.name}_${index}`;
+            taken.add(name);
+            return { name, value: item.value };
+          });
+    const saved = [...provided, ...detected];
+    for (const item of saved) this.options.secrets?.set?.(scope, item.name, item.value);
+    const replacements = [
+      ...saved,
+      ...Object.entries(existing).map(([name, value]) => ({ name, value })),
+    ];
+    return {
+      rulePrompt: replaceSecrets(input.rulePrompt, replacements),
+      ...(input.references
+        ? {
+            references: input.references.map((file) => ({
+              ...file,
+              content: replaceSecrets(file.content, replacements),
+            })),
+          }
+        : {}),
+      saved: saved.map((item) => item.name),
+    };
+  }
+
+  /** Key-like literals or stored secret values in the package's working files. */
+  private async secretLeaks(id: string) {
+    const files = await readWorkingFiles(this.packageDir(id)).catch(() => []);
+    return findSecretsInFiles(files, [
+      ...Object.values(this.secretEnv(id)),
+      ...knownSecretValues(),
+    ]);
+  }
+
+  /** Stored secret values become ${SECRET:NAME}; other key-like strings are redacted. */
+  sanitizePrompt(id: string, text: string | undefined): string | undefined {
+    if (!text) return text;
+    const replacements = Object.entries(this.secretEnv(id)).map(([name, value]) => ({
+      name,
+      value,
+    }));
+    return redactOutput(replaceSecrets(text, replacements));
+  }
+
+  /** NAME → value of the package's secrets (empty without a secret store). */
+  secretEnv(id: string): Record<string, string> {
+    return this.options.secrets?.env(scriptSecretScope(id)) ?? {};
   }
 
   private entryCommand(
@@ -1370,6 +1498,10 @@ export function formatTimeout(ms: number): string {
 }
 
 /** Last few KB of the entry's stdout/stderr (never includes the env). */
+function stringEnv(env: NodeJS.ProcessEnv | undefined): Record<string, string | undefined> {
+  return { ...(env ?? {}) };
+}
+
 function processLog(result: { stdout: string; stderr: string }): string {
   const text = [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n');
   return text.length > 4000 ? text.slice(-4000) : text;

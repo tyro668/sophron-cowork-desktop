@@ -10,6 +10,7 @@ import {
   type HeadlessAgentStop,
 } from '../../agent/headless-tool-agent';
 import { createWorkspaceTools } from '../../agent/workspace-tools';
+import { knownSecretValues } from '../../exec-guard/redact';
 import {
   scriptManifestSchema,
   type ScriptDraftCheck,
@@ -39,6 +40,8 @@ export type ScriptCheck = ScriptDraftCheck;
 export interface ScriptWorkspace {
   dir: string;
   test(): Promise<ScriptCheck>;
+  /** Package secrets: env vars for the agent's bash and every run (values never in prompts). */
+  secrets?: Record<string, string>;
 }
 
 export type ScriptAgentPhase = 'source_summary' | 'source_analysis' | 'code_generation' | 'verify';
@@ -186,9 +189,10 @@ export function createAgentScriptFilesGenerator(
       const appConfig = await getConfig();
       const config = input.runtimeConfig ?? appConfig;
       const secrets = [
-        ...collectSecretValues(process.env),
+        ...knownSecretValues(),
         ...collectSecretValues(appConfig),
         ...collectSecretValues(input.runtimeConfig),
+        ...Object.values(input.workspace.secrets ?? {}),
       ];
       const payload = buildScriptFixPayload(input, secrets);
       input.onProgress?.(
@@ -229,7 +233,15 @@ async function runScriptAgent(
   const agent = new HeadlessToolAgent({
     config: options.config,
     systemPrompt: options.systemPrompt,
-    tools: [...createWorkspaceTools({ dir: input.workspace.dir, bash: true, web: true }), testTool],
+    tools: [
+      ...createWorkspaceTools({
+        dir: input.workspace.dir,
+        bash: true,
+        web: true,
+        env: input.workspace.secrets,
+      }),
+      testTool,
+    ],
     maxTurns: options.limits.maxTurns,
     timeoutMs: options.limits.timeoutMs,
     signal: input.signal,
@@ -388,9 +400,11 @@ const COMMON_RULES = (runtime: ScriptRuntime): string[] => {
       ? 'Node.js 20+: use CommonJS (require) unless package.json sets "type": "module"; global fetch is available. Put npm libraries in package.json "dependencies" with exact versions; never rely on globally installed modules.'
       : 'Python 3.9+: standard library preferred (urllib.request, json, html.parser); third-party libraries go into requirements.txt with pinned versions (requirements.txt may be empty).',
     'Split the code into the entry plus at least one helper module (HTTP client, parsing/transform).',
-    'Public data only: no logins, cookies, secrets or headless browsers. Every HTTP request has a timeout and sends a real browser User-Agent (e.g. Chrome on Windows), an Accept header, and the Referer / Origin of the site the data belongs to; put these headers in config.json.',
+    'Credentials: never write keys, tokens, passwords or cookies into any file (config.json, code, comments) — files are committed to version history and such commits are rejected. The package\'s secrets are environment variables (names in "secrets"; ${SECRET:NAME} in the rule prompt means the env var NAME): read them with os.environ["NAME"] / process.env.NAME at run time; in bash probes use "$NAME". A required secret env var that is missing is a failure: exit non-zero with a Chinese reason naming it.',
+    'Authentication failures (HTTP 401/403, an "invalid key / unauthorized / quota" response) are failures: exit non-zero with a clear Chinese reason. NEVER switch to another data source, endpoint or website, and never fabricate data, when the requested source rejects the request.',
+    'No logins with user passwords and no headless browsers. Every HTTP request has a timeout and sends a real browser User-Agent (e.g. Chrome on Windows), an Accept header, and the Referer / Origin of the site the data belongs to; put these headers in config.json.',
     'Front-end rendered pages (an HTML shell with little text, a root <div id="app"> and script bundles): do NOT scrape the static HTML. Find the XHR/JSON API the page actually calls: download the JS bundles (browser UA + the site Referer; static hosts often return 403 without them), search them for apiBaseUrl / baseURL / fetch( / axios / "/api" / endpoint paths and the component that renders the data you need, then call the candidate endpoints and inspect the JSON. Prefer a JSON/CSV API over HTML scraping; fall back to embedded JSON (__NEXT_DATA__, window.__INITIAL_STATE__) before parsing HTML.',
-    'Empty results are failures: the script must never write a header-only table. If the requested slice can be legitimately empty (e.g. "today" / daily ranking has no entries yet), config.json must state the behaviour explicitly under "on_empty": {"action": "fallback" | "error", "fallback": {...the params to use instead, e.g. a weekly or monthly ranking...}, "note": "Chinese, one sentence"}. With "fallback" the script retries with the fallback params and writes a column (e.g. 榜单/数据范围) saying which slice the rows come from; with "error" it exits non-zero with a clear Chinese reason.',
+    'Empty results are failures: the script must never write a header-only table. If the requested slice can be legitimately empty (e.g. "today" / daily ranking has no entries yet), config.json must state the behaviour explicitly under "on_empty": {"action": "fallback" | "error", "fallback": {...the params to use instead, e.g. a weekly or monthly ranking...}, "note": "Chinese, one sentence"}. With "fallback" the script retries the SAME source with the fallback params (never a different source) and writes a column (e.g. 榜单/数据范围) saying which slice the rows come from; with "error" it exits non-zero with a clear Chinese reason.',
     'Check that the values match the request (dates really are today when asked for today, rankings are in order, no navigation/ads rows).',
     'No TODOs or placeholders.',
   ];
@@ -443,6 +457,11 @@ function localDate(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+function secretNamesField(workspace: ScriptWorkspace): { secrets?: string[] } {
+  const names = Object.keys(workspace.secrets ?? {});
+  return names.length > 0 ? { secrets: names } : {};
+}
+
 function buildScriptGenerationUserPrompt(input: GenerateScriptFilesInput): string {
   return JSON.stringify(
     {
@@ -453,6 +472,7 @@ function buildScriptGenerationUserPrompt(input: GenerateScriptFilesInput): strin
       packageName: input.name,
       runtime: input.runtime,
       rulePrompt: input.rulePrompt,
+      ...secretNamesField(input.workspace),
       ...(input.lastError ? { lastRunError: input.lastError } : {}),
       existingFiles: input.baseFiles.map((file) => file.path),
       ...(input.references?.length ? { referenceFiles: input.references } : {}),
@@ -469,6 +489,7 @@ function buildScriptFixUserPrompt(input: FixScriptFilesInput, payload: FixPayloa
       task: `Fix the current draft (${input.baseLabel}) of the script package "${input.name}" in the folder so script_package_test passes.`,
       runtime: input.runtime,
       ...(input.rulePrompt ? { rulePrompt: input.rulePrompt } : {}),
+      ...secretNamesField(input.workspace),
       failure: payload,
       files: input.files.map((file) => file.path),
       today: localDate(),

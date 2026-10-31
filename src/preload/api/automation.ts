@@ -72,6 +72,12 @@ export function createAutomationApi(): ElectronApi['automation'] {
         return () => ipcRenderer.removeListener('automation.scripts.generateProgress', listener);
       },
     },
+    secrets: {
+      list: (kind, id) => ipcRenderer.invoke('automation.secrets.list', kind, id),
+      set: (kind, id, name, value) =>
+        ipcRenderer.invoke('automation.secrets.set', kind, id, name, value),
+      delete: (kind, id, name) => ipcRenderer.invoke('automation.secrets.delete', kind, id, name),
+    },
     groups: {
       list: (): Promise<AutomationGroup[]> => ipcRenderer.invoke('automation.groups.list'),
       create: (payload: AutomationCreateGroupInput): Promise<AutomationGroup> =>
