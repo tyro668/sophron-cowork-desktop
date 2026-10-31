@@ -59,6 +59,10 @@ export interface GenerateScriptFilesInput extends ScriptAgentRunInput {
   baseFiles: ScriptPackageFile[];
   baseLabel?: string;
   lastError?: string;
+  /** 对话「转成脚本」: the rule prompt holds key points a conversation already verified. */
+  fromConversation?: boolean;
+  /** Redacted reference files (the conversation's last working fetch code). */
+  references?: Array<{ name: string; content: string }>;
 }
 
 export interface FixScriptFilesInput extends ScriptAgentRunInput {
@@ -171,7 +175,9 @@ export function createAgentScriptFilesGenerator(
       const config = input.runtimeConfig ?? (await getConfig());
       return runScriptAgent(input, {
         config,
-        systemPrompt: buildScriptAgentSystemPrompt(input.runtime),
+        systemPrompt: input.fromConversation
+          ? buildScriptConversationSystemPrompt(input.runtime)
+          : buildScriptAgentSystemPrompt(input.runtime),
         prompt: buildScriptGenerationUserPrompt(input),
         limits: SCRIPT_AGENT_LIMITS.generate,
       });
@@ -403,6 +409,16 @@ export function buildScriptAgentSystemPrompt(runtime: ScriptRuntime): string {
   return [...COMMON_RULES(runtime), '', ...AGENT_WORKFLOW].join('\n');
 }
 
+/** 对话「转成脚本」: the endpoints are already verified, so confirm them instead of re-exploring. */
+export function buildScriptConversationSystemPrompt(runtime: ScriptRuntime): string {
+  return [
+    buildScriptAgentSystemPrompt(runtime),
+    '',
+    "The rule prompt comes from a conversation that already fetched this data successfully (【来自对话…已验证】): its endpoints, parameters, headers, rules and result columns were verified there, and referenceFiles may hold the conversation's last working fetch code (redacted, for reference only — never copy <redacted> / <workdir> placeholders into the package).",
+    'Start from those endpoints: confirm them with ONE quick probe (curl / python3), then write the package right away and run script_package_test. Only explore further when a verified endpoint no longer works. Follow the 空数据 line for config.json on_empty.',
+  ].join('\n');
+}
+
 /** Rules for script code (shared with the chat agent guide and tests). */
 export function buildScriptGenerationSystemPrompt(runtime: ScriptRuntime): string {
   return COMMON_RULES(runtime).join('\n');
@@ -439,6 +455,7 @@ function buildScriptGenerationUserPrompt(input: GenerateScriptFilesInput): strin
       rulePrompt: input.rulePrompt,
       ...(input.lastError ? { lastRunError: input.lastError } : {}),
       existingFiles: input.baseFiles.map((file) => file.path),
+      ...(input.references?.length ? { referenceFiles: input.references } : {}),
       today: localDate(),
     },
     null,

@@ -3,7 +3,10 @@ import {
   detectAutomationIntent,
   detectScriptPackageIntent,
 } from '../../src/main/extensions/agent-intent';
-import { createScriptPackageAgentRuntimeExtension } from '../../src/main/automation/script-packages/agent-tools';
+import {
+  createScriptPackageAgentRuntimeExtension,
+  createScriptPackageTools,
+} from '../../src/main/automation/script-packages/agent-tools';
 import type { ScriptPackageService } from '../../src/main/automation/script-packages/service';
 import type { Message } from '../../src/shared/contracts';
 
@@ -17,6 +20,8 @@ describe('script package intent', () => {
     '帮我做成脚本包',
     '生成脚本，以后每天跑',
     '以后每天自动取这个汇率',
+    '把这个做成每天早上 9 点自动跑',
+    '每天自动跑',
     '定时取数不要用AI',
     '每天从 open-meteo 拉一次天气，不要消耗 AI',
     '这样跑不消耗 token 吧？做一个',
@@ -45,7 +50,7 @@ describe('script package intent', () => {
       {
         id: 'm1',
         role: 'assistant',
-        content: [{ type: 'tool_use', id: 't1', name: 'script_package_test', input: {} }],
+        content: [{ type: 'tool_use', id: 't1', name: 'script_package_propose', input: {} }],
       },
     ] as unknown as Message[];
     expect(detect('好的', history)).toBe(true);
@@ -61,19 +66,34 @@ describe('script package intent', () => {
     const run = (prompt: string) =>
       extension.beforeSessionRun!({ session, prompt, existingMessages: [], isColdStart: false });
     const hit = await run('把这个取数过程固化成脚本');
-    expect(hit?.activateTools).toEqual([
-      'script_package_list',
-      'script_package_save',
-      'script_package_test',
-      'script_package_publish',
-    ]);
-    expect(hit?.toolContexts?.[0]?.stablePrompt).toContain('script_package_save');
-    expect(hit?.toolContexts?.[0]?.stablePrompt).toContain('固化成脚本');
+    expect(hit?.activateTools).toEqual(['script_package_list', 'script_package_propose']);
+    const guide = hit?.toolContexts?.[0]?.stablePrompt ?? '';
+    expect(guide).toContain('script_package_propose');
+    expect(guide).toContain('固化成脚本');
+    // Only the editor's generation agent writes packages: no save/test tools in the chat.
+    expect(guide).not.toMatch(/script_package_(save|test|publish)/);
     // A bare "ok" right after stays sticky; a topic change releases the tools.
-    expect((await run('可以'))?.activateTools).toHaveLength(4);
+    expect((await run('可以'))?.activateTools).toHaveLength(2);
     expect((await run('写一首诗'))?.activateTools).toEqual([]);
     // Still discoverable through capabilities_search.
     expect(Object.keys(hit?.toolPacks ?? {})).toEqual(['automation.scripts']);
+  });
+
+  it('script_package_propose only returns the card payload', async () => {
+    const tools = createScriptPackageTools({} as unknown as ScriptPackageService);
+    const propose = tools.find((tool) => tool.name === 'script_package_propose')!;
+    const result = await propose.execute(
+      'c1',
+      { scheduleTime: '09:00' } as never,
+      undefined as never,
+      undefined as never,
+      undefined as never
+    );
+    expect(result.details).toMatchObject({ proposed: true, scheduleTime: '09:00' });
+    expect(tools.map((tool) => tool.name)).toEqual([
+      'script_package_list',
+      'script_package_propose',
+    ]);
   });
 
   it('routes English schedules and a yes after a saved script to automation tools', () => {
@@ -91,7 +111,7 @@ describe('script package intent', () => {
       {
         id: 'm1',
         role: 'assistant',
-        content: [{ type: 'tool_use', id: 't1', name: 'script_package_test', input: {} }],
+        content: [{ type: 'tool_use', id: 't1', name: 'script_package_propose', input: {} }],
       },
     ] as unknown as Message[];
     expect(

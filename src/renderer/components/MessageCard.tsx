@@ -2,15 +2,11 @@
 // Delegates block rendering to ContentBlockView and its sub-components.
 import { useState, memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Check, Clock, PencilLine, RotateCcw, XCircle } from 'lucide-react';
+import { Copy, Check, Clock, PencilLine, RotateCcw, Wand2, XCircle } from 'lucide-react';
 import type { Message, ContentBlock, ToolUseContent, ToolResultContent } from '../types';
 import { ContentBlockView } from './message/ContentBlockView';
 import { DataObjectCards, extractDataObjects } from './message/DataObjectCards';
-import {
-  ScriptPackageCards,
-  extractSavedScriptPackages,
-  type SavedScriptPackageRef,
-} from './message/ScriptPackageCards';
+import { ChatScriptCards, type ChatScriptMessageInfo } from './message/ChatScriptCards';
 
 interface MessageCardProps {
   message: Message;
@@ -21,8 +17,11 @@ interface MessageCardProps {
   onResend?: (text: string) => void;
   /** Assistant message (last of a turn): re-ask the preceding user message. */
   onRegenerate?: () => void;
-  /** Script packages saved in this message's assistant run; when omitted, read from this message. */
-  savedScripts?: SavedScriptPackageRef[];
+  /** 对话「转成脚本」: entry, backlink and proposal cards of this turn (last message only). */
+  chatScript?: ChatScriptMessageInfo;
+  sessionTitle?: string;
+  /** Open the 转成脚本 confirm dialog for this turn. */
+  onConvertToScript?: () => void;
 }
 
 export const MessageCard = memo(function MessageCard({
@@ -31,7 +30,9 @@ export const MessageCard = memo(function MessageCard({
   onEdit,
   onResend,
   onRegenerate,
-  savedScripts: savedScriptsProp,
+  chatScript,
+  sessionTitle,
+  onConvertToScript,
 }: MessageCardProps) {
   const { t } = useTranslation();
   const isUser = message.role === 'user';
@@ -81,13 +82,6 @@ export const MessageCard = memo(function MessageCard({
           ),
     [contentBlocks, isUser, isStreaming]
   );
-
-  const ownSavedScripts = useMemo(
-    () =>
-      isUser || isStreaming || savedScriptsProp ? [] : extractSavedScriptPackages(contentBlocks),
-    [contentBlocks, isUser, isStreaming, savedScriptsProp]
-  );
-  const savedScripts = isStreaming ? [] : (savedScriptsProp ?? ownSavedScripts);
 
   const handleCopy = async () => {
     const text = getTextContent();
@@ -184,7 +178,9 @@ export const MessageCard = memo(function MessageCard({
             );
           })}
           <DataObjectCards objects={dataObjects} />
-          <ScriptPackageCards packages={savedScripts} />
+          {chatScript && !isStreaming && (
+            <ChatScriptCards info={chatScript} sessionTitle={sessionTitle ?? ''} />
+          )}
           {onRegenerate && !isStreaming && (
             <div className="flex items-center gap-1 pt-1 text-xs text-text-muted">
               <button
@@ -203,6 +199,19 @@ export const MessageCard = memo(function MessageCard({
                 <RotateCcw className="h-3 w-3" />
                 {t('messageCard.regenerate')}
               </button>
+              {chatScript?.entry && onConvertToScript && (
+                <button
+                  type="button"
+                  data-testid="chat-script-entry"
+                  onClick={onConvertToScript}
+                  className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-accent hover:bg-accent-muted"
+                >
+                  <Wand2 className="h-3 w-3" />
+                  {chatScript.entry === 'reconvert'
+                    ? t('chatScript.reconvert')
+                    : t('chatScript.convert')}
+                </button>
+              )}
             </div>
           )}
         </div>

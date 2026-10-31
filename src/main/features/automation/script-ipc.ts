@@ -6,7 +6,16 @@ import {
   resolveAppConfigForAuth,
   resolveModelRuntimeConfigForAutomation,
 } from '../../app/runtime-config';
-import { createAgentScriptFilesGenerator } from '../../automation/script-packages/generator';
+import { runPiAiOneShot } from '../../agent/pi-ai-one-shot';
+import { buildChatScriptProposal } from '../../automation/script-packages/chat-proposal';
+import { scriptFilesGenerator as generator } from './script-generator';
+import {
+  CHAT_SCRIPT_ATTACHMENTS_LIMIT,
+  CHAT_SCRIPT_CODE_LIMIT,
+  eligibleChatTurns,
+  sanitizeForScript,
+} from '../../../shared/chat-to-script';
+import { collectSecretValues } from '../../../shared/fix-error';
 import type {
   ScriptGenerateDraftInput,
   ScriptPackageEditorState,
@@ -18,9 +27,13 @@ function requireScripts() {
   return appContext.scriptPackages;
 }
 
-const generator = createAgentScriptFilesGenerator(() =>
-  resolveAppConfigForAuth(configStore.getAll())
-);
+function requireSession(sessionId: string) {
+  const sessions = appContext.sessionManager;
+  if (!sessions) throw new Error('Sessions are not initialized');
+  const session = sessions.listSessions().find((item) => item.id === sessionId);
+  if (!session) throw new Error('对话不存在或已删除');
+  return { session, messages: sessions.getMessages(sessionId) };
+}
 
 /** Running 规则生成 / AI 修复 agents by progressId, for 取消. */
 const running = new Map<string, AbortController>();
@@ -64,7 +77,53 @@ export function registerScriptPackageIpc(): void {
   handleIpc('automation.scripts.lastOutput', (_event, id: string) =>
     requireScripts().lastOutput(id)
   );
-  handleIpc('automation.scripts.generateDraft', async (event, input: ScriptGenerateDraftInput) => {
+  /** 对话「转成脚本」: anchors of the qualifying turns (sidebar 任务操作 menu, propose card). */
+  handleIpc('automation.scripts.chatTurns', (_event, sessionId: string) => {
+    const { session, messages } = requireSession(sessionId);
+    return eligibleChatTurns(messages, {
+      running: session.status === 'running',
+      sessionError: session.status === 'error',
+    }).map((turn) => ({ turn: turn.turn, anchorId: turn.anchorId }));
+  });
+  handleIpc(
+    'automation.scripts.chatProposal',
+    async (_event, input: { sessionId: string; messageId?: string }) => {
+      const { session, messages } = requireSession(input.sessionId);
+      const config = await resolveAppConfigForAuth(configStore.getAll());
+      return buildChatScriptProposal({
+        sessionId: session.id,
+        sessionTitle: session.title,
+        sessionStatus: session.status,
+        messages,
+        messageId: input.messageId,
+        packages: await requireScripts().list(),
+        secrets: collectSecretValues(config),
+        extract: async (prompt, systemPrompt) =>
+          (
+            await runPiAiOneShot(prompt, systemPrompt, config, {
+              temperature: 0.1,
+              maxTokens: 2000,
+              reasoning: 'off',
+            })
+          ).text,
+      });
+    }
+  );
+  handleIpc('automation.scripts.generateDraft', async (event, raw: ScriptGenerateDraftInput) => {
+    // References are redacted again here and kept within the attachment budget.
+    let budget = CHAT_SCRIPT_ATTACHMENTS_LIMIT;
+    const input: ScriptGenerateDraftInput = {
+      ...raw,
+      ...(raw.references
+        ? {
+            references: raw.references.flatMap((file) => {
+              const content = sanitizeForScript(file.content).slice(0, CHAT_SCRIPT_CODE_LIMIT);
+              budget -= content.length;
+              return budget >= 0 ? [{ name: String(file.name).slice(0, 80), content }] : [];
+            }),
+          }
+        : {}),
+    };
     const configSetId = input.modelConfigSetId?.trim();
     const runtimeConfig = configSetId
       ? ((await resolveModelRuntimeConfigForAutomation(configSetId)) ?? undefined)

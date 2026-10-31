@@ -1,3 +1,4 @@
+import type { ChatScriptProposal } from '../chat-to-script';
 import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
 import type {
   ScriptGenerateDraftInput,
@@ -582,6 +583,13 @@ export interface ElectronApi {
       generateDraft: (input: ScriptGenerateDraftInput) => Promise<ScriptGenerateDraftResult>;
       /** 取消 a running 规则生成 / AI 修复 agent. */
       cancelGenerate: (progressId: string) => Promise<{ cancelled: boolean }>;
+      /** 对话「转成脚本」: qualifying turns of a conversation. */
+      chatTurns: (sessionId: string) => Promise<Array<{ turn: number; anchorId: string }>>;
+      /** 对话「转成脚本」: redacted key points of a turn for the confirm dialog. */
+      chatProposal: (input: {
+        sessionId: string;
+        messageId?: string;
+      }) => Promise<ChatScriptProposal>;
       onGenerateProgress: (callback: (event: ScriptGenerateProgressEvent) => void) => () => void;
     };
     groups: {

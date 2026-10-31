@@ -17,12 +17,9 @@ import { useSkillMentions } from '../hooks/useSkillMentions';
 import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { MessageCard } from './MessageCard';
-import {
-  extractSavedScriptPackages,
-  type SavedScriptPackageRef,
-} from './message/ScriptPackageCards';
-
-const NO_SAVED_SCRIPTS: SavedScriptPackageRef[] = [];
+import type { ChatScriptMessageInfo } from './message/ChatScriptCards';
+import { chatScriptAnchors, detectScheduleTime } from '../../shared/chat-to-script';
+import type { ScriptPackageSummary } from '../../shared/automation/script-package';
 import { TaskActivity } from './message/TaskActivity';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
@@ -52,6 +49,10 @@ export function ChatView() {
   const executionClock = useActiveExecutionClock();
   const appConfig = useAppConfig();
   const setGlobalNotice = useAppStore((s) => s.setGlobalNotice);
+  const chatScriptJobs = useAppStore((s) => s.chatScriptJobs);
+  const scriptEditorOpen = useAppStore((s) => s.scriptEditor !== null);
+  const openChatScriptDialog = useAppStore((s) => s.openChatScriptDialog);
+  const [originPackages, setOriginPackages] = useState<ScriptPackageSummary[]>([]);
   const isConfigured = useAppStore((s) => s.isConfigured);
   const setAppConfig = useAppStore((s) => s.setAppConfig);
   const setIsConfigured = useAppStore((s) => s.setIsConfigured);
@@ -886,24 +887,76 @@ export function ChatView() {
     return null;
   };
 
-  // Script packages saved during an assistant run are shown once, under its last message
-  // (tool calls and their results arrive as separate messages).
-  const savedScriptsByMessage = useMemo(() => {
-    const result = new Map<string, SavedScriptPackageRef[]>();
-    let run: ContentBlock[] = [];
-    displayedMessages.forEach((message, index) => {
-      if (message.role !== 'assistant') {
-        run = [];
-        return;
-      }
-      if (Array.isArray(message.content)) run.push(...(message.content as ContentBlock[]));
-      if (displayedMessages[index + 1]?.role === 'assistant') return;
-      const saved = extractSavedScriptPackages(run);
-      if (saved.length > 0) result.set(String(message.id), saved);
-      run = [];
+  // 对话「转成脚本」: packages generated from this conversation (backlink cards). Reloaded when
+  // the editor closes or a generation job changes.
+  useEffect(() => {
+    const api = window.electronAPI?.automation?.scripts;
+    if (!activeSessionId || !api || scriptEditorOpen) return;
+    let cancelled = false;
+    void api
+      .list()
+      .then((list) => {
+        if (!cancelled)
+          setOriginPackages(list.filter((pkg) => pkg.origin?.sessionId === activeSessionId));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId, scriptEditorOpen, chatScriptJobs]);
+
+  // Entry (strict trigger), backlink, job and proposal cards, under the last message of a turn.
+  const chatScriptByMessage = useMemo(() => {
+    const result = new Map<string, ChatScriptMessageInfo>();
+    if (!activeSessionId) return result;
+    const anchors = chatScriptAnchors(messages, {
+      running: Boolean(activeTurn) || isSubmitting,
+      sessionError: activeSession?.status === 'error',
     });
+    const packagesByAnchor = new Map<string, ScriptPackageSummary[]>();
+    for (const pkg of originPackages) {
+      const key = pkg.origin!.messageId;
+      packagesByAnchor.set(key, [...(packagesByAnchor.get(key) ?? []), pkg]);
+    }
+    const ids = new Set([
+      ...anchors.keys(),
+      ...packagesByAnchor.keys(),
+      ...Object.keys(chatScriptJobs),
+    ]);
+    for (const id of ids) {
+      const anchor = anchors.get(id);
+      const packages = packagesByAnchor.get(id) ?? [];
+      const job =
+        chatScriptJobs[id]?.sessionId === activeSessionId ? chatScriptJobs[id] : undefined;
+      if (!anchor && packages.length === 0 && !job) continue;
+      result.set(id, {
+        sessionId: activeSessionId,
+        ...(anchor?.eligible && job?.status !== 'running'
+          ? { entry: packages.length > 0 ? ('reconvert' as const) : ('convert' as const) }
+          : {}),
+        packages,
+        ...(job ? { job } : {}),
+        ...(anchor?.proposal
+          ? {
+              proposal: {
+                target: anchor.proposal.target,
+                scheduleTime:
+                  anchor.proposal.scheduleTime ?? detectScheduleTime(anchor.turn.userText),
+              },
+            }
+          : {}),
+      });
+    }
     return result;
-  }, [displayedMessages]);
+  }, [
+    activeSessionId,
+    messages,
+    activeTurn,
+    isSubmitting,
+    activeSession?.status,
+    originPackages,
+    chatScriptJobs,
+  ]);
 
   const messageElements = useMemo(
     () =>
@@ -919,7 +972,21 @@ export function ChatView() {
             <MessageCard
               message={message}
               isStreaming={isPendingReply}
-              savedScripts={savedScriptsByMessage.get(String(message.id)) ?? NO_SAVED_SCRIPTS}
+              chatScript={
+                displayedMessages[index + 1]?.role === 'assistant'
+                  ? undefined
+                  : chatScriptByMessage.get(String(message.id))
+              }
+              sessionTitle={activeSession?.title}
+              onConvertToScript={
+                activeSessionId
+                  ? () =>
+                      openChatScriptDialog({
+                        sessionId: activeSessionId,
+                        messageId: String(message.id),
+                      })
+                  : undefined
+              }
               onEdit={canActOnMessages && message.role === 'user' ? editIntoComposer : undefined}
               onResend={canActOnMessages && message.role === 'user' ? resendText : undefined}
               onRegenerate={
@@ -947,7 +1014,9 @@ export function ChatView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       displayedMessages,
-      savedScriptsByMessage,
+      chatScriptByMessage,
+      openChatScriptDialog,
+      activeSession?.title,
       canActOnMessages,
       editIntoComposer,
       resendText,

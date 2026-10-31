@@ -8,7 +8,9 @@ import {
   FileCode2,
   Folder,
   FolderOpen,
+  CalendarClock,
   History,
+  MessageSquare,
   PencilLine,
   Play,
   Plus,
@@ -132,14 +134,22 @@ export function ScriptPackageWorkbench({
   const { t } = useTranslation();
   const api = window.electronAPI.automation.scripts;
   const appConfig = useAppStore((state) => state.appConfig);
-  const [packageId, setPackageId] = useState<string | undefined>(target.packageId);
+  const chat = target.chat;
+  const sessions = useAppStore((state) => state.sessions);
+  const setActiveSession = useAppStore((state) => state.setActiveSession);
+  const navigateToTableAutomation = useAppStore((state) => state.navigateToTableAutomation);
+  const [packageId, setPackageId] = useState<string | undefined>(
+    target.packageId ?? chat?.packageId
+  );
   const [summary, setSummary] = useState<ScriptPackageSummary | null>(null);
   const [versions, setVersions] = useState<ScriptPackageVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [viewVersion, setViewVersion] = useState<number | null>(target.version ?? null);
   const [detail, setDetail] = useState<ScriptPackageVersionDetail | null>(null);
   const [selectedPath, setSelectedPath] = useState('');
-  const [step, setStep] = useState<Step>(target.step ?? (target.packageId ? 'review' : 'rules'));
+  const [step, setStep] = useState<Step>(
+    chat ? 'generate' : (target.step ?? (target.packageId ? 'review' : 'rules'))
+  );
   const [name, setName] = useState('');
   const [nameEditing, setNameEditing] = useState(false);
   const [rulePrompt, setRulePrompt] = useState('');
@@ -210,6 +220,28 @@ export function ScriptPackageWorkbench({
   useEffect(() => {
     if (initialised.current) return;
     initialised.current = true;
+    if (chat) {
+      // 对话「转成脚本」: the confirmed key points are the rule prompt; generate right away.
+      setName(chat.name);
+      setRuntime(chat.runtime);
+      setRulePrompt(chat.rulePrompt);
+      setBaseVersion(chat.packageId ? (chat.baseVersion ?? null) : null);
+      void (async () => {
+        if (chat.packageId) await refresh(chat.packageId).catch(() => null);
+        if (chat.paused) {
+          setStep('rules');
+          return;
+        }
+        void generate({
+          prompt: chat.rulePrompt,
+          packageId: chat.packageId,
+          baseVersion: chat.packageId ? (chat.baseVersion ?? null) : null,
+          name: chat.name,
+          runtime: chat.runtime,
+        });
+      })();
+      return;
+    }
     if (!target.packageId) {
       setName(t('scripts.editor.newName'));
       setNameEditing(true);
@@ -240,6 +272,7 @@ export function ScriptPackageWorkbench({
         setError(err instanceof Error ? err.message : String(err));
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, refresh, t, target.packageId, target.version]);
 
   useEffect(() => {
@@ -339,22 +372,47 @@ export function ScriptPackageWorkbench({
     modelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
   );
 
-  const generate = async () => {
-    const prompt = rulePrompt.trim();
+  const generate = async (
+    override: {
+      prompt: string;
+      packageId?: string;
+      baseVersion: number | null;
+      name: string;
+      runtime: ScriptRuntime;
+    } | null = null
+  ) => {
+    const prompt = (override?.prompt ?? rulePrompt).trim();
     if (!prompt || generating) return;
+    const pkgId = override ? override.packageId : packageId;
+    const base = override ? override.baseVersion : baseVersion;
+    const pkgName = override ? override.name : name;
+    const lang = override ? override.runtime : runtime;
+    const anchor = chat?.origin.messageId;
+    const setJob = useAppStore.getState().setChatScriptJob;
     setStep('generate');
     setError(null);
     const log: NormalizerGenerationLog = {
       meta: [
-        { label: t('scripts.editor.metaPackage'), value: name || packageId || '' },
+        { label: t('scripts.editor.metaPackage'), value: pkgName || pkgId || '' },
         {
           label: t('scripts.editor.metaBase'),
-          value: baseLabelFor(packageId ? baseVersion : null),
+          value: baseLabelFor(pkgId ? base : null),
         },
         {
           label: t('scripts.editor.metaLanguage'),
-          value: runtime === 'node' ? 'Node.js' : 'Python',
+          value: lang === 'node' ? 'Node.js' : 'Python',
         },
+        ...(chat
+          ? [
+              {
+                label: t('chatScript.sourceLabel'),
+                value: t('chatScript.sourceValue', {
+                  title: chat.origin.sessionTitle,
+                  turn: chat.origin.turn,
+                }),
+              },
+            ]
+          : []),
         { label: t('scripts.editor.ruleLabel'), value: truncateGenerationLogText(prompt, 160) },
       ],
       steps: [],
@@ -371,16 +429,21 @@ export function ScriptPackageWorkbench({
       applyNormalizerGenerationProgress(log, event);
       scheduleFlush();
     });
+    if (anchor && chat) {
+      setJob(anchor, { status: 'running', sessionId: chat.origin.sessionId, packageId: pkgId });
+    }
     try {
       const result = await api.generateDraft({
-        packageId,
-        name: name.trim() || undefined,
+        packageId: pkgId,
+        name: pkgName.trim() || undefined,
         rulePrompt: prompt,
-        baseVersion: packageId ? baseVersion : null,
-        runtime,
+        baseVersion: pkgId ? base : null,
+        runtime: lang,
         modelConfigSetId,
         progressId,
+        ...(chat ? { origin: chat.origin, references: chat.references } : {}),
       });
+      if (anchor) setJob(anchor, null);
       for (const item of log.steps) if (item.status === 'active') item.status = 'done';
       log.finishedAt = Date.now();
       const check = result.check;
@@ -432,6 +495,14 @@ export function ScriptPackageWorkbench({
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
       setError(message);
+      if (anchor && chat) {
+        setJob(anchor, {
+          status: 'failed',
+          sessionId: chat.origin.sessionId,
+          packageId: pkgId,
+          error: message,
+        });
+      }
     } finally {
       unsubscribe();
       if (activeProgressRef.current === progressId) activeProgressRef.current = null;
@@ -684,14 +755,28 @@ export function ScriptPackageWorkbench({
     setBusyVersion(version);
     setError(null);
     try {
-      await api.publish(packageId, version);
+      const next = await api.publish(packageId, version);
       await refresh();
+      if (chat?.afterPublish === 'create_automation') createAutomation(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusyVersion(null);
     }
   };
+
+  /** 创建自动化: the existing new-automation config, prefilled (执行脚本 + daily trigger). */
+  const createAutomation = (pkg: ScriptPackageSummary | null = summary) => {
+    if (!pkg) return;
+    onClose();
+    navigateToTableAutomation({
+      scriptPackage: { id: pkg.id, name: pkg.name, time: chat?.scheduleTime ?? '09:00' },
+    });
+  };
+  const origin = summary?.origin ?? chat?.origin;
+  const originSessionExists = Boolean(
+    origin && sessions.some((session) => session.id === origin.sessionId)
+  );
 
   const deleteVersion = async (version: number) => {
     if (!packageId) return;
@@ -1010,7 +1095,10 @@ export function ScriptPackageWorkbench({
     );
   } else {
     const isPublished = detail?.status === 'published';
-    actionCols = '104px minmax(0,1fr) 104px 120px 104px';
+    const showCreateAutomation = isPublished && Boolean(origin);
+    actionCols = showCreateAutomation
+      ? '104px minmax(0,1fr) 104px 120px 104px 120px'
+      : '104px minmax(0,1fr) 104px 120px 104px';
     actionCells = (
       <>
         {backCell}
@@ -1090,6 +1178,17 @@ export function ScriptPackageWorkbench({
               <Upload className="h-3.5 w-3.5" />
             )}
             {t('scripts.editor.publishVersion', { version: detail?.version ?? '' })}
+          </button>
+        )}
+        {showCreateAutomation && (
+          <button
+            type="button"
+            onClick={() => createAutomation()}
+            data-testid="script-create-automation"
+            className="ui-accent-cell border-l border-border-subtle"
+          >
+            <CalendarClock className="h-3.5 w-3.5" />
+            {t('chatScript.createAutomation')}
           </button>
         )}
       </>
@@ -1235,6 +1334,38 @@ export function ScriptPackageWorkbench({
                   : '—'}
               </span>
             </RawTableConfigRow>
+            {origin && (
+              <RawTableConfigRow label={t('chatScript.sourceLabel')}>
+                <div
+                  className="flex min-h-[35px] min-w-0 flex-1 items-stretch"
+                  data-testid="script-origin"
+                >
+                  <div className="flex min-w-0 flex-1 items-center gap-2 px-[10px] text-[12px] text-text-muted">
+                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="truncate">
+                      {originSessionExists
+                        ? t('chatScript.sourceValue', {
+                            title: origin.sessionTitle,
+                            turn: origin.turn,
+                          })
+                        : t('chatScript.sourceDeleted', { title: origin.sessionTitle })}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!originSessionExists}
+                    onClick={() => {
+                      onClose();
+                      setActiveSession(origin.sessionId);
+                    }}
+                    data-testid="script-origin-open"
+                    className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle disabled:opacity-40"
+                  >
+                    {t('chatScript.openConversation')}
+                  </button>
+                </div>
+              </RawTableConfigRow>
+            )}
           </section>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

@@ -7,7 +7,10 @@ import type { AutomationRunContext } from '../../src/main/automation/automation-
 import { registerScriptRunAction } from '../../src/main/automation/script-run-action';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
 import type { DataCommandService } from '../../src/main/data/data-command-service';
-import type { SessionManager } from '../../src/main/session/session-manager';
+import type {
+  FixScriptFilesInput,
+  ScriptFilesGenerator,
+} from '../../src/main/automation/script-packages/generator';
 
 let root: string;
 let scripts: ScriptPackageService;
@@ -25,7 +28,7 @@ function context(): AutomationRunContext & { artifacts: unknown[] } {
   };
 }
 
-function setup(sessionManager?: Partial<SessionManager>) {
+function setup(generator?: ScriptFilesGenerator) {
   const commands = {
     updateRawTable: vi.fn(async (input: { id: string }) => ({
       rawTable: { id: input.id, name: 'T' },
@@ -39,7 +42,7 @@ function setup(sessionManager?: Partial<SessionManager>) {
   registerScriptRunAction(registry, {
     scripts,
     commands: commands as unknown as DataCommandService,
-    sessionManager: sessionManager as SessionManager | undefined,
+    generator,
     now: () => Date.now(),
   });
   return { commands, action: registry.get('script.run')! };
@@ -70,7 +73,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }));
 describe('script.run action', () => {
   it('imports the output into the selected raw table without any AI session', async () => {
     const startSession = vi.fn();
-    const { commands, action } = setup({ startSession } as Partial<SessionManager>);
+    const { commands, action } = setup({ generate: startSession, fix: startSession });
     const ctx = context();
     const config = { packageId: 'fx', timeoutMs: 20_000, rawTableId: 'raw-1' };
     const result = await action.execute(config, ctx, node(config));
@@ -112,7 +115,7 @@ describe('script.run action', () => {
 
   it('notify policy: fails with the package name and keeps old data', async () => {
     const startSession = vi.fn();
-    const { commands, action } = setup({ startSession } as Partial<SessionManager>);
+    const { commands, action } = setup({ generate: startSession, fix: startSession });
     await breakPublished();
     const config = {
       packageId: 'fx',
@@ -136,27 +139,21 @@ describe('script.run action', () => {
     expect((await scripts.summary('fx')).draft?.source).toBe('manual');
   });
 
-  it('ai_repair policy: repairs in the package folder and overwrites one AI draft', async () => {
+  it('ai_repair policy: the script generation agent fixes the published version into one AI draft', async () => {
     await breakPublished();
     let rate = 7.2;
-    const startSession = vi.fn(async (_title: string, prompt: string, cwd: string) => {
-      expect(prompt).toContain('SOPHRON_OUTPUT');
-      expect(cwd).toBe(path.join(root, 'fx'));
-      // The "AI" repairs the published code checked out in the package folder.
+    const fix = vi.fn(async (input: FixScriptFilesInput) => {
+      expect(input.request.error).toContain('选择器失效');
+      // The agent fixes the published (broken) code in its workspace.
+      expect(input.files.find((file) => file.path === 'main.js')?.content).toContain('选择器失效');
       writeFileSync(
-        path.join(cwd, 'main.js'),
+        path.join(input.workspace.dir, 'main.js'),
         `require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'ccy,rate\\nCNY,${rate}\\n')`
       );
-      return { id: `s${startSession.mock.calls.length}`, title: '修复脚本' };
+      return { summary: '修好了选择器', stop: 'done' as const, selfTests: 1 };
     });
-    const listSessions = vi.fn(() => [
-      { id: 's1', status: 'completed' },
-      { id: 's2', status: 'completed' },
-    ]);
-    const { commands, action } = setup({
-      startSession,
-      listSessions,
-    } as unknown as Partial<SessionManager>);
+    const generate = vi.fn();
+    const { commands, action } = setup({ generate, fix });
     const config = {
       packageId: 'fx',
       timeoutMs: 20_000,
@@ -167,16 +164,12 @@ describe('script.run action', () => {
       '汇率：选择器失效 · 脚本已重新生成为 v3 草稿（试运行 1 行），待发布'
     );
     expect(commands.updateRawTable).not.toHaveBeenCalled();
-    // Unattended: permission prompts are denied rather than blocking the run.
-    expect((startSession.mock.calls[0] as unknown[])[7]).toMatchObject({
-      denyPermissionRequests: true,
-      permissionRules: expect.arrayContaining([{ tool: 'script_package_test', action: 'allow' }]),
-    });
+    expect(generate).not.toHaveBeenCalled();
     // Second failure: the same v3 draft is overwritten.
     rate = 7.3;
     await expect(action.execute(config, context(), node(config))).rejects.toThrow('v3 草稿');
     const summary = await scripts.summary('fx');
-    expect(summary.draft).toMatchObject({ version: 3, source: 'ai_repair', sessionId: 's2' });
+    expect(summary.draft).toMatchObject({ version: 3, source: 'ai_repair', baseVersion: 2 });
     expect(summary.versionCount).toBe(3);
     // The published (broken) version keeps running until the draft is published.
     await expect(scripts.run('fx', { timeoutMs: 20_000 })).rejects.toThrow('选择器失效');
@@ -184,6 +177,15 @@ describe('script.run action', () => {
     const fixed = await scripts.run('fx', { timeoutMs: 20_000 });
     expect(fixed.rows).toBe(1);
     expect(readFileSync(fixed.csvPath, 'utf8')).toContain('7.3');
+  });
+
+  it('ai_repair policy without a generator reports it is unavailable', async () => {
+    await breakPublished();
+    const { action } = setup();
+    const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
+    await expect(action.execute(config, context(), node(config))).rejects.toThrow(
+      'AI 重新生成不可用'
+    );
   });
 });
 

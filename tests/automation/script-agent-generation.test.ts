@@ -87,6 +87,62 @@ describe('规则生成 with a self-testing agent', () => {
     expect((await service.listVersions(result.summary.id)).length).toBe(1);
   });
 
+  it('对话转成脚本: saves a 「对话生成」 draft with the origin and hands over the references', async () => {
+    const origin = {
+      sessionId: 's1',
+      sessionTitle: 'OSChina更新榜单获取',
+      turn: 1,
+      messageId: 'm4',
+    };
+    const seen: Array<{ fromConversation?: boolean; references?: unknown }> = [];
+    const generator: ScriptFilesGenerator = {
+      async generate(input) {
+        seen.push({ fromConversation: input.fromConversation, references: input.references });
+        write(input.workspace.dir, {
+          'manifest.json': MANIFEST,
+          'main.js': mainWith([]),
+          'lib/rows.js': rowsModule(seen.length > 1 ? ['1,Alpha', '2,Beta'] : ['1,Alpha']),
+        });
+        return { summary: '用对话里验证过的接口', stop: 'done', selfTests: 1 };
+      },
+      fix: async () => {
+        throw new Error('not needed');
+      },
+    };
+    const references = [{ name: 'fetch.py', content: 'import requests' }];
+    const first = await service.generateDraft(
+      {
+        name: 'OSChina榜单',
+        rulePrompt: '【来自对话：OSChina更新榜单获取 · 第 1 轮，已验证】',
+        baseVersion: null,
+        runtime: 'node',
+        origin,
+        references,
+      },
+      generator
+    );
+    expect(seen[0]).toEqual({ fromConversation: true, references });
+    expect(first.version).toMatchObject({ version: 1, source: 'chat', sessionId: 's1', rows: 1 });
+    expect(first.summary.origin).toEqual(origin);
+    expect((await service.list()).find((pkg) => pkg.id === first.summary.id)?.origin).toEqual(
+      origin
+    );
+    // 再次转成脚本 (update): a new draft of the same package, based on the current one.
+    await service.publish(first.summary.id, 1);
+    const again = await service.generateDraft(
+      {
+        packageId: first.summary.id,
+        rulePrompt: '【来自对话：OSChina更新榜单获取 · 第 1 轮，已验证】改',
+        baseVersion: 1,
+        runtime: 'node',
+        origin,
+      },
+      generator
+    );
+    expect(again.version).toMatchObject({ version: 2, source: 'chat', baseVersion: 1 });
+    expect(again.summary.published?.version).toBe(1);
+  });
+
   it('stops after 3 auto-fix rounds and still saves the draft with the failing check', async () => {
     let fixes = 0;
     const generator: ScriptFilesGenerator = {
@@ -323,5 +379,27 @@ describe('describeCommand', () => {
         `python3 - <<'EOF'\nurl="https://apiv1.oschina.net/oschinapi/project/ranking"\nEOF`
       )
     ).toBe('运行 Python 探查 https://apiv1.oschina.net/oschinapi/project/ranking');
+  });
+});
+
+describe('newPackageId', () => {
+  it('skips ids whose version rows outlived their folder', async () => {
+    const { MemoryScriptVersionStore } =
+      await import('../../src/main/automation/script-packages/version-store');
+    const versions = new MemoryScriptVersionStore();
+    versions.insert({
+      packageId: 'OSChina',
+      version: 1,
+      commit: 'abc',
+      status: 'published',
+      source: 'chat',
+      entry: 'main.py',
+      runtime: 'python',
+      baseVersion: null,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const scripts = new ScriptPackageService({ rootDir: root, versions });
+    expect(await scripts.newPackageId('OSChina')).toBe('OSChina_2');
   });
 });

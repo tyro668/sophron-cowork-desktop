@@ -490,6 +490,27 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           setDraft(next);
         })
         .catch((error) => setBanner({ tone: 'error', text: String(error) }));
+    } else if (outputNavigation.scriptPackage) {
+      // 创建自动化 from the script editor: 执行脚本 (this package) on a daily trigger; not saved.
+      const pkg = outputNavigation.scriptPackage;
+      const base = createEmptyDraft(pkg.name);
+      setSelectedId(null);
+      setDraft({
+        ...base,
+        trigger: { ...base.trigger, kind: 'daily', times: [pkg.time] },
+        actionGraph: {
+          version: 1,
+          edges: [],
+          nodes: [
+            {
+              id: crypto.randomUUID(),
+              type: 'script.run',
+              enabled: true,
+              config: { packageId: pkg.id, timeoutMs: 120_000, onScriptError: 'notify' },
+            },
+          ],
+        },
+      });
     } else if (outputNavigation.resultTable) {
       const table = outputNavigation.resultTable;
       setSelectedId(null);

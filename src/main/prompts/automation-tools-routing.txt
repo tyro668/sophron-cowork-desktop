@@ -5,7 +5,7 @@ Supported automation actions are: run one saved data pipeline, run one saved scr
 Four creation routes:
 1. Reuse a data pipeline: resolve its id with data_list_pipelines, then prepare action.kind=data_pipeline.
 2. Create a data pipeline: follow the mandatory data requirement analysis and later-user-confirmation flow, generate the saved pipeline, then prepare action.kind=data_pipeline with the generated pipeline id.
-3. Fetch data from a website or API on a schedule: save a script package first (script_package_save + script_package_test), then prepare action.kind=script with its packageId. Prefer this over a conversation action whenever the fetch is deterministic, because runs cost no model tokens.
+3. Fetch data from a website or API on a schedule: use a published script package (script_package_list) and prepare action.kind=script with its packageId; if there is none yet, fetch the data in this conversation and call script_package_propose so the user generates and publishes it from the 「转成脚本」 card (the editor then offers 「创建自动化」). Prefer this over a conversation action whenever the fetch is deterministic, because runs cost no model tokens.
 4. General pipeline: prepare action.kind=conversation with the complete prompt to execute each time.
 Never put data-pipeline generation inside a scheduled conversation prompt. Generate the data pipeline at configuration time so recurring executions reuse the validated saved pipeline without model tokens.
 If the user gives a recurring frequency without an execution time, ask for the time. Do not invent 09:00 or another default.

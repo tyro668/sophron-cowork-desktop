@@ -34,6 +34,7 @@ import {
   Pin,
   PinOff,
   Copy,
+  Wand2,
 } from 'lucide-react';
 import { useConfirmDialog } from './ConfirmDialog';
 import type { AppUpdateState } from '../types';
@@ -84,6 +85,18 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     isElectron,
   } = useIPC();
   const [hoveredSession, setHoveredSession] = useState<string | null>(null);
+  const openChatScriptDialog = useAppStore((s) => s.openChatScriptDialog);
+  /** 转成脚本 in 任务操作: anchor of the latest qualifying turn per session (null = none). */
+  const [scriptTurnBySession, setScriptTurnBySession] = useState<Record<string, string | null>>({});
+  const loadScriptTurn = useCallback((sessionId: string) => {
+    const api = window.electronAPI?.automation?.scripts;
+    if (!api?.chatTurns) return;
+    void api
+      .chatTurns(sessionId)
+      .then((turns) => turns[turns.length - 1]?.anchorId ?? null)
+      .catch(() => null)
+      .then((anchor) => setScriptTurnBySession((current) => ({ ...current, [sessionId]: anchor })));
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -781,6 +794,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
             <GlassDropdownMenu
               align="end"
               sideOffset={4}
+              onOpenChange={(open) => {
+                if (open) loadScriptTurn(session.id);
+              }}
               trigger={
                 <button
                   type="button"
@@ -816,6 +832,18 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
                 onSelect={() => duplicateSession(session.id, t('sidebar.copySuffix'))}
               >
                 {t('sidebar.copyTask')}
+              </GlassMenuItem>
+              <GlassMenuItem
+                icon={<Wand2 className="h-3.5 w-3.5" />}
+                disabled={!scriptTurnBySession[session.id]}
+                onSelect={() => {
+                  const anchor = scriptTurnBySession[session.id];
+                  if (!anchor) return;
+                  void handleSessionClick(session.id);
+                  openChatScriptDialog({ sessionId: session.id, messageId: anchor });
+                }}
+              >
+                {t('chatScript.convert')}
               </GlassMenuItem>
               <GlassMenuItem
                 danger

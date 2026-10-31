@@ -6,6 +6,7 @@ import {
   scriptManifestSchema,
   type ScriptManifest,
   type ScriptPackageEditorState,
+  type ScriptChatOrigin,
   type ScriptPackageFile,
   type ScriptPackageRunInfo,
   type ScriptPackageSummary,
@@ -60,6 +61,8 @@ export interface GenerateDraftOptions {
   onProgress?: (event: Omit<ScriptGenerateProgressEvent, 'progressId'>) => void;
   /** 取消 in the editor. */
   signal?: AbortSignal;
+  /** Automation whose failed run asked for this AI 修复. */
+  automationId?: string;
 }
 
 interface PackageState {
@@ -72,6 +75,8 @@ interface PackageState {
   /** Display name set in the editor (overrides manifest.name). */
   displayName?: string;
   editor?: ScriptPackageEditorState;
+  /** 对话「转成脚本」 origin of the package. */
+  origin?: ScriptChatOrigin;
 }
 
 export interface ScriptRunOutput extends ParsedScriptOutput {
@@ -168,7 +173,8 @@ export class ScriptPackageService {
         .slice(0, 60) || 'script';
     for (let index = 1; index < 1000; index += 1) {
       const id = index === 1 ? base : `${base}_${index}`;
-      if (!existsSync(path.join(this.rootDir, id))) return id;
+      // Version rows can outlive a folder deleted outside the app: never reuse their id.
+      if (!existsSync(path.join(this.rootDir, id)) && this.store.list(id).length === 0) return id;
     }
     return `${base}_${this.now()}`;
   }
@@ -211,6 +217,7 @@ export class ScriptPackageService {
       published: published && toVersion(published),
       draft: draft && toVersion(draft),
       versionCount: records.length,
+      ...(state.origin ? { origin: state.origin } : {}),
     };
     let manifest: ScriptManifest;
     try {
@@ -496,7 +503,7 @@ export class ScriptPackageService {
       const outcome = await generator.fix({
         name,
         runtime: base.runtime,
-        rulePrompt: base.source === 'rule' ? base.rulePrompt : undefined,
+        rulePrompt: base.source === 'rule' || base.source === 'chat' ? base.rulePrompt : undefined,
         files,
         baseLabel: `v${base.version}（${STATUS_LABEL[base.status]}）`,
         request: {
@@ -537,6 +544,7 @@ export class ScriptPackageService {
           .join('\n'),
         baseVersion: base.version,
         rows: check.passed ? check.rows : undefined,
+        ...(options.automationId ? { automationId: options.automationId } : {}),
       });
       started = null;
       if (!saved) throw new ScriptPackageError('保存 AI 修复草稿失败', 'invalid');
@@ -620,6 +628,7 @@ export class ScriptPackageService {
         baseFiles,
         baseLabel: input.baseVersion != null ? `v${input.baseVersion}` : undefined,
         lastError,
+        ...(input.origin ? { fromConversation: true, references: input.references ?? [] } : {}),
         workspace,
         runtimeConfig: options.runtimeConfig,
         signal: options.signal,
@@ -682,7 +691,8 @@ export class ScriptPackageService {
       options.signal?.throwIfAborted();
       emit({ phase: 'saving', kind: 'message', text: `保存为草稿 · ${files.length} 个文件` });
       const saved = await this.endAgentEdit(id, {
-        source: 'rule',
+        source: input.origin ? 'chat' : 'rule',
+        ...(input.origin ? { sessionId: input.origin.sessionId } : {}),
         rulePrompt: input.rulePrompt,
         baseVersion: input.baseVersion,
         rows: check.passed ? check.rows : undefined,
@@ -695,6 +705,7 @@ export class ScriptPackageService {
           runtime: input.runtime,
           modelConfigSetId: input.modelConfigSetId,
         },
+        ...(input.origin ? { origin: input.origin } : {}),
       });
       emit({ phase: 'complete', kind: 'message', text: `已保存 v${saved.version.version} 草稿` });
       return {

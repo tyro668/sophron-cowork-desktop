@@ -99,6 +99,24 @@ export interface ScriptPackageSummary {
   versionCount: number;
   /** Manifest problem; the package is listed but cannot run. */
   invalid?: string;
+  /** 对话「转成脚本」: the conversation turn this package was generated from. */
+  origin?: ScriptChatOrigin;
+}
+
+/** Conversation turn a package was generated from (来源 row, chat backlink). */
+export interface ScriptChatOrigin {
+  sessionId: string;
+  sessionTitle: string;
+  /** 1-based turn number. */
+  turn: number;
+  /** Last assistant message of the turn. */
+  messageId: string;
+}
+
+/** Redacted reference handed to the generation agent (e.g. the conversation's fetch code). */
+export interface ScriptReferenceFile {
+  name: string;
+  content: string;
 }
 
 export interface ScriptTestRunResult {
@@ -131,6 +149,10 @@ export interface ScriptGenerateDraftInput {
   progressId?: string;
   /** 交给 AI 修复: edit `baseVersion` (the current draft) from a trial-run failure. */
   fix?: ScriptFixInput;
+  /** 对话「转成脚本」: version source becomes 对话生成 and the package records the turn. */
+  origin?: ScriptChatOrigin;
+  /** Reference files (redacted fetch code from the conversation), ≤ 16 KB in total. */
+  references?: ScriptReferenceFile[];
 }
 
 /** A trial-run failure handed to the model (the main process redacts paths and secrets). */

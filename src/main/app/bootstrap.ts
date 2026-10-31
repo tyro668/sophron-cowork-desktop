@@ -1,4 +1,5 @@
 import { markPersonalAnalysisKeyDisconnected } from '../features/data/cloud-connection-state';
+import { scriptFilesGenerator } from '../features/automation/script-generator';
 import { createRawTableReimporter } from '../automation/raw-table-reimport';
 import { setSkillUsageSink } from '../skills/skill-usage';
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
@@ -266,6 +267,7 @@ export async function bootstrap(): Promise<void> {
   });
   const automationActionRegistry = createDefaultAutomationActionRegistry({
     scriptPackages: appContext.scriptPackages,
+    scriptGenerator: scriptFilesGenerator,
     dataPipelineStore: initializedDataPipelineStore,
     automationStore: appContext.automationStore,
     dataCommandService: appContext.dataCommandService ?? undefined,
