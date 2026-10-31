@@ -21,6 +21,7 @@ import {
   normalizerSecretScope,
   scriptSecretScope,
 } from '../../exec-guard/secret-store';
+import { SCRIPT_RUN_ACTION } from '../../../shared/automation/script-package';
 import type {
   ScriptGenerateDraftInput,
   ScriptPackageEditorState,
@@ -30,6 +31,19 @@ import type { ScriptRunTarget } from '../../automation/script-packages/service';
 function requireScripts() {
   if (!appContext.scriptPackages) throw new Error('Script packages are not initialized');
   return appContext.scriptPackages;
+}
+
+/** Names of the automations whose 执行脚本 nodes run the package. */
+export function scriptPackageUsers(packageId: string): string[] {
+  const automations =
+    appContext.automationStore?.list({ status: 'all', limit: 100_000 }).automations ?? [];
+  return automations
+    .filter((automation) =>
+      automation.actionGraph.nodes.some(
+        (node) => node.type === SCRIPT_RUN_ACTION && node.config?.packageId === packageId
+      )
+    )
+    .map((automation) => automation.name);
 }
 
 function requireSession(sessionId: string) {
@@ -91,6 +105,14 @@ export function registerScriptPackageIpc(): void {
   handleIpc('automation.scripts.publish', (_event, id: string, version: number) =>
     requireScripts().publish(id, version)
   );
+  /** Delete a whole package; refused while an automation still runs it. */
+  handleIpc('automation.scripts.delete', async (_event, id: string) => {
+    const users = scriptPackageUsers(id);
+    if (users.length > 0)
+      throw new Error(`自动化「${users.join('」「')}」还在使用这个脚本包，请先在自动化里换掉`);
+    await requireScripts().deletePackage(id);
+    return { success: true };
+  });
   handleIpc('automation.scripts.deleteVersion', (_event, id: string, version: number) =>
     requireScripts().deleteVersion(id, version)
   );

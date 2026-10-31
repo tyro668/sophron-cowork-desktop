@@ -140,6 +140,7 @@ export interface ScriptPackageServiceOptions {
   secrets?: {
     env(scope: string): Record<string, string>;
     set?(scope: string, name: string, value: string): unknown;
+    deleteScope?(scope: string): void;
   };
 }
 
@@ -214,10 +215,18 @@ export class ScriptPackageService {
     await mkdir(this.rootDir, { recursive: true });
     const entries = await readdir(this.rootDir, { withFileTypes: true });
     const result: ScriptPackageSummary[] = [];
+    const seen = new Set<string>();
     for (const entry of entries) {
       if (!entry.isDirectory() || !PACKAGE_ID_PATTERN.test(entry.name)) continue;
       if (!existsSync(path.join(this.rootDir, entry.name, 'manifest.json'))) continue;
+      seen.add(entry.name);
       result.push(await this.summary(entry.name));
+    }
+    // Versions whose folder was deleted outside the app: listed as missing so they can be deleted.
+    for (const id of this.store.packageIds()) {
+      if (seen.has(id) || !PACKAGE_ID_PATTERN.test(id)) continue;
+      if (existsSync(path.join(this.rootDir, id, 'manifest.json'))) continue;
+      result.push({ ...(await this.summaryUnsynced(id, this.packageDir(id))), missing: true });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
   }
@@ -472,6 +481,20 @@ export class ScriptPackageService {
       } finally {
         this.repairing.delete(id);
       }
+    });
+  }
+
+  /**
+   * Delete a package for good: its version rows, folder (git repo included) and secrets.
+   * The caller checks that no automation still runs it.
+   */
+  deletePackage(id: string): Promise<void> {
+    return this.withLock(id, async () => {
+      if (this.repairing.has(id)) throw new ScriptPackageError('AI 正在修改这个脚本包', 'invalid');
+      const dir = this.packageDir(id);
+      await rm(dir, { recursive: true, force: true });
+      this.store.deletePackage(id);
+      this.options.secrets?.deleteScope?.(scriptSecretScope(id));
     });
   }
 

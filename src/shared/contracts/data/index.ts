@@ -132,6 +132,12 @@ export interface DataRawTableNormalizerArtifact {
   updatedAt: number;
 }
 
+/** A normalizer and the raw tables whose 自定义 processing runs it. */
+export interface DataRawTableNormalizerUsage {
+  artifact: DataRawTableNormalizerArtifact;
+  usedBy: Array<{ id: string; name: string }>;
+}
+
 export interface DataRawTableNormalizerArtifactVersion {
   id: string;
   artifactId: string;

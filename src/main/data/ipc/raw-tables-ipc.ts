@@ -266,6 +266,13 @@ export function registerRawTablesIpc({
     }
   );
 
+  handleIpc('data.listRawTableNormalizers', () =>
+    requireDataPipelineStore().listRawTableNormalizerArtifacts()
+  );
+  handleIpc('data.deleteRawTableNormalizer', (_event, artifactId: string) =>
+    requireDataPipelineStore().deleteRawTableNormalizerArtifact(artifactId)
+  );
+
   handleIpc('data.deleteRawTable', async (_event, id: string) => {
     try {
       return { success: await requireDataPipelineStore().deleteRawTable(id) };

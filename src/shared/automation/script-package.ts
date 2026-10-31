@@ -120,6 +120,8 @@ export interface ScriptPackageSummary {
   versionCount: number;
   /** Manifest problem; the package is listed but cannot run. */
   invalid?: string;
+  /** Its folder was deleted outside the app; only its versions remain. */
+  missing?: boolean;
   /** 对话「转成脚本」: the conversation turn this package was generated from. */
   origin?: ScriptChatOrigin;
 }

@@ -25,7 +25,10 @@ import {
 } from '../input-source';
 import { findReusableDraft, PUBLISHED_TAG } from '../../../versioning/git-repo';
 import { getSecretStore, normalizerSecretScope } from '../../../exec-guard/secret-store';
-import type { DataRawTableNormalizerArtifactVersion } from '../../../../shared/contracts';
+import type {
+  DataRawTableNormalizerArtifactVersion,
+  DataRawTableNormalizerUsage,
+} from '../../../../shared/contracts';
 import { NormalizerRepository } from '../repositories/normalizer-repository';
 import { InputSourceSummaryService } from './input-source-summary-service';
 import * as fs from 'fs';
@@ -343,6 +346,54 @@ export class NormalizerService {
       artifact: await this.normalizers.requireRawTableNormalizerArtifact(artifact.id),
       version: await this.normalizers.requireRawTableNormalizerArtifactVersion(versionId),
     };
+  }
+  /** Every normalizer with the raw tables that use it (unused ones can be deleted). */
+  async listRawTableNormalizerArtifacts(): Promise<DataRawTableNormalizerUsage[]> {
+    await this.ctx.ensureMetadataReady();
+    const users = await this.normalizerUsers();
+    return (await this.normalizers.listArtifacts()).map((artifact) => ({
+      artifact,
+      usedBy: users.get(artifact.id) ?? [],
+    }));
+  }
+  /** Delete an unused normalizer: its rows, git repo folder and secrets. */
+  async deleteRawTableNormalizerArtifact(artifactId: string): Promise<{ success: boolean }> {
+    await this.ctx.ensureMetadataReady();
+    const artifact = await this.normalizers.requireRawTableNormalizerArtifact(artifactId);
+    const usedBy = (await this.normalizerUsers()).get(artifact.id) ?? [];
+    if (usedBy.length > 0) {
+      throw new Error(
+        `原始表「${usedBy.map((table) => table.name).join('」「')}」还在使用这个处理脚本`
+      );
+    }
+    await this.withRepoLock(artifact.id, async () => {
+      fs.rmSync(this.normalizers.getRawTableNormalizerRepoDir(artifact.id), {
+        recursive: true,
+        force: true,
+      });
+      await this.normalizers.deleteArtifactRows(artifact.id);
+      getSecretStore()?.deleteScope(normalizerSecretScope(artifact.id));
+    });
+    return { success: true };
+  }
+  private async normalizerUsers(): Promise<Map<string, Array<{ id: string; name: string }>>> {
+    const rows = await this.ctx.metaQueryRows<{
+      id: string;
+      name: string;
+      config_json: string | null;
+    }>('SELECT id, name, config_json FROM data_raw_tables');
+    const users = new Map<string, Array<{ id: string; name: string }>>();
+    for (const row of rows) {
+      let artifactId: unknown;
+      try {
+        artifactId = JSON.parse(row.config_json ?? '{}')?.dataProcessing?.artifactId;
+      } catch {
+        continue;
+      }
+      if (typeof artifactId !== 'string' || !artifactId) continue;
+      users.set(artifactId, [...(users.get(artifactId) ?? []), { id: row.id, name: row.name }]);
+    }
+    return users;
   }
   async deleteRawTableNormalizerArtifactVersion(versionId: string): Promise<{ success: boolean }> {
     await this.ctx.ensureMetadataReady();

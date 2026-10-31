@@ -303,4 +303,22 @@ export class NormalizerRepository {
       { versionId }
     );
   }
+  async listArtifacts(): Promise<DataRawTableNormalizerArtifact[]> {
+    const rows = await this.ctx.metaQueryRows<DataRawTableNormalizerArtifactRow>(
+      'SELECT * FROM data_raw_table_normalizer_artifacts ORDER BY updated_at DESC'
+    );
+    return rows.map(mapRawTableNormalizerArtifactRow);
+  }
+  async deleteArtifactRows(artifactId: string): Promise<void> {
+    await this.ctx.metaRunSql(
+      'DELETE FROM data_raw_table_normalizer_artifact_versions WHERE artifact_id = $artifactId',
+      { artifactId }
+    );
+    await this.ctx.metaRunSql(
+      'DELETE FROM data_raw_table_normalizer_artifacts WHERE id = $artifactId',
+      {
+        artifactId,
+      }
+    );
+  }
 }
