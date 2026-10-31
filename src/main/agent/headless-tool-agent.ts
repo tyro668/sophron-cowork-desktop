@@ -19,6 +19,14 @@ import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { resolvePiAiTarget } from './pi-ai-one-shot';
 import type { AnyAgentTool } from './workspace-tools';
 import { log, logWarn } from '../utils/logger';
+import { redactOutput } from '../exec-guard/redact';
+import { appendFileSync, mkdirSync } from 'fs';
+import path from 'path';
+
+const LOG_CLIP = 2000;
+function clip(text: string): string {
+  return text.length > LOG_CLIP ? `${text.slice(0, LOG_CLIP)}…（共 ${text.length} 字）` : text;
+}
 
 export type HeadlessAgentEvent =
   | { type: 'tool_start'; id: string; name: string; args: Record<string, unknown> }
@@ -33,7 +41,15 @@ export type HeadlessAgentEvent =
   | { type: 'assistant_text'; text: string }
   | { type: 'turn'; turn: number };
 
-export type HeadlessAgentStop = 'done' | 'max_turns' | 'timeout' | 'aborted' | 'error';
+export type HeadlessAgentStop =
+  'done' | 'max_turns' | 'max_tokens' | 'timeout' | 'aborted' | 'error';
+
+/** Tokens the model reported for the whole agent (all prompts). */
+export interface HeadlessAgentTokens {
+  input: number;
+  output: number;
+  total: number;
+}
 
 export interface HeadlessAgentResult {
   /** Final assistant text of this prompt. */
@@ -43,6 +59,7 @@ export interface HeadlessAgentResult {
   turns: number;
   toolCalls: number;
   durationMs: number;
+  tokens: HeadlessAgentTokens;
 }
 
 export interface HeadlessToolAgentOptions {
@@ -55,6 +72,13 @@ export interface HeadlessToolAgentOptions {
   timeoutMs: number;
   signal?: AbortSignal;
   maxTokens?: number;
+  /** Token budget for the whole agent; the loop ends after the turn that crosses it. */
+  maxTotalTokens?: number;
+  /**
+   * JSONL file that receives every tool call (redacted, truncated) and a closing summary, so a
+   * generation / repair can be inspected afterwards.
+   */
+  toolLogFile?: string;
   temperature?: number;
   onEvent?: (event: HeadlessAgentEvent) => void;
   /**
@@ -93,6 +117,8 @@ export class HeadlessToolAgent {
   private turnsThisPrompt = 0;
   private maxTurnsThisPrompt: number;
   private toolCalls = 0;
+  private overBudget = false;
+  private readonly tokens: HeadlessAgentTokens = { input: 0, output: 0, total: 0 };
   private readonly toolArgs = new Map<string, Record<string, unknown>>();
   private readonly unsubscribeAbort?: () => void;
 
@@ -141,6 +167,11 @@ export class HeadlessToolAgent {
         const maxTurns = this.maxTurnsThisPrompt;
         if (this.turnsThisPrompt >= maxTurns) return { action: 'end' };
         if (Date.now() >= this.deadline) return { action: 'end' };
+        const budget = this.options.maxTotalTokens;
+        if (budget && this.tokens.total >= budget) {
+          this.overBudget = true;
+          return { action: 'end' };
+        }
         const notice = this.options.budgetNotice?.({
           turn: this.turnsThisPrompt,
           maxTurns,
@@ -171,15 +202,30 @@ export class HeadlessToolAgent {
     } else if (event.type === 'tool_execution_end') {
       const args = this.toolArgs.get(event.toolCallId) ?? {};
       this.toolArgs.delete(event.toolCallId);
+      const text = toolResultText(event.result);
       emit?.({
         type: 'tool_end',
         id: event.toolCallId,
         name: event.toolName,
         args,
         isError: Boolean(event.isError),
-        text: toolResultText(event.result),
+        text,
+      });
+      this.writeLog({
+        type: 'tool',
+        turn: this.turnsThisPrompt + 1,
+        tool: event.toolName,
+        args: clip(JSON.stringify(args)),
+        isError: Boolean(event.isError),
+        result: clip(text),
       });
     } else if (event.type === 'message_end') {
+      const usage = (event.message as AssistantMessage | undefined)?.usage;
+      if ((event.message as { role?: string })?.role === 'assistant' && usage) {
+        this.tokens.input += usage.input + (usage.cacheRead ?? 0);
+        this.tokens.output += usage.output;
+        this.tokens.total += usage.totalTokens || usage.input + usage.output;
+      }
       const text = textOf(event.message);
       if (text) emit?.({ type: 'assistant_text', text });
     }
@@ -223,6 +269,12 @@ export class HeadlessToolAgent {
       this.turnsThisPrompt >= this.maxTurnsThisPrompt &&
       (last?.content ?? []).some((block) => block.type === 'toolCall');
     if (hitTurnCap) return this.result(finalText, 'max_turns', '达到轮次上限');
+    if (this.overBudget)
+      return this.result(
+        finalText,
+        'max_tokens',
+        `超过 token 上限（${this.options.maxTotalTokens?.toLocaleString('en-US')}）`
+      );
     if (Date.now() >= this.deadline) return this.result(finalText, 'timeout', '超过时间上限');
     return this.result(finalText, 'done');
   }
@@ -235,13 +287,50 @@ export class HeadlessToolAgent {
       turns: this.turnsThisPrompt,
       toolCalls: this.toolCalls,
       durationMs: Date.now() - this.startedAt,
+      tokens: { ...this.tokens },
     };
-    log('[HeadlessAgent]', stop, `turns=${result.turns}`, `tools=${result.toolCalls}`);
+    log(
+      '[HeadlessAgent]',
+      stop,
+      `turns=${result.turns}`,
+      `tools=${result.toolCalls}`,
+      `tokens=${result.tokens.total}`
+    );
+    this.writeLog({
+      type: 'end',
+      stop,
+      ...(error ? { error } : {}),
+      turns: result.turns,
+      toolCalls: result.toolCalls,
+      durationMs: result.durationMs,
+      tokens: result.tokens,
+    });
     return result;
+  }
+
+  private writeLog(entry: Record<string, unknown>): void {
+    const file = this.options.toolLogFile;
+    if (!file) return;
+    try {
+      mkdirSync(path.dirname(file), { recursive: true });
+      appendFileSync(
+        file,
+        `${redactOutput(JSON.stringify({ at: Date.now(), ...entry }))}\n`,
+        'utf8'
+      );
+    } catch (error) {
+      logWarn('[HeadlessAgent] tool log write failed:', error);
+    }
   }
 
   dispose(): void {
     this.unsubscribeAbort?.();
     this.agent?.abort();
   }
+}
+
+/** 「12 轮 · 30 次工具调用 · 输入 85k / 输出 9k tokens」 */
+export function formatAgentUsage(result: HeadlessAgentResult): string {
+  const k = (value: number) => (value >= 1000 ? `${Math.round(value / 1000)}k` : String(value));
+  return `本次用了 ${result.turns} 轮 · ${result.toolCalls} 次工具调用 · 输入 ${k(result.tokens.input)} / 输出 ${k(result.tokens.output)} tokens`;
 }
