@@ -34,7 +34,9 @@ const CONTEXT =
 const URL_PARAM =
   /[?&](key|apikey|api_key|appkey|app_key|token|access_token|secret|password|sign|signature)=([^&\s"'`#<>]{8,})/gi;
 const KNOWN_PREFIX =
-  /\b(?:sk|pk|rk|ghp|gho|ghu|ghs|github_pat|xox[abpr]|glpat|AKIA)[-_]?[A-Za-z0-9_-]{16,}/g;
+  /\b(?:(?:sk|pk|rk)[-_](?:live_|test_|proj-)?|gh[pousr]_|github_pat_|xox[abpr]-|glpat-)[A-Za-z0-9_-]{16,}|\bAKIA[0-9A-Z]{16}\b/g;
+/** A vendor-prefixed token still has to look random (identifiers like skip_non_numeric do not). */
+const prefixedToken = (value: string) => /\d/.test(value) && /[A-Za-z]/.test(value);
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
 const BEARER = /\b(?:Bearer|Basic)\s+([A-Za-z0-9._~+/=-]{16,})/g;
 
@@ -60,7 +62,8 @@ export function detectSecretCandidates(text: string): SecretCandidate[] {
     if (looksLikeSecretValue(match[2])) add(match[2], match[1]);
   for (const match of source.matchAll(URL_PARAM))
     if (looksLikeSecretValue(match[2]) || match[2].length >= 16) add(match[2], match[1]);
-  for (const match of source.matchAll(KNOWN_PREFIX)) add(match[0], 'key');
+  for (const match of source.matchAll(KNOWN_PREFIX))
+    if (prefixedToken(match[0])) add(match[0], 'key');
   for (const match of source.matchAll(JWT)) add(match[0], 'token');
   for (const match of source.matchAll(BEARER)) add(match[1], 'bearer');
   const used = new Set<string>();
@@ -118,7 +121,7 @@ export function findSecretsInFiles(
         [...line.matchAll(FILE_ASSIGN)]
           .map((match) => match[2])
           .find((value) => looksLikeSecretValue(value)) ??
-        line.match(KNOWN_PREFIX)?.[0] ??
+        [...line.matchAll(KNOWN_PREFIX)].map((match) => match[0]).find(prefixedToken) ??
         line.match(JWT)?.[0];
       if (hit) leaks.push({ path: file.path, line: index + 1, preview: maskSecret(hit) });
     });
