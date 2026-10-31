@@ -397,6 +397,7 @@ export function RawTableEditorWorkbench({
     setPreviewData(null);
     setPreviewError(null);
     setPreviewPage(1);
+    setPreviewRun(null);
   }, [initialConfigKey, initialName, initialSourceKind, targetId]);
 
   const initialViewTabRef = useRef(initialViewTab);
@@ -1349,7 +1350,7 @@ export function RawTableEditorWorkbench({
     if (previewRun?.versionId === reviewPreviewFor) return;
     void previewCustomizeDraft(1, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reviewPreviewFor]);
+  }, [reviewPreviewFor, previewRun === null]);
 
   const customizeStepIndex = (['rules', 'generate', 'review'] as RawTableCustomizeStep[]).indexOf(
     customizeStep
