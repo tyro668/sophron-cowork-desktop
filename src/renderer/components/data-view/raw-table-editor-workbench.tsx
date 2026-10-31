@@ -2794,7 +2794,12 @@ export function RawTableEditorWorkbench({
           tableKind="raw"
           title={
             normalizerReport
-              ? t('fixError.previewFailedTitle', { version: previewVersionLabel })
+              ? t(
+                  previewRun?.suspicious?.reason === t('fixError.userRejected')
+                    ? 'fixError.userRejectedTitle'
+                    : 'fixError.previewFailedTitle',
+                  { version: previewVersionLabel }
+                )
               : undefined
           }
           preview={normalizerReport ? null : previewData}
@@ -2820,7 +2825,12 @@ export function RawTableEditorWorkbench({
                 onFix={startPreviewFix}
                 busy={fixing}
                 disabled={customizeGenerating || !previewVersion}
-                title={t('fixError.previewFailedTitle', { version: previewVersionLabel })}
+                title={t(
+                  previewRun?.suspicious?.reason === t('fixError.userRejected')
+                    ? 'fixError.userRejectedTitle'
+                    : 'fixError.previewFailedTitle',
+                  { version: previewVersionLabel }
+                )}
                 footerNote={
                   normalizerFixTarget.overwrite
                     ? t('fixError.footerOverwrite', { base: previewVersionLabel })

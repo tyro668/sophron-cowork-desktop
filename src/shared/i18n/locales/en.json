@@ -4618,7 +4618,8 @@
     "inputConfig": "config.json{{detail}}",
     "copyFixLog": "Copy log",
     "emptyOutput": "Passed but looks wrong: 0 output rows",
-    "userRejected": "The user says the result is wrong (see the note)"
+    "userRejected": "The user says the result is wrong (see the note)",
+    "userRejectedTitle": "Result is wrong · {{version}}"
   },
   "chatScript": {
     "convert": "Convert to script",

@@ -1954,7 +1954,12 @@ export function ScriptPackageWorkbench({
         <RawTablePreviewDialog
           title={
             trialReport
-              ? t('fixError.trialFailedTitle', { version: trialVersionLabel })
+              ? t(
+                  trialSuspicious?.reason === t('fixError.userRejected')
+                    ? 'fixError.userRejectedTitle'
+                    : 'fixError.trialFailedTitle',
+                  { version: trialVersionLabel }
+                )
               : t('scripts.editor.trialTitle', {
                   version: trialVersionNumber ? `v${trialVersionNumber}` : '',
                   status: trialRecord ? t(`scripts.status.${trialRecord.status}`) : '',
@@ -2009,7 +2014,12 @@ export function ScriptPackageWorkbench({
                 onFix={startTrialFix}
                 busy={fixing}
                 disabled={generating || trialVersionNumber == null}
-                title={t('fixError.trialFailedTitle', { version: trialVersionLabel })}
+                title={t(
+                  trialSuspicious?.reason === t('fixError.userRejected')
+                    ? 'fixError.userRejectedTitle'
+                    : 'fixError.trialFailedTitle',
+                  { version: trialVersionLabel }
+                )}
                 footerNote={
                   fixTarget.overwrite
                     ? t('fixError.footerOverwrite', { base: fixBaseLabel })

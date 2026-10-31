@@ -4618,7 +4618,8 @@
     "inputConfig": "config.json{{detail}}",
     "copyFixLog": "复制日志",
     "emptyOutput": "通过但结果异常：输出 0 行",
-    "userRejected": "用户确认结果不对（请看补充说明）"
+    "userRejected": "用户确认结果不对（请看补充说明）",
+    "userRejectedTitle": "结果不对 · {{version}}"
   },
   "chatScript": {
     "convert": "转成脚本",
