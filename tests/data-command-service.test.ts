@@ -1027,6 +1027,44 @@ describe('DataCommandService', () => {
     expect(afterSecondEdit.versions[0].commit).not.toBe(afterEdit.versions[0].commit);
   });
 
+  it('deletes a normalizer only once no raw table uses it, with its repo folder', async () => {
+    const { service, store, tempRoot } = createService();
+    const csvPath = path.join(tempRoot, 'customers.csv');
+    fs.writeFileSync(csvPath, 'id,name\n1,Alice\n', 'utf8');
+    const created = await service.createRawTableWithProcessingStrategy({
+      name: 'customers custom',
+      sourceKind: 'csv',
+      filePath: csvPath,
+      previewRows: 5,
+      processingStrategy: {
+        strategy: 'customize',
+        rulePrompt: 'Normalize the customer Csv.',
+        primaryLanguage: 'node',
+      },
+    });
+    const artifactId = created.normalizer!.publishedVersion.artifactId;
+    const repoDir = path.join(tempRoot, 'normalizers', artifactId);
+    expect(fs.existsSync(repoDir)).toBe(true);
+    const usage = await store.listRawTableNormalizerArtifacts();
+    expect(usage.find((item) => item.artifact.id === artifactId)?.usedBy).toEqual([
+      { id: created.rawTable.id, name: 'customers custom' },
+    ]);
+    await expect(store.deleteRawTableNormalizerArtifact(artifactId)).rejects.toThrow(
+      '原始表「customers custom」还在使用这个处理脚本'
+    );
+    await store.deleteRawTable(created.rawTable.id);
+    await expect(store.deleteRawTableNormalizerArtifact(artifactId)).resolves.toEqual({
+      success: true,
+    });
+    expect(fs.existsSync(repoDir)).toBe(false);
+    expect(
+      (await store.listRawTableNormalizerArtifacts()).some(
+        (item) => item.artifact.id === artifactId
+      )
+    ).toBe(false);
+    expect((await service.listRawTableNormalizerVersions({ artifactId })).versions).toEqual([]);
+  });
+
   it('creates an input table through the custom processing strategy DSL', async () => {
     const { service, tempRoot } = createService();
     const csvPath = path.join(tempRoot, 'customers.csv');

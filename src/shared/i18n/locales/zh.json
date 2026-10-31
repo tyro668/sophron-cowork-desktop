@@ -4006,7 +4006,8 @@
       "versionPublished": "v{{version}} 使用中 · {{time}}",
       "draftPending": "v{{version}} 待确认（{{source}}）",
       "noPublished": "尚未确认使用",
-      "optionVersion": "v{{version}}"
+      "optionVersion": "v{{version}}",
+      "folderMissing": "文件夹已被删除，只剩版本记录"
     },
     "repair": {
       "view": "查看修复结果",
@@ -4560,7 +4561,11 @@
       "disabled": "未启用",
       "resultExplain": "试运行得到 {{rows}} 行 × {{cols}} 列（{{seconds}} 秒）。",
       "leaveMessage": "脚本名称或规则描述还没保存，离开后这些修改会丢失。",
-      "leaveBusyMessage": "AI 正在生成或修复，离开后这次结果不会显示在这里（生成仍会在后台保存）。"
+      "leaveBusyMessage": "AI 正在生成或修复，离开后这次结果不会显示在这里（生成仍会在后台保存）。",
+      "deletePackage": "删除脚本包…",
+      "deleteTitle": "删除脚本包？",
+      "deleteImpact": "删除所有版本、文件夹（含 git 仓库）和密钥",
+      "deleted": "已删除「{{name}}」"
     }
   },
   "fixError": {

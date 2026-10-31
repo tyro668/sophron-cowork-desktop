@@ -45,6 +45,8 @@ export interface ScriptEditorTarget {
   chat?: ChatScriptLaunch;
   /** 新建脚本包 from an automation's 执行脚本 node: bind the package once it is created. */
   onCreated?: (packageId: string) => void;
+  /** The package was deleted from the editor: unbind it. */
+  onDeleted?: (packageId: string) => void;
   /** Bumped on every open so the same target can be reopened. */
   nonce: number;
 }
