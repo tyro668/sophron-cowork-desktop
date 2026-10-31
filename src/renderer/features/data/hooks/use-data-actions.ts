@@ -544,11 +544,25 @@ export function useDataActions(deps: DataActionsDeps) {
   const handleDeleteRawTable = useCallback(
     async (rawTable: DataRawTable) => {
       if (!dataClient.has('deleteRawTable')) return;
+      // A 自定义 normalizer only this table uses: offer to delete it too (no orphans).
+      const normalizer = await ownNormalizer(rawTable);
+      let deleteNormalizer = true;
       const confirmed = await confirmDelete({
         message: t('data.rawTables.deleteConfirm', { name: rawTable.name }),
         title: t('data.deleteImpact.rawTableTitle'),
         name: rawTable.name,
         impact: rawTableDeleteImpact(rawTable.id, dashboard.dashboard?.pipelines ?? [], t),
+        ...(normalizer
+          ? {
+              option: {
+                label: t('data.rawTables.deleteNormalizerToo'),
+                defaultChecked: true,
+                onChange: (checked: boolean) => {
+                  deleteNormalizer = checked;
+                },
+              },
+            }
+          : {}),
       });
       if (!confirmed) return;
       ui.setActionId(rawTable.id);
@@ -558,6 +572,7 @@ export function useDataActions(deps: DataActionsDeps) {
         if (!result.success) {
           throw new Error(t('data.rawTables.deleteNotFound'));
         }
+        if (normalizer && deleteNormalizer) await dataClient.deleteRawTableNormalizer(normalizer);
         rawTables.removeRawTable(rawTable.id);
         await loadRawTables({ preserveError: true });
       } catch (err) {
@@ -874,3 +889,20 @@ export function useDataActions(deps: DataActionsDeps) {
 }
 
 export type DataActions = ReturnType<typeof useDataActions>;
+
+/** The table's 自定义 normalizer when no other raw table uses it. */
+async function ownNormalizer(rawTable: DataRawTable): Promise<string | null> {
+  const processing = rawTable.inputConfig?.dataProcessing;
+  const artifactId =
+    processing && processing.strategy === 'customize' ? processing.artifactId : undefined;
+  if (!artifactId || !dataClient.has('listRawTableNormalizers')) return null;
+  try {
+    const usage = (await dataClient.listRawTableNormalizers()).find(
+      (item) => item.artifact.id === artifactId
+    );
+    if (!usage) return null;
+    return usage.usedBy.every((table) => table.id === rawTable.id) ? artifactId : null;
+  } catch {
+    return null;
+  }
+}

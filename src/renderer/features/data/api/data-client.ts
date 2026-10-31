@@ -91,6 +91,9 @@ export const dataClient = {
     dataApi().updateRawTable(...args),
   deleteRawTable: (...args: Parameters<DataApi['deleteRawTable']>) =>
     dataApi().deleteRawTable(...args),
+  listRawTableNormalizers: () => dataApi().listRawTableNormalizers(),
+  deleteRawTableNormalizer: (...args: Parameters<DataApi['deleteRawTableNormalizer']>) =>
+    dataApi().deleteRawTableNormalizer(...args),
   previewRawTable: (...args: Parameters<DataApi['previewRawTable']>) =>
     dataApi().previewRawTable(...args),
   exportTable: (...args: Parameters<DataApi['exportTable']>) => dataApi().exportTable(...args),

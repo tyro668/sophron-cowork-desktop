@@ -436,6 +436,21 @@
         "file": "File",
         "notConfigured": "Not configured",
         "cloud": "Cloud table"
+      },
+      "deleteNormalizerToo": "Also delete its processing script (no other raw table uses it)",
+      "normalizers": {
+        "menu": "Processing scripts…",
+        "title": "Processing scripts",
+        "summary": "{{count}} total · {{unused}} unused",
+        "colName": "Name",
+        "colUsedBy": "Used by raw tables",
+        "colUpdated": "Updated",
+        "unused": "Unused",
+        "inUseHint": "Still used by raw tables; switch them to another processing mode or delete them first",
+        "deleteTitle": "Delete processing script?",
+        "deleteImpact": "Deletes every version, its code repository and secrets",
+        "deleted": "Deleted “{{name}}”",
+        "empty": "No processing scripts yet"
       }
     },
     "resultTables": {
@@ -3991,7 +4006,8 @@
       "versionPublished": "v{{version}} in use · {{time}}",
       "draftPending": "v{{version}} to confirm ({{source}})",
       "noPublished": "Not confirmed yet",
-      "optionVersion": "v{{version}}"
+      "optionVersion": "v{{version}}",
+      "folderMissing": "Folder was deleted; only its versions remain"
     },
     "repair": {
       "view": "View fix",
@@ -4545,7 +4561,12 @@
       "disabled": "Disabled",
       "resultExplain": "The trial run gives {{rows}} rows × {{cols}} columns ({{seconds}}s).",
       "leaveMessage": "The script name or rule is not saved; leaving discards those edits.",
-      "leaveBusyMessage": "The AI is still generating or fixing; its result will not show here if you leave (it is still saved in the background)."
+      "leaveBusyMessage": "The AI is still generating or fixing; its result will not show here if you leave (it is still saved in the background).",
+      "deletePackage": "Delete script package…",
+      "deleteTitle": "Delete script package?",
+      "deleteImpact": "Deletes every version, the folder (with its git repository) and secrets",
+      "deleted": "Deleted “{{name}}”",
+      "missingBanner": "This package's folder was deleted; only its versions remain. Delete it from ⋯ at the top right."
     }
   },
   "fixError": {

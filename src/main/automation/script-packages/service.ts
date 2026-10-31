@@ -75,7 +75,17 @@ export interface GenerateDraftOptions {
   signal?: AbortSignal;
   /** Automation whose failed run asked for this AI 修复. */
   automationId?: string;
+  /** Self-test timeout; an automation repair uses its node's timeout. */
+  checkTimeoutMs?: number;
 }
+
+/** Limits on automation-triggered AI 修复 per package. */
+export interface AutoRepairPolicy {
+  cooldownMs: number;
+  dailyCap: number;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface PackageState {
   depsHash?: string;
@@ -89,6 +99,8 @@ interface PackageState {
   editor?: ScriptPackageEditorState;
   /** 对话「转成脚本」 origin of the package. */
   origin?: ScriptChatOrigin;
+  /** When automation runs started an AI 修复 (last 24 h). */
+  repairAttempts?: number[];
 }
 
 export interface ScriptRunOutput extends ParsedScriptOutput {
@@ -128,6 +140,7 @@ export interface ScriptPackageServiceOptions {
   secrets?: {
     env(scope: string): Record<string, string>;
     set?(scope: string, name: string, value: string): unknown;
+    deleteScope?(scope: string): void;
   };
 }
 
@@ -202,10 +215,18 @@ export class ScriptPackageService {
     await mkdir(this.rootDir, { recursive: true });
     const entries = await readdir(this.rootDir, { withFileTypes: true });
     const result: ScriptPackageSummary[] = [];
+    const seen = new Set<string>();
     for (const entry of entries) {
       if (!entry.isDirectory() || !PACKAGE_ID_PATTERN.test(entry.name)) continue;
       if (!existsSync(path.join(this.rootDir, entry.name, 'manifest.json'))) continue;
+      seen.add(entry.name);
       result.push(await this.summary(entry.name));
+    }
+    // Versions whose folder was deleted outside the app: listed as missing so they can be deleted.
+    for (const id of this.store.packageIds()) {
+      if (seen.has(id) || !PACKAGE_ID_PATTERN.test(id)) continue;
+      if (existsSync(path.join(this.rootDir, id, 'manifest.json'))) continue;
+      result.push(await this.summaryUnsynced(id, this.packageDir(id)));
     }
     return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
   }
@@ -237,6 +258,9 @@ export class ScriptPackageService {
       draft: draft && toVersion(draft),
       versionCount: records.length,
       ...(state.origin ? { origin: state.origin } : {}),
+      ...(records.length > 0 && !existsSync(path.join(dir, 'manifest.json'))
+        ? { missing: true }
+        : {}),
     };
     let manifest: ScriptManifest;
     try {
@@ -463,6 +487,49 @@ export class ScriptPackageService {
     });
   }
 
+  /**
+   * Delete a package for good: its version rows, folder (git repo included) and secrets.
+   * The caller checks that no automation still runs it.
+   */
+  deletePackage(id: string): Promise<void> {
+    return this.withLock(id, async () => {
+      if (this.repairing.has(id)) throw new ScriptPackageError('AI 正在修改这个脚本包', 'invalid');
+      const dir = this.packageDir(id);
+      await rm(dir, { recursive: true, force: true });
+      this.store.deletePackage(id);
+      this.options.secrets?.deleteScope?.(scriptSecretScope(id));
+    });
+  }
+
+  /**
+   * Book an automation-triggered AI 修复: refused during the cooldown after the previous one
+   * or once the package had `dailyCap` repairs in the last 24 hours.
+   */
+  reserveAutoRepair(
+    id: string,
+    now: number,
+    policy: AutoRepairPolicy
+  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+    return this.withLock(id, async () => {
+      const dir = this.packageDir(id);
+      const state = await this.readState(dir);
+      const recent = (state.repairAttempts ?? []).filter((at) => now - at < DAY_MS);
+      const last = recent.length > 0 ? Math.max(...recent) : null;
+      if (last != null && now - last < policy.cooldownMs) {
+        const minutes = Math.ceil((policy.cooldownMs - (now - last)) / 60_000);
+        return {
+          ok: false as const,
+          reason: `距上次修复不足 ${formatTimeout(policy.cooldownMs)}，${minutes} 分钟后再试`,
+        };
+      }
+      if (recent.length >= policy.dailyCap) {
+        return { ok: false as const, reason: `24 小时内已自动修复 ${policy.dailyCap} 次` };
+      }
+      await this.patchState(dir, { repairAttempts: [...recent, now] });
+      return { ok: true as const };
+    });
+  }
+
   /** Trial-run the working tree with the pass verdict (what the agent's self-test sees). */
   async checkWorkingTree(
     id: string,
@@ -543,7 +610,11 @@ export class ScriptPackageService {
           maxRounds: fix.maxRounds,
           previousAttempts: fix.previousAttempts,
         },
-        workspace: { dir, test: () => this.checkWorkingTree(id), secrets: this.secretEnv(id) },
+        workspace: {
+          dir,
+          test: () => this.checkWorkingTree(id, options.checkTimeoutMs),
+          secrets: this.secretEnv(id),
+        },
         runtimeConfig: options.runtimeConfig,
         signal: options.signal,
         onProgress: (phase, text) => emit({ phase, kind: 'message', text }),
@@ -559,7 +630,7 @@ export class ScriptPackageService {
         kind: 'message',
         text: `修改 ${changedFiles.join('、')}，写入 AI 修复草稿。`,
       });
-      const check = await this.checkWorkingTree(id);
+      const check = await this.checkWorkingTree(id, options.checkTimeoutMs);
       const saved = await this.endAgentEdit(id, {
         source: 'ai_repair',
         rulePrompt: [
@@ -656,7 +727,7 @@ export class ScriptPackageService {
       started = id;
       const workspace = {
         dir,
-        test: () => this.checkWorkingTree(id),
+        test: () => this.checkWorkingTree(id, options.checkTimeoutMs),
         secrets: this.secretEnv(id),
       };
       const onProgress = (phase: ScriptAgentPhase, text: string) =>
@@ -819,6 +890,9 @@ export class ScriptPackageService {
     if (this.repairing.has(id)) return Promise.resolve(null);
     return this.withLock(id, async () => {
       if (this.repairing.has(id)) return null;
+      // Folder deleted outside the app: don't recreate an empty repo for its versions.
+      if (!existsSync(path.join(this.packageDir(id), '.git')) && this.store.list(id).length > 0)
+        return null;
       const repo = this.repo(id);
       const fresh = await this.ensureRepo(id);
       if (fresh) return null;

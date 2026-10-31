@@ -6,6 +6,7 @@ import { shutdownSandbox } from '../sandbox/sandbox-adapter';
 import { SandboxSync } from '../sandbox/sandbox-sync';
 import { log, logError, closeLogFile } from '../utils/logger';
 import { appContext } from './context';
+import { backgroundRepairs } from '../automation/script-packages/background-repairs';
 import { createWindow } from './window';
 
 export function withTimeout<T>(
@@ -40,6 +41,7 @@ export async function cleanupSandboxResources(): Promise<void> {
   appContext.isCleaningUp = true;
 
   stopNavServer();
+  backgroundRepairs.stop();
   appContext.skillsManager?.stopStorageMonitoring();
   appContext.tray?.destroy();
   appContext.tray = null;

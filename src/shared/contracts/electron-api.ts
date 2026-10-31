@@ -61,6 +61,7 @@ import type {
   DataDashboardQuery,
   DataRawTable,
   DataDeleteRawTableNormalizerVersionInput,
+  DataRawTableNormalizerUsage,
   DataDeleteRawTableNormalizerVersionResult,
   DataGenerateRawTableNormalizerDraftInput,
   DataGenerateRawTableNormalizerDraftResult,
@@ -279,6 +280,8 @@ export interface ElectronApi {
       payload: DataListRawTableNormalizerVersionsInput
     ) => Promise<DataListRawTableNormalizerVersionsResult>;
     deletePipeline: (id: string) => Promise<{ success: boolean }>;
+    listRawTableNormalizers: () => Promise<DataRawTableNormalizerUsage[]>;
+    deleteRawTableNormalizer: (artifactId: string) => Promise<{ success: boolean }>;
     deleteRawTable: (id: string) => Promise<{ success: boolean }>;
     listCloudSpaces: (payload?: ListCloudSpacesInput) => Promise<ListCloudSpacesResult>;
     listCloudProjects: (payload: ListCloudProjectsInput) => Promise<ListCloudProjectsResult>;
@@ -570,6 +573,7 @@ export interface ElectronApi {
       versions: (id: string) => Promise<ScriptPackageVersion[]>;
       versionDetail: (id: string, version: number) => Promise<ScriptPackageVersionDetail>;
       publish: (id: string, version: number) => Promise<ScriptPackageSummary>;
+      delete: (id: string) => Promise<{ success: boolean }>;
       deleteVersion: (id: string, version: number) => Promise<void>;
       setMeta: (
         id: string,

@@ -24,6 +24,8 @@ export interface ConfirmDialogOptions {
   confirmLabel?: ReactNode;
   cancelLabel?: ReactNode;
   tone?: ConfirmTone;
+  /** Optional checkbox (e.g. 同时删除处理脚本); read its final state from onChange. */
+  option?: { label: ReactNode; defaultChecked?: boolean; onChange: (checked: boolean) => void };
 }
 
 interface ConfirmDialogContextValue {
@@ -169,6 +171,7 @@ function ConfirmDialogOverlay({
                   {dialog.message}
                 </DialogDescription>
               )}
+              {dialog.option ? <ConfirmOption key={titleId} option={dialog.option} /> : null}
               {isDanger && (
                 <div className="flex items-center gap-1.5 border-t border-border-subtle bg-error/5 px-3 py-1.5 text-xs text-error">
                   <AlertTriangle className="h-3.5 w-3.5" />
@@ -200,5 +203,26 @@ function ConfirmDialogOverlay({
         </>
       ) : null}
     </Dialog>
+  );
+}
+
+function ConfirmOption({ option }: { option: NonNullable<ConfirmDialogOptions['option']> }) {
+  const [checked, setChecked] = useState(Boolean(option.defaultChecked));
+  return (
+    <label
+      className="flex cursor-pointer items-center gap-2 border-t border-border-subtle px-3 py-2 text-[12.5px] text-text-secondary"
+      data-testid="confirm-option"
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => {
+          setChecked(event.target.checked);
+          option.onChange(event.target.checked);
+        }}
+        className="h-3.5 w-3.5 accent-accent"
+      />
+      {option.label}
+    </label>
   );
 }

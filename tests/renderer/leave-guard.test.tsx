@@ -47,10 +47,14 @@ describe('leave guard', () => {
 describe('formatDataErrorMessage', () => {
   it('turns a refresh-check failure into a plain sentence', () => {
     const t = ((key: string, options?: { reason?: string }) =>
-      key === 'data.rawTables.errors.abnormal' ? `数据异常：${options?.reason}。已保留上次的数据。` : key) as never;
+      key === 'data.rawTables.errors.abnormal'
+        ? `数据异常：${options?.reason}。已保留上次的数据。`
+        : key) as never;
     expect(
       formatDataErrorMessage(
-        new Error('Error invoking remote method: E_RAW_TABLE_ABNORMAL: 刷新后缺少列：销售额。原始表保留上次的数据'),
+        new Error(
+          'Error invoking remote method: E_RAW_TABLE_ABNORMAL: 刷新后缺少列：销售额。原始表保留上次的数据'
+        ),
         t
       )
     ).toBe('数据异常：刷新后缺少列：销售额。已保留上次的数据。');

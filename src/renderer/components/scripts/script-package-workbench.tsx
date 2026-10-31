@@ -23,8 +23,11 @@ import {
   Wand2,
   X,
   XCircle,
+  Trash2,
 } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
+import { ipcErrorMessage } from '../../utils/ipc-error';
+import { showToast } from '../../utils/toast';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import type {
   ScriptPackageSummary,
@@ -82,6 +85,7 @@ import {
   bottomTabListClass,
   bottomTabTriggerClass,
   formatDateTime,
+  DataMoreMenu,
   RawTableStatusBadge,
 } from '../data-view/shared';
 
@@ -137,7 +141,7 @@ export function ScriptPackageWorkbench({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { confirm } = useConfirmDialog();
+  const { confirm, confirmDelete } = useConfirmDialog();
   const api = window.electronAPI.automation.scripts;
   const appConfig = useAppStore((state) => state.appConfig);
   const chat = target.chat;
@@ -292,7 +296,7 @@ export function ScriptPackageWorkbench({
   }, [api, refresh, t, target.packageId, target.version]);
 
   useEffect(() => {
-    if (!packageId || viewVersion == null) {
+    if (!packageId || viewVersion == null || summary?.missing) {
       setDetail(null);
       return;
     }
@@ -314,7 +318,7 @@ export function ScriptPackageWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [api, packageId, viewVersion, versions]);
+  }, [api, packageId, viewVersion, versions, summary?.missing]);
 
   useEffect(() => {
     if (!packageId) return;
@@ -969,6 +973,30 @@ export function ScriptPackageWorkbench({
     if (await confirmOwnLeave()) onClose();
   };
 
+  const [deleting, setDeleting] = useState(false);
+  /** 删除脚本包: versions, folder, git repo and secrets; refused while an automation runs it. */
+  const deletePackage = async () => {
+    if (!packageId) return;
+    const ok = await confirmDelete({
+      title: t('scripts.editor.deleteTitle'),
+      message: t('scripts.editor.deleteTitle'),
+      name: summary?.name ?? packageId,
+      impact: t('scripts.editor.deleteImpact'),
+    });
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await api.delete(packageId);
+      showToast('success', t('scripts.editor.deleted', { name: summary?.name ?? packageId }));
+      target.onDeleted?.(packageId);
+      onClose();
+    } catch (error) {
+      showToast('error', ipcErrorMessage(error));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // 确认结果: run the shown version once so the step opens on its output table.
   const reviewTrialFor =
     step === 'review' && reviewView === 'result' && !generating && !fixing ? viewVersion : null;
@@ -1369,9 +1397,32 @@ export function ScriptPackageWorkbench({
             <Check className="h-3.5 w-3.5" />
             {saving ? t('common.saving') : t('common.save')}
           </button>
+          {packageId ? (
+            <DataMoreMenu
+              items={[
+                {
+                  key: 'delete',
+                  label: t('scripts.editor.deletePackage'),
+                  icon: <Trash2 className="h-3.5 w-3.5" />,
+                  danger: true,
+                  disabled: generating || fixing || deleting,
+                  onClick: () => void deletePackage(),
+                },
+              ]}
+            />
+          ) : null}
         </div>
       </div>
 
+      {summary?.missing ? (
+        <div
+          className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-error/10 px-3 py-1.5 text-[12.5px] text-error"
+          data-testid="script-missing"
+        >
+          <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+          {t('scripts.editor.missingBanner')}
+        </div>
+      ) : null}
       <Tabs
         value={tab}
         onValueChange={(value) => setTab(value as typeof tab)}

@@ -566,6 +566,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'automation.scripts.versions': [str],
   'automation.scripts.versionDetail': [str, num],
   'automation.scripts.publish': [str, num],
+  'automation.scripts.delete': [str],
   'automation.scripts.deleteVersion': [str, num],
   'automation.scripts.setMeta': [
     str,
@@ -852,6 +853,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'data.listRawTableNormalizerVersions': [z.looseObject({ artifactId: str })],
   'data.deletePipeline': [str],
   'data.deleteRawTable': [str],
+  'data.listRawTableNormalizers': [],
+  'data.deleteRawTableNormalizer': [str],
   'data.listRawSources': [],
   'data.scanRawSource': [
     z.looseObject({

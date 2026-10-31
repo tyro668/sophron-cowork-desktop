@@ -29,6 +29,7 @@ import type {
   DataRenameGroupInput,
   DataRawTableNormalizerArtifact,
   DataRawTableNormalizerArtifactVersion,
+  DataRawTableNormalizerUsage,
   DataRawTableNormalizerVersionSaveResult,
   DataRawTablePreview,
   DataRawTableSourceSummary,
@@ -323,6 +324,12 @@ export class DataPipelineStore {
     versionId: string
   ): Promise<DataRawTableNormalizerVersionSaveResult> {
     return this.normalizerService.publishRawTableNormalizerArtifactVersion(versionId);
+  }
+  listRawTableNormalizerArtifacts(): Promise<DataRawTableNormalizerUsage[]> {
+    return this.normalizerService.listRawTableNormalizerArtifacts();
+  }
+  deleteRawTableNormalizerArtifact(artifactId: string): Promise<{ success: boolean }> {
+    return this.normalizerService.deleteRawTableNormalizerArtifact(artifactId);
   }
   deleteRawTableNormalizerArtifactVersion(versionId: string): Promise<{ success: boolean }> {
     return this.normalizerService.deleteRawTableNormalizerArtifactVersion(versionId);

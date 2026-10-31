@@ -19,6 +19,9 @@ export interface ScriptVersionStore {
   insert(record: ScriptVersionRecord): void;
   update(packageId: string, version: number, patch: Partial<ScriptVersionRecord>): void;
   delete(packageId: string, version: number): void;
+  /** Every package with version rows (including ones whose folder is gone). */
+  packageIds(): string[];
+  deletePackage(packageId: string): void;
 }
 
 export class MemoryScriptVersionStore implements ScriptVersionStore {
@@ -41,6 +44,14 @@ export class MemoryScriptVersionStore implements ScriptVersionStore {
       (item) => item.packageId === packageId && item.version === version
     );
     if (index >= 0) this.rows.splice(index, 1);
+  }
+  packageIds() {
+    return [...new Set(this.rows.map((row) => row.packageId))];
+  }
+  deletePackage(packageId: string) {
+    for (let index = this.rows.length - 1; index >= 0; index -= 1) {
+      if (this.rows[index].packageId === packageId) this.rows.splice(index, 1);
+    }
   }
 }
 
@@ -152,6 +163,15 @@ export function createSqliteScriptVersionStore(db: Database.Database): ScriptVer
         packageId,
         version
       );
+    },
+    packageIds: () =>
+      (
+        db.prepare('SELECT DISTINCT package_id FROM script_package_versions').all() as Array<{
+          package_id: string;
+        }>
+      ).map((row) => row.package_id),
+    deletePackage: (packageId) => {
+      db.prepare('DELETE FROM script_package_versions WHERE package_id = ?').run(packageId);
     },
   };
 }

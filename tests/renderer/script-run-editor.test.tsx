@@ -148,7 +148,7 @@ describe('ScriptRunEditor', () => {
     ]);
     setup({ packageId: 'fx', timeoutMs: 60_000 });
     expect(await screen.findByText('· v4 待确认（AI 修复）', { exact: false })).toBeTruthy();
-    fireEvent.click(screen.getByText('查看草稿'));
+    fireEvent.click(screen.getByText('查看待确认'));
     expect(useAppStore.getState().scriptEditor).toMatchObject({
       packageId: 'fx',
       version: 4,

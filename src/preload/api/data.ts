@@ -236,6 +236,9 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.listRawTableNormalizerVersions', payload),
     deletePipeline: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deletePipeline', id),
+    listRawTableNormalizers: () => ipcRenderer.invoke('data.listRawTableNormalizers'),
+    deleteRawTableNormalizer: (artifactId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('data.deleteRawTableNormalizer', artifactId),
     deleteRawTable: (id: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('data.deleteRawTable', id),
     listCloudSpaces: (payload?: ListCloudSpacesInput): Promise<ListCloudSpacesResult> =>

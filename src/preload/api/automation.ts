@@ -55,6 +55,7 @@ export function createAutomationApi(): ElectronApi['automation'] {
       versionDetail: (id, version) =>
         ipcRenderer.invoke('automation.scripts.versionDetail', id, version),
       publish: (id, version) => ipcRenderer.invoke('automation.scripts.publish', id, version),
+      delete: (id) => ipcRenderer.invoke('automation.scripts.delete', id),
       deleteVersion: (id, version) =>
         ipcRenderer.invoke('automation.scripts.deleteVersion', id, version),
       setMeta: (id, patch) => ipcRenderer.invoke('automation.scripts.setMeta', id, patch),

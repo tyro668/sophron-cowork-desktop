@@ -27,6 +27,7 @@ import type {
   AutomationUpdateInput,
 } from '../../shared/automation/types';
 import type { AutomationStore } from './automation-store';
+import { backgroundRepairs } from './script-packages/background-repairs';
 import { computeNextAutomationRunAt, normalizeAutomationTrigger } from './automation-trigger';
 import type { AutomationRunner } from './automation-runner';
 import type { AutomationActionRegistry } from './automation-action-registry';
@@ -218,6 +219,7 @@ export class AutomationService {
   }
 
   delete(id: string): { success: boolean } {
+    backgroundRepairs.stop(id);
     return { success: this.store.delete(id) };
   }
 
@@ -246,6 +248,7 @@ export class AutomationService {
     const automation = this.store.get(id);
     if (!automation) return null;
     if (enabled) this.validateActionGraph(automation.actionGraph);
+    else backgroundRepairs.stop(id);
     const nextRunAt = enabled ? computeNextAutomationRunAt(automation.trigger, this.now()) : null;
     return this.store.setRuntimeState(id, {
       enabled,
@@ -259,6 +262,7 @@ export class AutomationService {
     const automation = this.store.get(id);
     if (!automation) return null;
     if (!automation.enabled) return automation;
+    backgroundRepairs.stop(id);
     return this.store.setRuntimeState(id, { status: 'paused' });
   }
 

@@ -54,6 +54,13 @@ export function ScriptRunEditor({
       setPackages([]);
     }
   }, []);
+  /** 删除脚本包 in the editor: clear this node's package if it was the one deleted. */
+  const unbindDeleted = (deletedId: string) => {
+    const { node: current, onChange: apply } = latest.current;
+    if (current.config?.packageId === deletedId)
+      apply({ ...current, config: { ...current.config, packageId: '' } });
+    void refresh();
+  };
   useEffect(() => {
     void refresh();
     window.addEventListener('focus', refresh);
@@ -71,9 +78,11 @@ export function ScriptRunEditor({
   ).map((item) => ({
     value: item.id,
     label: item.name,
-    hint: item.published
-      ? t('schedule.script.optionVersion', { version: item.published.version })
-      : t('schedule.script.noPublished'),
+    hint: item.missing
+      ? t('schedule.script.folderMissing')
+      : item.published
+        ? t('schedule.script.optionVersion', { version: item.published.version })
+        : t('schedule.script.noPublished'),
   }));
   if (packageId && !selected) packageOptions.push({ value: packageId, label: packageId });
   packageOptions.push({ value: NEW_PACKAGE, label: `＋ ${t('schedule.script.newPackage')}` });
@@ -130,6 +139,7 @@ export function ScriptRunEditor({
       return { text: t('schedule.script.testOk', { count: test.rows ?? 0 }), error: false };
     if (test && !test.ok) return { text: test.error ?? '', error: true };
     if (!selected) return null;
+    if (selected.missing) return { text: t('schedule.script.folderMissing'), error: true };
     if (selected.invalid) return { text: selected.invalid, error: true };
     const parts = [
       selected.depsReady ? t('schedule.script.depsReady') : t('schedule.script.depsOnFirstRun'),
@@ -167,6 +177,7 @@ export function ScriptRunEditor({
               if (value === NEW_PACKAGE) {
                 openScriptEditor({
                   step: 'rules',
+                  onDeleted: unbindDeleted,
                   onCreated: (createdId) => {
                     const { node: current, onChange: apply } = latest.current;
                     apply({ ...current, config: { ...current.config, packageId: createdId } });
@@ -230,8 +241,9 @@ export function ScriptRunEditor({
                     packageId,
                     version: selected.draft.version,
                     step: 'review',
+                    onDeleted: unbindDeleted,
                   })
-                : openScriptEditor({ packageId, step: 'rules' })
+                : openScriptEditor({ packageId, step: 'rules', onDeleted: unbindDeleted })
             }
           >
             {selected?.draft ? <FileSearch size={13} /> : <PencilLine size={13} />}
