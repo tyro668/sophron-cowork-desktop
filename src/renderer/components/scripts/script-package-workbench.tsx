@@ -1259,7 +1259,7 @@ export function ScriptPackageWorkbench({
             disabled={!detail || busyVersion != null}
             onClick={() => detail && void publish(detail.version)}
             data-testid="script-publish"
-            className="ui-accent-cell border-l border-border-subtle"
+            className="ui-accent-cell whitespace-nowrap border-l border-border-subtle"
           >
             {busyVersion != null ? (
               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
