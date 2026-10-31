@@ -255,14 +255,21 @@ export function StatusBadge({ status }: { status: DataPipelineStatus }) {
 export function RawTableStatusBadge({
   label,
   tone = 'success',
+  title,
 }: {
   label: string;
-  tone?: 'success' | 'warning';
+  tone?: 'success' | 'warning' | 'error';
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={`inline-flex h-6 whitespace-nowrap items-center gap-1.5 rounded-md px-2 text-xs font-medium ${
-        tone === 'warning' ? 'bg-warning/10 text-warning' : 'bg-success/10 text-success'
+        tone === 'error'
+          ? 'bg-error/10 text-error'
+          : tone === 'warning'
+            ? 'bg-warning/10 text-warning'
+            : 'bg-success/10 text-success'
       }`}
     >
       <span className="h-1.5 w-1.5 rounded-full bg-current" />

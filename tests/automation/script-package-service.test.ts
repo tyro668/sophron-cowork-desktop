@@ -56,6 +56,27 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('ScriptPackageService', () => {
+  it('passes an on_empty fallback with a warning and rejects outputs with typed-column mismatches', async () => {
+    writePackage(path.join(root, 'demo'), {
+      'manifest.json': JSON.stringify({
+        name: '示例抓取',
+        entry: 'main.js',
+        runtime: 'node',
+        output: { format: 'csv', columns: ['name', { name: 'value', type: 'number' }] },
+      }),
+      'main.js': `console.log('SOPHRON_NOTICE: 今日榜单为空，已改用本周榜单');
+require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'name,value\\na,1\\nb,2\\n');`,
+    });
+    const passed = await service.testRun('demo', { timeoutMs: 10_000, target: 'working' });
+    expect(passed).toMatchObject({ ok: true, warnings: ['今日榜单为空，已改用本周榜单'] });
+    writePackage(path.join(root, 'demo'), {
+      'main.js': `require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'name,value\\na,免费\\nb,暂无\\n');`,
+    });
+    const failed = await service.testRun('demo', { timeoutMs: 10_000, target: 'working' });
+    expect(failed.ok).toBe(false);
+    expect(failed.error).toContain('「value」应为数字');
+  });
+
   it('injects package secrets as env vars, hides app keys and redacts secret values in logs', async () => {
     const secretService = new ScriptPackageService({
       rootDir: root,

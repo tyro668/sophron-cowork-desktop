@@ -473,12 +473,12 @@ export function ScriptPackageWorkbench({
             })
         : '';
       log.outcome = {
-        status: check && !check.passed ? 'error' : 'success',
+        status: check && !check.passed ? 'error' : check?.warnings?.length ? 'warning' : 'success',
         title: t('scripts.editor.generated', {
           version: result.version.version,
           count: result.version.files.length,
         }),
-        details: [checkText, result.agentSummary ?? ''].filter(Boolean),
+        details: [checkText, ...(check?.warnings ?? []), result.agentSummary ?? ''].filter(Boolean),
         files: result.version.files.map((file) => file.path),
       };
       setPackageId(result.summary.id);
@@ -499,6 +499,7 @@ export function ScriptPackageWorkbench({
           preview: check.preview,
           previewRows: check.previewRows,
           log: check.log,
+          ...(check.warnings?.length ? { warnings: check.warnings } : {}),
           ...(check.passed ? {} : { error: check.reason ?? '' }),
           ...(check.exitCode !== undefined ? { exitCode: check.exitCode } : {}),
         });
@@ -1816,6 +1817,7 @@ export function ScriptPackageWorkbench({
                   : undefined
                 : t('schedule.script.testing')
           }
+          warnings={trial?.ok && !trialSuspicious ? trial.warnings : undefined}
           preview={
             trial?.ok && trial.columns && !trialSuspicious
               ? toPreview({

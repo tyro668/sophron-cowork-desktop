@@ -348,11 +348,20 @@ export function RawTablesPanel({
             label={
               draft
                 ? t('data.rawTables.status.draft')
-                : rawTable?.memberStatus === 'missing'
-                  ? t('data.rawSources.list.memberMissing')
-                  : t('data.rawTables.status.available')
+                : rawTable?.health
+                  ? t('data.rawTables.status.abnormal')
+                  : rawTable?.memberStatus === 'missing'
+                    ? t('data.rawSources.list.memberMissing')
+                    : t('data.rawTables.status.available')
             }
-            tone={draft || rawTable?.memberStatus === 'missing' ? 'warning' : 'success'}
+            title={rawTable?.health?.reason}
+            tone={
+              rawTable?.health
+                ? 'error'
+                : draft || rawTable?.memberStatus === 'missing'
+                  ? 'warning'
+                  : 'success'
+            }
           />
         </td>
       </tr>
@@ -361,6 +370,7 @@ export function RawTablesPanel({
 
   const renderSourceRow = (source: DataRawSource, members: DataRawTable[], indented: boolean) => {
     const missing = members.filter((member) => member.memberStatus === 'missing').length;
+    const abnormal = members.filter((member) => member.health);
     const merged = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
     const updatedAt = Math.max(...members.map((member) => member.updatedAt));
     const pipelines = [...new Set(members.flatMap((member) => member.relatedPipelineNames ?? []))];
@@ -425,11 +435,16 @@ export function RawTablesPanel({
           <div className="flex items-center gap-1">
             <RawTableStatusBadge
               label={
-                missing > 0
-                  ? t('data.rawSources.list.missingMembers', { count: missing })
-                  : t('data.rawTables.status.available')
+                abnormal.length > 0
+                  ? t('data.rawTables.status.abnormal')
+                  : missing > 0
+                    ? t('data.rawSources.list.missingMembers', { count: missing })
+                    : t('data.rawTables.status.available')
               }
-              tone={missing > 0 ? 'warning' : 'success'}
+              title={abnormal
+                .map((member) => `${member.name}：${member.health?.reason}`)
+                .join('\n')}
+              tone={abnormal.length > 0 ? 'error' : missing > 0 ? 'warning' : 'success'}
             />
             <button
               type="button"

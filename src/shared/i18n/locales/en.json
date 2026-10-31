@@ -392,11 +392,15 @@
         "examplesLabel": "Examples",
         "copyShort": "Copy",
         "copiedShort": "Copied",
-        "versionsColumnSource": "Source"
+        "versionsColumnSource": "Source",
+        "abnormalBanner": "Data issue: {{reason}}. The table keeps the previous data.",
+        "abnormalFix": "Fix with AI",
+        "abnormalOpenScript": "Open script"
       },
       "status": {
         "available": "Available",
-        "draft": "To configure"
+        "draft": "To configure",
+        "abnormal": "Data issue"
       },
       "actions": {
         "preview": "Preview",

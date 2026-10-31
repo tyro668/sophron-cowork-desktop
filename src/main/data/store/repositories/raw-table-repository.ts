@@ -2,6 +2,7 @@
 import type {
   DataCreateResultTableInput,
   DataRawTable,
+  DataRawTableHealth,
   DataResultTable,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
@@ -337,6 +338,13 @@ export class RawTableRepository {
         `,
       { id, name, updatedAt }
     );
+  }
+  /** 数据异常 marker (null clears it after a successful refresh). */
+  async setRawTableHealth(id: string, health: DataRawTableHealth | null): Promise<void> {
+    await this.ctx.metaRunSql('UPDATE data_raw_tables SET health_json = $health WHERE id = $id', {
+      id,
+      health: health ? JSON.stringify(health) : null,
+    });
   }
   async updateRawTableAfterReimport(row: {
     id: string;

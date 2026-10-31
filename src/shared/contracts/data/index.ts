@@ -629,6 +629,13 @@ export interface DataResolveRawSourceRenamesResult {
   failed: Array<{ id: string; error: string }>;
 }
 
+export interface DataRawTableHealth {
+  status: 'abnormal';
+  /** Chinese reason (missing columns, row drop, failed result check, run error). */
+  reason: string;
+  at: number;
+}
+
 export interface DataRawTable {
   id: string;
   name: string;
@@ -638,6 +645,8 @@ export interface DataRawTable {
   /** Sheet name or relative file path inside the source. */
   memberKey?: string | null;
   memberStatus?: DataRawSourceMemberStatus;
+  /** 数据异常: the last refresh failed the result checks; the table keeps the previous rows. */
+  health?: DataRawTableHealth | null;
   /** Runtime source; for cloud tables this is a private cache path, never a UI source binding. */
   sourcePath: string;
   sourceKind: DataRawTableSourceKind;

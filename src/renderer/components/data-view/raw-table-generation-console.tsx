@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, CircleDashed, Copy, Loader2, X } from 'lucide-react';
+import { Check, ChevronDown, CircleDashed, Copy, Loader2, TriangleAlert, X } from 'lucide-react';
 import {
   formatGenerationElapsed,
   type GenerationHistoryItem,
@@ -225,7 +225,9 @@ function serializeGenerationLog(
       if (step.stream) lines.push(step.stream);
     }
     if (log.outcome) {
-      lines.push(`${log.outcome.status === 'success' ? '✓' : '✕'} ${log.outcome.title}`);
+      lines.push(
+        `${log.outcome.status === 'success' ? '✓' : log.outcome.status === 'warning' ? '⚠' : '✕'} ${log.outcome.title}`
+      );
       lines.push(...log.outcome.details, ...log.outcome.files);
     }
   }
@@ -438,6 +440,8 @@ export function RawTableGenerationConsole({
                 <div className="flex items-center gap-2 py-1">
                   {log.outcome.status === 'success' ? (
                     <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+                  ) : log.outcome.status === 'warning' ? (
+                    <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0 text-warning" />
                   ) : (
                     <X className="h-3.5 w-3.5 flex-shrink-0 text-error" />
                   )}
@@ -447,7 +451,9 @@ export function RawTableGenerationConsole({
                       color:
                         log.outcome.status === 'success'
                           ? 'var(--color-success)'
-                          : 'var(--color-error)',
+                          : log.outcome.status === 'warning'
+                            ? 'var(--color-warning)'
+                            : 'var(--color-error)',
                     }}
                   >
                     {log.outcome.title}

@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import path from 'path';
 import {
+  manifestColumnNames,
   scriptManifestSchema,
   type ScriptManifest,
   type ScriptPackageEditorState,
@@ -40,7 +41,8 @@ import {
 import {
   changedFilePaths,
   evaluatePass,
-  expectedColumnsFromManifest,
+  extractRunNotices,
+  normalizeManifestColumns,
 } from '../../../shared/fix-error';
 import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import type {
@@ -90,6 +92,8 @@ interface PackageState {
 }
 
 export interface ScriptRunOutput extends ParsedScriptOutput {
+  /** Passed with yellow warnings (on_empty fallback used, single-value columns, …). */
+  warnings?: string[];
   /** Stable copy of the last successful output (imported into the raw table). */
   csvPath: string;
   durationMs: number;
@@ -478,6 +482,7 @@ export class ScriptPackageService {
       log: run.log,
       exitCode: run.exitCode,
       durationMs: run.durationMs,
+      ...(run.warnings?.length ? { warnings: run.warnings } : {}),
     };
   }
 
@@ -975,6 +980,7 @@ export class ScriptPackageService {
         preview: output.csv.split(/\r?\n/).slice(0, 6).join('\n'),
         previewRows,
         log: output.log,
+        ...(output.warnings?.length ? { warnings: output.warnings } : {}),
       };
     } catch (error) {
       return {
@@ -1078,7 +1084,7 @@ export class ScriptPackageService {
         parsed = readScriptOutput(
           await readFile(outputPath, 'utf8'),
           format,
-          manifest.output?.columns ?? []
+          manifestColumnNames(manifest)
         );
       } catch (error) {
         throw new ScriptPackageError(
@@ -1088,7 +1094,7 @@ export class ScriptPackageService {
         );
       }
       // 0 rows / empty expected columns fail like a crash: the raw table keeps its last data.
-      const verdict = judgeOutput(parsed, manifest.output?.columns ?? []);
+      const verdict = judgeOutput(parsed, manifest.output?.columns ?? [], log);
       if (!verdict.ok) {
         throw new ScriptPackageError(
           verdict.reason ?? '通过但结果异常',
@@ -1107,7 +1113,15 @@ export class ScriptPackageService {
         await this.patchState(packageDir, { lastSuccess: info });
       }
       if (record) this.store.update(id, record.version, { rows: parsed.rows });
-      return { ...parsed, csvPath, durationMs, installedDeps, log, version: record?.version };
+      return {
+        ...parsed,
+        csvPath,
+        durationMs,
+        installedDeps,
+        log,
+        version: record?.version,
+        ...(verdict.warnings?.length ? { warnings: verdict.warnings } : {}),
+      };
     } catch (error) {
       if (!options.dryRun) {
         await this.patchState(packageDir, {
@@ -1526,11 +1540,12 @@ function previewFromLog(log: string | undefined): string | undefined {
 /** Shared pass criteria (evaluatePass) applied to a parsed script output. */
 export function judgeOutput(
   parsed: ParsedScriptOutput,
-  manifestColumns: string[]
-): { ok: boolean; reason?: string } {
+  manifestColumns: NonNullable<NonNullable<ScriptManifest['output']>['columns']>,
+  log?: string
+): { ok: boolean; reason?: string; warnings?: string[] } {
   const table = parseCsv(parsed.csv);
   const columns = parsed.columns;
-  const rows = table.slice(1).map((row) => {
+  const rows = table.slice(1, 501).map((row) => {
     const record: Record<string, string> = {};
     columns.forEach((column, index) => (record[column] = row[index] ?? ''));
     return record;
@@ -1540,9 +1555,9 @@ export function judgeOutput(
     columns,
     rows,
     totalRows: parsed.rows,
-    expectedColumns: expectedColumnsFromManifest(
-      JSON.stringify({ output: { columns: manifestColumns } })
-    ),
+    raggedRows: parsed.raggedRows,
+    notices: extractRunNotices(log),
+    expectedColumns: normalizeManifestColumns(manifestColumns),
   });
 }
 

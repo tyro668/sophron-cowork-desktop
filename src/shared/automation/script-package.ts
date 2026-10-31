@@ -21,12 +21,33 @@ export const scriptManifestSchema = z.object({
   output: z
     .object({
       format: z.enum(['csv', 'json']).default('csv'),
-      /** Columns the output must contain (checked after every run). */
-      columns: z.array(z.string().trim().min(1)).optional(),
+      /**
+       * Columns the output must contain (checked after every run): names, or objects declaring
+       * a value type ('string' | 'number' | 'integer' | 'date' | 'boolean') and nullability.
+       */
+      columns: z
+        .array(
+          z.union([
+            z.string().trim().min(1),
+            z.object({
+              name: z.string().trim().min(1),
+              type: z.enum(['string', 'number', 'integer', 'date', 'boolean']).optional(),
+              nullable: z.boolean().optional(),
+            }),
+          ])
+        )
+        .optional(),
     })
     .optional(),
 });
 export type ScriptManifest = z.infer<typeof scriptManifestSchema>;
+
+/** Names of the declared output columns. */
+export function manifestColumnNames(manifest: Pick<ScriptManifest, 'output'>): string[] {
+  return (manifest.output?.columns ?? []).map((column) =>
+    typeof column === 'string' ? column : column.name
+  );
+}
 
 export interface ScriptPackageRunInfo {
   at: number;
@@ -135,6 +156,8 @@ export interface ScriptTestRunResult {
   log?: string;
   /** Exit code of the entry when it ran and failed. */
   exitCode?: number;
+  /** Passed with a yellow warning (on_empty fallback used, single-value columns, …). */
+  warnings?: string[];
 }
 
 export interface ScriptGenerateDraftInput {
@@ -190,6 +213,8 @@ export interface ScriptDraftCheck {
   log?: string;
   exitCode?: number;
   durationMs: number;
+  /** Passed with a yellow warning. */
+  warnings?: string[];
 }
 
 export interface ScriptGenerateDraftResult {

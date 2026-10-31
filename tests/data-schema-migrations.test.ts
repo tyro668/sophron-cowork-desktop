@@ -444,7 +444,7 @@ describe('metadata migrations', () => {
     const ledger = ledgerRows(raw);
     expect(ledger.map((row) => row.version)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26,
-      27, 28, 29, 30, 31, 32,
+      27, 28, 29, 30, 31, 32, 33,
     ]);
     expect(ledger.map((row) => row.name)).toEqual([
       'baseline_schema',
@@ -479,6 +479,7 @@ describe('metadata migrations', () => {
       'cloud_raw_sources',
       'source_file_relative_paths',
       'normalizer_code_to_git',
+      'raw_table_health',
     ]);
     // v29: one source per legacy input table.
     expect(tableNames(raw)).toContain('data_raw_sources');
@@ -616,7 +617,10 @@ describe('metadata migrations', () => {
 
     const store = openStore(path.join(tempRoot, 'workspace.duckdb'), raw);
     await store.getDashboard({});
-    expect(ledgerRows(raw).at(-1)).toEqual({ version: 32, name: 'normalizer_code_to_git' });
+    expect(ledgerRows(raw).find((row) => row.version === 32)).toEqual({
+      version: 32,
+      name: 'normalizer_code_to_git',
+    });
     expect(columnNames(raw, 'data_raw_table_normalizer_artifact_versions')).not.toContain(
       'files_json'
     );
