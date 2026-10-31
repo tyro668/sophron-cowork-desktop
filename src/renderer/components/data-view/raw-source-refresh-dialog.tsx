@@ -200,7 +200,10 @@ export function useRawSourceRefresh(onChanged: () => void) {
       const result = await dataClient.refreshRawSource(sourceId);
       if (shouldShowRefreshDialog(result)) setPending(result);
       else if (result.failed.length)
-        showToast('error', `${summary(result)}\n${result.failed[0].error}`);
+        showToast(
+          'error',
+          `${summary(result)}\n${formatDataErrorMessage(result.failed[0].error, t)}`
+        );
       else showToast('success', summary(result));
       onChanged();
     } catch (error) {

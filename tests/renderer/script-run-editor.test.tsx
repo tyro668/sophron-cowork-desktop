@@ -103,7 +103,7 @@ describe('ScriptRunEditor', () => {
     expect(screen.getByText('2 分钟')).toBeTruthy();
     expect(screen.getByText('原始表 · 竞品价格_厨具')).toBeTruthy();
     expect(screen.getByText('仅通知')).toBeTruthy();
-    expect(screen.getByText('交给 AI 重新生成')).toBeTruthy();
+    expect(screen.getByText('交给 AI 修复')).toBeTruthy();
   });
 
   it('updates config from the dropdowns', async () => {
@@ -133,7 +133,7 @@ describe('ScriptRunEditor', () => {
   it('shows the published version and opens the editor', async () => {
     setup({ packageId: 'fx', timeoutMs: 60_000 });
     const text = await screen.findByTestId('script-version-text');
-    expect(text.textContent).toMatch(/^v3 已发布 · 10-20 \d\d:00$/);
+    expect(text.textContent).toMatch(/^v3 使用中 · 10-20 \d\d:00$/);
     fireEvent.click(screen.getByText('编辑脚本'));
     expect(useAppStore.getState().scriptEditor).toMatchObject({ packageId: 'fx', step: 'rules' });
   });
@@ -147,7 +147,7 @@ describe('ScriptRunEditor', () => {
       },
     ]);
     setup({ packageId: 'fx', timeoutMs: 60_000 });
-    expect(await screen.findByText('· v4 草稿待发布（AI 修复）', { exact: false })).toBeTruthy();
+    expect(await screen.findByText('· v4 待确认（AI 修复）', { exact: false })).toBeTruthy();
     fireEvent.click(screen.getByText('查看草稿'));
     expect(useAppStore.getState().scriptEditor).toMatchObject({
       packageId: 'fx',
@@ -167,5 +167,10 @@ describe('ScriptRunEditor', () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(useAppStore.getState().scriptEditor).toMatchObject({ step: 'rules' });
     expect(useAppStore.getState().scriptEditor?.packageId).toBeUndefined();
+    // The editor reports the created package: it is bound to this 执行脚本 node.
+    useAppStore.getState().scriptEditor?.onCreated?.('fx_new');
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ config: expect.objectContaining({ packageId: 'fx_new' }) })
+    );
   });
 });

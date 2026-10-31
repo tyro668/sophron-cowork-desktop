@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileSearch, FolderOpen, PencilLine, Play } from 'lucide-react';
 import type { AutomationActionNode, DataRawTable } from '../../../types';
@@ -35,6 +35,9 @@ export function ScriptRunEditor({
   const config = node.config;
   const update = (patch: Record<string, unknown>) =>
     onChange({ ...node, config: { ...config, ...patch } });
+  // 新建脚本包 binds the package to this node when the editor creates it (latest node/onChange).
+  const latest = useRef({ node, onChange });
+  latest.current = { node, onChange };
   const packageId = String(config.packageId ?? '');
   const timeoutMs = Number(config.timeoutMs) || DEFAULT_SCRIPT_TIMEOUT_MS;
   const rawTableId = String(config.rawTableId ?? '');
@@ -162,7 +165,14 @@ export function ScriptRunEditor({
             options={packageOptions}
             onChange={(value) => {
               if (value === NEW_PACKAGE) {
-                openScriptEditor({ step: 'rules' });
+                openScriptEditor({
+                  step: 'rules',
+                  onCreated: (createdId) => {
+                    const { node: current, onChange: apply } = latest.current;
+                    apply({ ...current, config: { ...current.config, packageId: createdId } });
+                    void refresh();
+                  },
+                });
                 return;
               }
               update({ packageId: value });

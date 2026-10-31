@@ -187,6 +187,17 @@ describe('secret detection', () => {
     expect(leaks.map((leak) => `${leak.path}:${leak.line}`)).toEqual(['main.py:3', 'lib/a.js:1']);
     expect(JSON.stringify(leaks)).not.toContain(FAKE);
   });
+
+  it('does not mistake identifiers that start like a vendor prefix for keys', () => {
+    const files = [
+      {
+        path: 'normalizer/transform.py',
+        content:
+          'skip_non_numeric_threshold = 3\nif skip_rows_below_threshold:\n    pass\nsk_live_tokenAbc12345678901234 = 1\n',
+      },
+    ];
+    expect(findSecretsInFiles(files).map((leak) => leak.line)).toEqual([4]);
+  });
 });
 
 describe('SecretStore', () => {

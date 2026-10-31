@@ -48,6 +48,8 @@ import {
   type DataListGroup,
 } from '../../data-view/group-ui';
 import { Button } from '../../ui/button';
+import { useAppStore } from '../../../store';
+import { showToast } from '../../../utils/toast';
 
 export function AutomationListPanel({
   automations,
@@ -857,10 +859,78 @@ function RunLogRow({
         <tr className="border-b border-border-muted/85 bg-error/[0.04]">
           <td colSpan={8} className="whitespace-pre-wrap break-words px-8 py-2 text-xs text-error">
             {run.error}
+            <ScriptRepairActions error={run.error} nodes={nodes} tr={tr} />
           </td>
         </tr>
       )}
     </>
+  );
+}
+
+/**
+ * A failed 执行脚本 run whose AI 修复 produced a version: open it, or confirm it right here.
+ * Matches the suffix written by script-run-action's repairWithAi.
+ */
+export function ScriptRepairActions({
+  error,
+  nodes,
+  tr,
+}: {
+  error: string;
+  nodes: Automation['actionGraph']['nodes'];
+  tr: (key: string, fallback: string) => string;
+}) {
+  const openScriptEditor = useAppStore((state) => state.openScriptEditor);
+  const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
+  const match = /AI 已修复为 v(\d+)|AI 修复的 v(\d+)/.exec(error);
+  const packageId = nodes.find((node) => node.type === 'script.run')?.config?.packageId;
+  if (!match || typeof packageId !== 'string' || !packageId) return null;
+  const version = Number(match[1] ?? match[2]);
+  const passed = Boolean(match[1]);
+  const publish = async () => {
+    setState('busy');
+    try {
+      await window.electronAPI.automation.scripts.publish(packageId, version);
+      setState('done');
+      showToast(
+        'success',
+        tr('schedule.repair.published', '已确认使用 v{{version}}').replace(
+          '{{version}}',
+          String(version)
+        )
+      );
+    } catch (err) {
+      setState('idle');
+      showToast('error', err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <span className="mt-1.5 flex gap-2" onClick={(event) => event.stopPropagation()}>
+      <button
+        type="button"
+        data-testid="run-repair-view"
+        onClick={() => openScriptEditor({ packageId, version, step: 'review' })}
+        className="inline-flex h-7 items-center gap-1 rounded border border-border-subtle bg-surface px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
+      >
+        {tr('schedule.repair.view', '查看修复结果')}
+      </button>
+      {passed && (
+        <button
+          type="button"
+          data-testid="run-repair-publish"
+          disabled={state !== 'idle'}
+          onClick={() => void publish()}
+          className="inline-flex h-7 items-center gap-1 rounded border border-accent/30 bg-surface px-2.5 text-[12px] font-medium text-accent hover:bg-accent-muted disabled:opacity-50"
+        >
+          {state === 'done'
+            ? tr('schedule.repair.inUse', '使用中')
+            : tr('schedule.repair.publish', '一键确认使用 v{{version}}').replace(
+                '{{version}}',
+                String(version)
+              )}
+        </button>
+      )}
+    </span>
   );
 }
 

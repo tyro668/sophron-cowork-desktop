@@ -9,5 +9,7 @@ export function formatDataErrorMessage(err: unknown, t: TFunction): string {
   if (CSV_DECODE_ERROR_PATTERN.test(message)) {
     return t('data.rawTables.errors.csvEncoding');
   }
+  const abnormal = /E_RAW_TABLE_ABNORMAL:\s*([^。]+)/.exec(message);
+  if (abnormal) return t('data.rawTables.errors.abnormal', { reason: abnormal[1].trim() });
   return message;
 }

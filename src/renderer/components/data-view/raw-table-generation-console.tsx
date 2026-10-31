@@ -19,7 +19,6 @@ const STEP_TITLE_KEYS: Record<NormalizerGenerationStepPhase, string> = {
   verify: 'fixError.stepVerify',
 };
 
-const COLLAPSED_STREAM_TAIL_LINES = 4;
 const OUTCOME_FILE_LIST_LIMIT = 12;
 
 function StepStatusIcon({ status }: { status: NormalizerGenerationStepStatus }) {
@@ -30,11 +29,6 @@ function StepStatusIcon({ status }: { status: NormalizerGenerationStepStatus }) 
     return <X className="h-3.5 w-3.5 text-error" />;
   }
   return <Check className="h-3.5 w-3.5 text-success" />;
-}
-
-function tailStreamLines(stream: string, count: number): string {
-  const lines = stream.split('\n');
-  return lines.slice(Math.max(0, lines.length - count)).join('\n');
 }
 
 function GenerationStepView({
@@ -48,12 +42,11 @@ function GenerationStepView({
 }) {
   const [collapsedOverride, setCollapsedOverride] = useState<boolean | null>(null);
   const hasStream = step.stream.length > 0;
-  const expanded = collapsedOverride ?? step.status === 'active';
+  // The model's raw output is 高级: folded by default so the steps read as plain progress.
+  const expanded = collapsedOverride ?? false;
   const streamLineCount = hasStream ? step.stream.split('\n').length : 0;
-  const shownStream = expanded
-    ? step.stream
-    : tailStreamLines(step.stream, COLLAPSED_STREAM_TAIL_LINES);
-  const hasBody = step.notes.length > 0 || hasStream;
+  const shownStream = expanded ? step.stream : '';
+  const hasBody = step.notes.length > 0 || (hasStream && expanded);
 
   return (
     <div>
@@ -100,12 +93,11 @@ function GenerationStepView({
               {note}
             </div>
           ))}
-          {hasStream ? (
+          {hasStream && expanded ? (
             <pre
               className="whitespace-pre-wrap break-all py-1 font-mono text-[11px] leading-[1.7]"
               style={{ color: 'var(--code-preview-muted)' }}
             >
-              {expanded ? null : <span className="block">…</span>}
               {shownStream}
               {step.status === 'active' ? (
                 <span className="animate-pulse text-accent">▍</span>

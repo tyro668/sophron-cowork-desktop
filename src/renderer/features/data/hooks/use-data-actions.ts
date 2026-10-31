@@ -232,6 +232,28 @@ export function useDataActions(deps: DataActionsDeps) {
     [loadDashboard, loadRawTables, ui, t]
   );
 
+  /** Re-reads a local file / folder table from its source (refresh checks may mark it 数据异常). */
+  const handleRefreshRawTable = useCallback(
+    async (rawTable: DataRawTable) => {
+      if (!rawTable.sourceId || !dataClient.has('refreshRawSource')) return undefined;
+      ui.setActionId(`refresh:${rawTable.id}`);
+      try {
+        const result = await dataClient.refreshRawSource(rawTable.sourceId);
+        const failed = result.failed.find((entry) => entry.id === rawTable.id) ?? result.failed[0];
+        if (failed) showToast('error', formatDataErrorMessage(failed.error, t));
+        else showToast('success', t('data.rawTables.editor.refreshDone'));
+        await loadRawTables({ preserveError: true });
+        return (await dataClient.getRawTable(rawTable.id)) ?? undefined;
+      } catch (err) {
+        showToast('error', formatDataErrorMessage(err, t));
+        return undefined;
+      } finally {
+        ui.setActionId(null);
+      }
+    },
+    [loadRawTables, ui, t]
+  );
+
   const handleEditPipeline = useCallback(
     (pipeline: DataPipeline) => {
       editors.setPipelineNameEditRequested(false);
@@ -435,9 +457,11 @@ export function useDataActions(deps: DataActionsDeps) {
         });
         rawTables.updateRawTableRow(updated);
         await loadRawTables({ preserveError: true });
+        return true;
       } catch (err) {
         ui.setError(formatDataErrorMessage(err, t));
         await loadRawTables({ preserveError: true });
+        return false;
       } finally {
         ui.setActionId(null);
       }
@@ -822,6 +846,7 @@ export function useDataActions(deps: DataActionsDeps) {
     handleCreatePipeline,
     handleCreatePipelineFromTable,
     handleRefreshCloudRawTable,
+    handleRefreshRawTable,
     handleRunPipeline,
     handleEditPipeline,
     handleGeneratedPipeline,
