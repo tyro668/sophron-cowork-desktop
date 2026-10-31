@@ -871,7 +871,7 @@ function RunLogRow({
  * A failed 执行脚本 run whose AI 修复 produced a version: open it, or confirm it right here.
  * Matches the suffix written by script-run-action's repairWithAi.
  */
-function ScriptRepairActions({
+export function ScriptRepairActions({
   error,
   nodes,
   tr,
@@ -892,7 +892,13 @@ function ScriptRepairActions({
     try {
       await window.electronAPI.automation.scripts.publish(packageId, version);
       setState('done');
-      showToast('success', tr('schedule.repair.published', '已确认使用 v{{version}}').replace('{{version}}', String(version)));
+      showToast(
+        'success',
+        tr('schedule.repair.published', '已确认使用 v{{version}}').replace(
+          '{{version}}',
+          String(version)
+        )
+      );
     } catch (err) {
       setState('idle');
       showToast('error', err instanceof Error ? err.message : String(err));
