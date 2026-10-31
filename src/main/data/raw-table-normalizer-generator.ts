@@ -275,7 +275,7 @@ export function createLlmRawTableNormalizerProjectGenerator(
         buildNormalizerFixUserPrompt(input, payload),
         buildNormalizerFixSystemPrompt(input.primaryLanguage),
         runtimeConfig,
-        { temperature: 0.1, maxTokens: 16_000, onTextDelta: onDelta }
+        { temperature: 0.1, maxTokens: 16_000, onTextDelta: onDelta, signal: input.signal }
       );
       if (!response.text.trim()) throw new Error('模型没有返回内容');
       const parsed = JSON.parse(extractJsonObject(response.text)) as unknown;

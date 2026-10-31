@@ -15,11 +15,19 @@ import type {
   DataNormalizerProjectFile,
   DataRawTableSourceSummary,
 } from '../../shared/contracts';
-import { HeadlessToolAgent, type HeadlessAgentStop } from '../agent/headless-tool-agent';
+import {
+  HeadlessToolAgent,
+  formatAgentUsage,
+  type HeadlessAgentStop,
+} from '../agent/headless-tool-agent';
 import { createWorkspaceTools } from '../agent/workspace-tools';
 import { changedFilePaths, type FixPayload } from '../../shared/fix-error';
 
-export const NORMALIZER_AGENT_LIMITS = { maxTurns: 24, timeoutMs: 6 * 60 * 1000 } as const;
+export const NORMALIZER_AGENT_LIMITS = {
+  maxTurns: 24,
+  timeoutMs: 6 * 60 * 1000,
+  maxTotalTokens: 1_500_000,
+} as const;
 
 /** One preview of project files on the real source, with the pass verdict applied. */
 export interface NormalizerPreviewCheck {
@@ -163,6 +171,7 @@ export async function runNormalizerAgent(
       tools: [...createWorkspaceTools({ dir }), previewTool],
       maxTurns: NORMALIZER_AGENT_LIMITS.maxTurns,
       timeoutMs: NORMALIZER_AGENT_LIMITS.timeoutMs,
+      maxTotalTokens: NORMALIZER_AGENT_LIMITS.maxTotalTokens,
       signal: input.signal,
       maxTokens: 16_000,
       onEvent: (event) => {
@@ -203,6 +212,7 @@ export async function runNormalizerAgent(
           2
         )
       );
+      progress('verify', formatAgentUsage(result));
       if (result.stop === 'aborted') throw new Error('已取消');
       if (result.stop === 'error' && selfTests === 0)
         throw new Error(`AI 修复失败：${result.error ?? '模型出错'}`);

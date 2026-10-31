@@ -6,8 +6,10 @@ import type { AppConfig } from '../../config/config-store';
 import type { AgentRuntimeConfig } from '../../../shared/contracts';
 import {
   HeadlessToolAgent,
+  formatAgentUsage,
   type HeadlessAgentEvent,
   type HeadlessAgentStop,
+  type HeadlessAgentTokens,
 } from '../../agent/headless-tool-agent';
 import { createWorkspaceTools } from '../../agent/workspace-tools';
 import { knownSecretValues } from '../../exec-guard/redact';
@@ -29,9 +31,12 @@ import {
 const GRACE_TURNS = 8;
 
 export const SCRIPT_AGENT_LIMITS = {
-  generate: { maxTurns: 40, timeoutMs: 12 * 60 * 1000 },
-  fix: { maxTurns: 30, timeoutMs: 8 * 60 * 1000 },
+  generate: { maxTurns: 40, timeoutMs: 12 * 60 * 1000, maxTotalTokens: 3_000_000 },
+  fix: { maxTurns: 30, timeoutMs: 8 * 60 * 1000, maxTotalTokens: 2_000_000 },
 } as const;
+
+/** Agent tool-call logs kept per package (newest first), under .sophron/agent-logs. */
+const KEPT_AGENT_LOGS = 20;
 
 /** Result of trial-running the package working tree (with the pass verdict applied). */
 export type ScriptCheck = ScriptDraftCheck;
@@ -86,6 +91,8 @@ export interface ScriptAgentOutcome {
   selfTests: number;
   /** Fix turns: the redacted failure context the agent got. */
   payload?: FixPayload;
+  /** Rounds, tool calls and tokens the agent used. */
+  usage?: { turns: number; toolCalls: number; tokens: HeadlessAgentTokens };
 }
 
 export interface ScriptFilesGenerator {
@@ -183,6 +190,7 @@ export function createAgentScriptFilesGenerator(
           : buildScriptAgentSystemPrompt(input.runtime),
         prompt: buildScriptGenerationUserPrompt(input),
         limits: SCRIPT_AGENT_LIMITS.generate,
+        kind: 'generate',
       });
     },
     async fix(input) {
@@ -208,6 +216,7 @@ export function createAgentScriptFilesGenerator(
         systemPrompt: buildScriptFixSystemPrompt(input.runtime),
         prompt: buildScriptFixUserPrompt(input, payload),
         limits: SCRIPT_AGENT_LIMITS.fix,
+        kind: 'fix',
       });
       return { ...outcome, payload };
     },
@@ -220,7 +229,8 @@ async function runScriptAgent(
     config: AppConfig | AgentRuntimeConfig;
     systemPrompt: string;
     prompt: string;
-    limits: { maxTurns: number; timeoutMs: number };
+    limits: { maxTurns: number; timeoutMs: number; maxTotalTokens: number };
+    kind: 'generate' | 'fix';
   }
 ): Promise<ScriptAgentOutcome> {
   const progress = input.onProgress ?? (() => undefined);
@@ -244,6 +254,8 @@ async function runScriptAgent(
     ],
     maxTurns: options.limits.maxTurns,
     timeoutMs: options.limits.timeoutMs,
+    maxTotalTokens: options.limits.maxTotalTokens,
+    toolLogFile: agentLogFile(input.workspace.dir, options.kind),
     signal: input.signal,
     maxTokens: 16_000,
     onEvent: (event) => describeAgentEvent(event, progress),
@@ -271,16 +283,34 @@ async function runScriptAgent(
       );
       if (result.stop === 'aborted') throw new ScriptAgentCancelled();
     }
+    progress('verify', formatAgentUsage(result));
     return {
       summary: result.text.slice(0, 1200),
       stop: result.stop,
       ...(result.error ? { error: result.error } : {}),
       lastCheck,
       selfTests,
+      usage: { turns: result.turns, toolCalls: result.toolCalls, tokens: result.tokens },
     };
   } finally {
     agent.dispose();
   }
+}
+
+function agentLogFile(dir: string, kind: 'generate' | 'fix'): string {
+  const logDir = path.join(dir, '.sophron', 'agent-logs');
+  try {
+    const old = fs
+      .readdirSync(logDir)
+      .filter((name) => name.endsWith('.jsonl'))
+      .sort()
+      .reverse()
+      .slice(KEPT_AGENT_LOGS - 1);
+    for (const name of old) fs.rmSync(path.join(logDir, name), { force: true });
+  } catch {
+    // No logs yet.
+  }
+  return path.join(logDir, `${new Date().toISOString().replace(/[:.]/g, '-')}-${kind}.jsonl`);
 }
 
 export class ScriptAgentCancelled extends Error {
