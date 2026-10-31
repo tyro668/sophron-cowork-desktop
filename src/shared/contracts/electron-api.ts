@@ -2,6 +2,7 @@ import type { ChatScriptProposal } from '../chat-to-script';
 import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
 import type {
   ScriptGenerateDraftInput,
+  ScriptSecretInfo,
   ScriptGenerateDraftResult,
   ScriptGenerateProgressEvent,
   ScriptPackageEditorState,
@@ -591,6 +592,17 @@ export interface ElectronApi {
         messageId?: string;
       }) => Promise<ChatScriptProposal>;
       onGenerateProgress: (callback: (event: ScriptGenerateProgressEvent) => void) => () => void;
+    };
+    /** Encrypted secrets of a script package / normalizer (env vars at run time; values write-only). */
+    secrets: {
+      list: (kind: 'script' | 'normalizer', id: string) => Promise<ScriptSecretInfo[]>;
+      set: (
+        kind: 'script' | 'normalizer',
+        id: string,
+        name: string,
+        value: string
+      ) => Promise<ScriptSecretInfo>;
+      delete: (kind: 'script' | 'normalizer', id: string, name: string) => Promise<void>;
     };
     groups: {
       list: () => Promise<AutomationGroup[]>;

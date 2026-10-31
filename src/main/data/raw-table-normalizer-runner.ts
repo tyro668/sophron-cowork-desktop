@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
-import { spawn } from 'child_process';
+import { runProcess } from '../automation/script-packages/process';
+import { buildExecEnv } from '../exec-guard/env';
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'path';
 import type {
   DataRawTableNormalizerArtifactVersion,
@@ -19,6 +20,8 @@ export interface RunRawTableNormalizerProjectInput {
   timeoutMs?: number;
   projectRoot?: string;
   workspaceRoot?: string;
+  /** Strategy secrets, injected as environment variables (redacted from output). */
+  secrets?: Record<string, string>;
 }
 
 export interface RunRawTableNormalizerProjectResult {
@@ -74,11 +77,20 @@ export async function runRawTableNormalizerProject(
     let stdout = '';
     let stderr = '';
     const steps: RawTableNormalizerRunStep[] = [];
+    // Sandbox: the project / run / output folders read-write, the input source read-only.
+    const exec = {
+      timeoutMs: input.timeoutMs,
+      secrets: input.secrets ?? {},
+      sandbox: {
+        writable: [projectDir, workDir, outputDir],
+        readable: contextPaths(input.context),
+      },
+    };
     if (shouldPrepareDependencies && input.version.dependencyPrepare) {
       for (const step of input.version.dependencyPrepare.steps) {
         const command = interpolateCommand(step.command, variables);
         const cwd = resolveProjectCwd(projectDir, step.cwd);
-        const result = await runCommand(command, cwd, input.timeoutMs);
+        const result = await runCommand(command, cwd, exec);
         steps.push({ command, cwd, ...result });
         stdout += result.stdout;
         stderr += result.stderr;
@@ -87,7 +99,7 @@ export async function runRawTableNormalizerProject(
 
     const entrypointCommand = interpolateCommand(input.version.entrypoint.command, variables);
     const entrypointCwd = resolveProjectCwd(projectDir, input.version.entrypoint.cwd);
-    const entrypointResult = await runCommand(entrypointCommand, entrypointCwd, input.timeoutMs);
+    const entrypointResult = await runCommand(entrypointCommand, entrypointCwd, exec);
     steps.push({ command: entrypointCommand, cwd: entrypointCwd, ...entrypointResult });
     stdout += entrypointResult.stdout;
     stderr += entrypointResult.stderr;
@@ -288,55 +300,62 @@ function interpolateCommand(command: string[], variables: Record<string, string>
   );
 }
 
+interface ExecOptions {
+  timeoutMs?: number;
+  secrets: Record<string, string>;
+  sandbox: { writable: string[]; readable: string[] };
+}
+
 async function runCommand(
   command: string[],
   cwd: string,
-  timeoutMs = 120_000
+  exec: ExecOptions
 ): Promise<{ stdout: string; stderr: string; exitCode: number; durationMs: number }> {
   if (command.length === 0 || !command[0]) {
     throw new Error('Normalizer command is empty');
   }
-  return new Promise((resolvePromise, reject) => {
-    const startedAt = Date.now();
-    const child = spawn(command[0], command.slice(1), {
-      cwd,
-      env: createNormalizerCommandEnv(),
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-    let stdout = '';
-    let stderr = '';
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error(`Normalizer command timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-    child.stdout?.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr?.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on('error', (error) => {
-      clearTimeout(timer);
-      reject(error);
-    });
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      if (code === 0) {
-        resolvePromise({ stdout, stderr, exitCode: 0, durationMs: Date.now() - startedAt });
-      } else {
-        const exitCode = code ?? 1;
-        reject(
-          new Error(
-            `Normalizer command failed with exit code ${exitCode}: ${stderr || command.join(' ')}`
-          )
-        );
-      }
-    });
+  const timeoutMs = exec.timeoutMs ?? 120_000;
+  const startedAt = Date.now();
+  // Shared executor: allowlisted env, OS sandbox, process-tree kill, capped + redacted output.
+  const result = await runProcess(command[0], command.slice(1), {
+    cwd,
+    timeoutMs,
+    env: createNormalizerCommandEnv(exec.secrets),
+    sandbox: exec.sandbox,
+    redact: Object.values(exec.secrets),
   });
+  if (result.timedOut) throw new Error(`Normalizer command timed out after ${timeoutMs}ms`);
+  if (result.code !== 0) {
+    throw new Error(
+      `Normalizer command failed with exit code ${result.code ?? 1}: ${result.stderr || command.join(' ')}`
+    );
+  }
+  return {
+    stdout: result.stdout,
+    stderr: result.stderr,
+    exitCode: 0,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
-function createNormalizerCommandEnv(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
+/** Absolute paths in the run context (the input source, prepared copies) the code may read. */
+export function contextPaths(context: unknown, out: Set<string> = new Set(), depth = 0): string[] {
+  if (depth > 6 || out.size > 64) return [...out];
+  if (typeof context === 'string') {
+    if (isAbsolute(context) && context.length > 1 && fs.existsSync(context)) {
+      const resolved = resolve(context);
+      if (resolved !== resolve(os.homedir()) && resolved !== '/') out.add(resolved);
+    }
+  } else if (Array.isArray(context)) {
+    for (const item of context) contextPaths(item, out, depth + 1);
+  } else if (context && typeof context === 'object') {
+    for (const value of Object.values(context)) contextPaths(value, out, depth + 1);
+  }
+  return [...out];
+}
+
+function createNormalizerCommandEnv(secrets: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env = buildExecEnv({ ...secrets, PYTHONIOENCODING: 'utf-8' });
   const bundledBinDirs = resolveBundledRuntimeBinDirs();
   if (bundledBinDirs.length === 0) return env;
 

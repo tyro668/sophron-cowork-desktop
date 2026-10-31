@@ -5,6 +5,7 @@ import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
+import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -211,6 +212,8 @@ export function RawTableEditorWorkbench({
   const [previewData, setPreviewData] = useState<DataRawTablePreview | null>(null);
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
+  const secretReview = useSecretReview();
+  const [secretsKey, setSecretsKey] = useState(0);
   const [generationLog, setGenerationLog] = useState<NormalizerGenerationLog | null>(null);
   const generationLogRef = useRef<NormalizerGenerationLog | null>(null);
   const generationFlushTimerRef = useRef<number | null>(null);
@@ -558,10 +561,14 @@ export function RawTableEditorWorkbench({
 
   const generateCustomizeDraft = async () => {
     if (dataProcessing.strategy !== 'customize') return;
-    const rulePrompt = dataProcessing.rulePrompt.trim();
-    if (!rulePrompt || !rawTable) {
+    const rawRulePrompt = dataProcessing.rulePrompt.trim();
+    if (!rawRulePrompt || !rawTable) {
       return;
     }
+    // Key-like strings are confirmed as secrets first; the model only sees ${SECRET:NAME}.
+    const reviewed = await secretReview.review(rawRulePrompt);
+    if (!reviewed) return;
+    const rulePrompt = reviewed.text;
     setCustomizeStep('generate');
     const log = createNormalizerGenerationLog({
       rawTableName: rawTable.name,
@@ -598,7 +605,10 @@ export function RawTableEditorWorkbench({
         model: getAgentModelLabel(appConfig, '', selectedCustomizeModelConfigSetId),
         primaryLanguage: normalizerLanguage,
         progressId,
+        secrets: reviewed.secrets,
+        secretsReviewed: reviewed.secretsReviewed,
       });
+      setSecretsKey((key) => key + 1);
       updateDataProcessing({
         ...dataProcessing,
         rulePrompt: result.version.rulePrompt,
@@ -1666,6 +1676,14 @@ export function RawTableEditorWorkbench({
                           }
                         />
                       </RawTableConfigRow>
+                      <RawTableConfigRow label={t('secrets.label')}>
+                        <SecretsEditor
+                          kind="normalizer"
+                          ownerId={dataProcessing.artifactId}
+                          refreshKey={secretsKey}
+                          disabled={isBusy}
+                        />
+                      </RawTableConfigRow>
                       <RawTableConfigRow label={t('data.rawTables.editor.examplesLabel')}>
                         <div className="flex min-h-[35px] flex-wrap items-center gap-1.5 px-2.5 py-1.5">
                           {(
@@ -2514,6 +2532,7 @@ export function RawTableEditorWorkbench({
           versions={normalizerVersions}
         />
       </Dialog>
+      {secretReview.dialog}
       {previewOpen && (
         <RawTablePreviewDialog
           tableKind="raw"

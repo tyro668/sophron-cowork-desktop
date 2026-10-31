@@ -153,6 +153,15 @@ export interface ScriptGenerateDraftInput {
   origin?: ScriptChatOrigin;
   /** Reference files (redacted fetch code from the conversation), ≤ 16 KB in total. */
   references?: ScriptReferenceFile[];
+  /** Key-like values the user confirmed as secrets: stored encrypted, replaced by ${SECRET:NAME}. */
+  secrets?: Array<{ name: string; value: string }>;
+  /** The renderer already asked about key-like strings (skip the automatic detection). */
+  secretsReviewed?: boolean;
+}
+
+export interface ScriptSecretInfo {
+  name: string;
+  updatedAt: number;
 }
 
 /** A trial-run failure handed to the model (the main process redacts paths and secrets). */
@@ -196,6 +205,8 @@ export interface ScriptGenerateDraftResult {
   changedFiles?: string[];
   fixSummary?: string;
   replaced?: boolean;
+  /** Secret names saved from the rule prompt / references in this generation. */
+  savedSecrets?: string[];
 }
 
 export interface ScriptGenerateProgressEvent {

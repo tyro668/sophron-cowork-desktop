@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from 'os';
 import path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { configureExecSandbox, resetSandboxDetection } from '../../src/main/exec-guard/sandbox';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
 import { VersionRepo as PackageRepo } from '../../src/main/versioning/git-repo';
 
@@ -55,6 +56,45 @@ beforeEach(() => {
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 describe('ScriptPackageService', () => {
+  it('injects package secrets as env vars, hides app keys and redacts secret values in logs', async () => {
+    const secretService = new ScriptPackageService({
+      rootDir: root,
+      node: { command: process.execPath },
+      secrets: {
+        env: (scope): Record<string, string> =>
+          scope === 'script:demo' ? { API_KEY: 'rvwFq83mZpLk20Xy7Tc3210' } : {},
+      },
+    });
+    process.env.OPENAI_API_KEY = 'app-model-key-should-not-leak';
+    try {
+      writePackage(path.join(root, 'demo'), {
+        'main.js': `const fs = require('fs');
+console.error('using ' + process.env.API_KEY);
+fs.writeFileSync(process.env.SOPHRON_OUTPUT, 'name,value\\nkey,' + (process.env.API_KEY ? 'set' : 'missing') + '\\napp,' + (process.env.OPENAI_API_KEY ? 'leaked' : 'hidden') + '\\n');`,
+      });
+      const test = await secretService.testRun('demo', { timeoutMs: 10_000, target: 'working' });
+      expect(test.ok).toBe(true);
+      expect(JSON.stringify(test)).toContain('set');
+      expect(JSON.stringify(test)).toContain('hidden');
+      expect(JSON.stringify(test)).not.toContain('rvwFq83mZpLk20Xy7Tc3210');
+    } finally {
+      delete process.env.OPENAI_API_KEY;
+    }
+  });
+
+  it('refuses to run code that addresses local services and blocks key literals in drafts', async () => {
+    writePackage(path.join(root, 'demo'), {
+      'config.json': '{"n": 3, "url": "http://127.0.0.1:19888/status"}',
+    });
+    const test = await service.testRun('demo', { timeoutMs: 10_000, target: 'working' });
+    expect(test.ok).toBe(false);
+    expect(test.error).toContain('本机');
+    writePackage(path.join(root, 'demo'), {
+      'config.json': '{"n": 3, "api_key": "rvwFq83mZpLk20Xy7Tc3210"}',
+    });
+    await expect(service.saveDraft('demo', { source: 'manual' })).rejects.toThrow(/密钥明文/);
+  });
+
   it('discovers folders with a manifest and flags invalid ones', async () => {
     writePackage(path.join(root, 'broken'), { 'manifest.json': '{"name":"x"}' });
     mkdirSync(path.join(root, 'no-manifest'));
@@ -253,7 +293,10 @@ describe('ScriptPackageService', () => {
       }
     })();
     if (!npmAvailable) return;
-    // A local "file:" dependency exercises the real npm install path without the network.
+    // A local "file:" dependency exercises the real npm install path without the network. It
+    // is symlinked from outside the package, which the sandbox hides, so run unsandboxed here.
+    resetSandboxDetection('none');
+    configureExecSandbox({ unsandboxedAllowed: true });
     const dep = mkdtempSync(path.join(os.tmpdir(), 'npm-dep-'));
     try {
       writePackage(dep, {
@@ -282,6 +325,8 @@ describe('ScriptPackageService', () => {
       expect((await service.summary('npmpkg')).versionCount).toBe(1);
       expect((await service.run('npmpkg', { timeoutMs: 60_000 })).installedDeps).toBe(false);
     } finally {
+      resetSandboxDetection();
+      configureExecSandbox({ unsandboxedAllowed: false });
       rmSync(dep, { recursive: true, force: true });
     }
   }, 120_000);

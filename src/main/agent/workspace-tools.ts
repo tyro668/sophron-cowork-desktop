@@ -16,6 +16,12 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { duckDuckGoSearch } from '../tools/web-search';
+import { buildExecEnv } from '../exec-guard/env';
+import { redactOutput } from '../exec-guard/redact';
+import { ensureExecAllowed, wrapShellCommand } from '../exec-guard/sandbox';
+import { checkAgentCommand } from '../exec-guard/command-policy';
+import { localHostRefusal } from '../exec-guard/local-refs';
+import { guardedFetch } from '../exec-guard/ssrf';
 
 /** Tool list element (tools differ in their parameter schemas). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -23,7 +29,6 @@ export type AnyAgentTool = AgentTool<any>;
 
 /** Folders inside a workspace the agent may never write (git, deps, app state). */
 const PROTECTED_DIRS = new Set(['.git', '.sophron', '.venv', 'node_modules', '__pycache__']);
-const SECRET_ENV = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|COOKIE|SESSION)/i;
 const DEFAULT_BASH_TIMEOUT_SECONDS = 120;
 const FETCH_BODY_LIMIT = 20_000;
 
@@ -62,6 +67,8 @@ export interface WorkspaceToolsOptions {
   bash?: boolean;
   /** Include webfetch / websearch. */
   web?: boolean;
+  /** Package secrets for bash (as env vars); their values are redacted from tool output. */
+  env?: Record<string, string>;
 }
 
 /** read / ls / write / edit confined to `dir` (reads may also look at the temp folder). */
@@ -86,43 +93,72 @@ export function createWorkspaceTools(options: WorkspaceToolsOptions): AnyAgentTo
     guardPath(createWriteTool(root), writable, root),
     guardPath(createEditTool(root), writable, root),
   ];
-  if (options.bash) tools.push(createWorkspaceBashTool(root));
+  if (options.bash) tools.push(createWorkspaceBashTool(root, options.env ?? {}));
   if (options.web) tools.push(createWebFetchTool(), createWebSearchTool());
   return tools;
 }
 
-/** Environment for agent shells: no API keys, tokens or other secrets of the app. */
-export function scrubbedEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const next: NodeJS.ProcessEnv = {};
-  for (const [key, value] of Object.entries(env)) {
-    if (SECRET_ENV.test(key)) continue;
-    next[key] = value;
-  }
-  return next;
-}
-
-function createWorkspaceBashTool(root: string): AnyAgentTool {
+/**
+ * bash for the agent: allowlisted env (plus package secrets), command policy, OS sandbox that
+ * only exposes the workspace (read-write) and the runtimes; output is redacted.
+ */
+function createWorkspaceBashTool(root: string, secrets: Record<string, string>): AnyAgentTool {
+  const sandboxed = process.platform !== 'win32';
   const options: BashToolOptions = {
     exposeSessionEnvironment: false,
-    spawnHook: (context) => ({ ...context, cwd: root, env: scrubbedEnv(context.env) }),
+    spawnHook: (context) => ({
+      ...context,
+      cwd: root,
+      env: buildExecEnv(secrets),
+      command: sandboxed
+        ? wrapShellCommand(context.command, { writable: [root], cwd: root })
+        : context.command,
+    }),
     ...(process.platform === 'win32' ? { operations: createWindowsBashOperations() } : {}),
   };
   const tool = createBashTool(root, options);
+  const secretValues = Object.values(secrets);
   return {
     ...tool,
-    execute: (
+    execute: async (
       id: string,
       params: { command: string; timeout?: number },
       signal?: AbortSignal,
       onUpdate?: never
-    ) =>
-      tool.execute(
-        id,
-        params.timeout != null ? params : { ...params, timeout: DEFAULT_BASH_TIMEOUT_SECONDS },
-        signal,
-        onUpdate
-      ),
+    ) => {
+      const refused = checkAgentCommand(String(params.command ?? '')) ?? localHostRefusal(root);
+      if (refused) throw new Error(refused);
+      await ensureExecAllowed('bash');
+      try {
+        const result = await tool.execute(
+          id,
+          params.timeout != null ? params : { ...params, timeout: DEFAULT_BASH_TIMEOUT_SECONDS },
+          signal,
+          onUpdate
+        );
+        return redactToolResult(result, secretValues);
+      } catch (error) {
+        // No `cause`: the original message may contain secret values.
+        // eslint-disable-next-line preserve-caught-error
+        throw new Error(
+          redactOutput(error instanceof Error ? error.message : String(error), secretValues)
+        );
+      }
+    },
   } as AnyAgentTool;
+}
+
+function redactToolResult<T>(result: T, secrets: string[]): T {
+  const value = result as { content?: Array<{ type: string; text?: string }> };
+  if (!value || !Array.isArray(value.content)) return result;
+  return {
+    ...value,
+    content: value.content.map((part) =>
+      part.type === 'text' && typeof part.text === 'string'
+        ? { ...part, text: redactOutput(part.text, secrets) }
+        : part
+    ),
+  } as T;
 }
 
 const webFetchSchema = Type.Object({
@@ -148,11 +184,11 @@ export function createWebFetchTool(): AgentTool<typeof webFetchSchema> {
     async execute(_id, params, signal) {
       const url = new URL(params.url);
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error('只支持 http/https');
-      const response = await fetch(url, {
+      // Public hosts only: every redirect hop is resolved and checked (no localhost / LAN).
+      const response = await guardedFetch(url, {
         method: params.method ?? 'GET',
         headers: { 'User-Agent': BROWSER_USER_AGENT, ...(params.headers ?? {}) },
         body: params.method === 'POST' ? params.body : undefined,
-        redirect: 'follow',
         signal: signal
           ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
           : AbortSignal.timeout(20_000),
@@ -165,7 +201,7 @@ export function createWebFetchTool(): AgentTool<typeof webFetchSchema> {
         .filter(([, value]) => value)
         .map(([name, value]) => `${name}: ${name === 'set-cookie' ? '(set)' : value}`);
       const text = [
-        `URL: ${response.url}`,
+        `URL: ${response.url || url.href}`,
         `Status: ${response.status}`,
         ...headers,
         `Body length: ${body.length}`,
@@ -175,7 +211,7 @@ export function createWebFetchTool(): AgentTool<typeof webFetchSchema> {
           ? `\n[Truncated: ${body.length - offset - FETCH_BODY_LIMIT} more chars, pass offset=${offset + FETCH_BODY_LIMIT}]`
           : '',
       ].join('\n');
-      return { content: [{ type: 'text', text }], details: undefined };
+      return { content: [{ type: 'text', text: redactOutput(text) }], details: undefined };
     },
   };
 }

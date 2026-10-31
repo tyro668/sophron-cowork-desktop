@@ -4630,5 +4630,22 @@
     "endpoints": "{{count}} endpoints",
     "dailyAt": "Daily {{time}}",
     "noTurnYet": "No turn has fetched data into a table yet"
+  },
+  "secrets": {
+    "label": "Secrets",
+    "none": "None",
+    "add": "Add",
+    "name": "Name",
+    "value": "Value",
+    "save": "Save",
+    "delete": "Delete {{name}}",
+    "hint": "Encrypted on this computer and provided as environment variables at run time; never sent to the AI or written to files",
+    "pendingHint": "Available after generation",
+    "reviewTitle": "Possible secrets found",
+    "reviewDesc": "These values are not sent to the AI. Checked ones are saved encrypted as secrets and replaced by ${SECRET:NAME} in the rule; the script reads them from environment variables.",
+    "reviewKeep": "Treat as plain text",
+    "reviewConfirm": "Save as secrets and continue",
+    "nameInvalid": "Use upper-case letters, digits and underscores, starting with a letter",
+    "saved": "Saved"
   }
 }

@@ -11,7 +11,8 @@ import {
   ScriptAgentCancelled,
   type ScriptFilesGenerator,
 } from '../../src/main/automation/script-packages/generator';
-import { createWorkspaceTools, scrubbedEnv } from '../../src/main/agent/workspace-tools';
+import { createWorkspaceTools } from '../../src/main/agent/workspace-tools';
+import { buildExecEnv } from '../../src/main/exec-guard/env';
 import { evaluatePass } from '../../src/shared/fix-error';
 import type { AppConfig } from '../../src/main/config/config-store';
 
@@ -345,7 +346,10 @@ describe('agent generator tools', () => {
   });
 
   it('shell env drops secrets and the prompt asks for the real API, browser headers and on_empty', () => {
-    const env = scrubbedEnv({ PATH: '/bin', OPENAI_API_KEY: 'k', GITHUB_TOKEN: 't', HOME: '/h' });
+    const env = buildExecEnv(
+      {},
+      { PATH: '/bin', OPENAI_API_KEY: 'k', GITHUB_TOKEN: 't', HOME: '/h', RANDOM_VAR: 'x' }
+    );
     expect(env).toEqual({ PATH: '/bin', HOME: '/h' });
     expect(
       createWorkspaceTools({ dir: work, bash: true, web: true }).map((tool) => tool.name)

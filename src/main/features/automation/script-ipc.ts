@@ -16,6 +16,11 @@ import {
   sanitizeForScript,
 } from '../../../shared/chat-to-script';
 import { collectSecretValues } from '../../../shared/fix-error';
+import {
+  getSecretStore,
+  normalizerSecretScope,
+  scriptSecretScope,
+} from '../../exec-guard/secret-store';
 import type {
   ScriptGenerateDraftInput,
   ScriptPackageEditorState,
@@ -38,7 +43,30 @@ function requireSession(sessionId: string) {
 /** Running 规则生成 / AI 修复 agents by progressId, for 取消. */
 const running = new Map<string, AbortController>();
 
+function secretScope(kind: 'script' | 'normalizer', id: string): string {
+  return kind === 'script' ? scriptSecretScope(id) : normalizerSecretScope(id);
+}
+
+function requireSecretStore() {
+  const store = getSecretStore();
+  if (!store) throw new Error('密钥存储不可用');
+  return store;
+}
+
 export function registerScriptPackageIpc(): void {
+  handleIpc('automation.secrets.list', (_event, kind: 'script' | 'normalizer', id: string) =>
+    requireSecretStore().list(secretScope(kind, id))
+  );
+  handleIpc(
+    'automation.secrets.set',
+    (_event, kind: 'script' | 'normalizer', id: string, name: string, value: string) =>
+      requireSecretStore().set(secretScope(kind, id), name, value)
+  );
+  handleIpc(
+    'automation.secrets.delete',
+    (_event, kind: 'script' | 'normalizer', id: string, name: string) =>
+      requireSecretStore().delete(secretScope(kind, id), name)
+  );
   handleIpc('automation.scripts.cancelGenerate', (_event, progressId: string) => {
     running.get(progressId)?.abort();
     return { cancelled: running.has(progressId) };
