@@ -148,11 +148,11 @@ async function repairWithAi(
   reason: string,
   context: AutomationRunContext
 ): Promise<string> {
-  if (!options.generator) return ' · AI 重新生成不可用';
+  if (!options.generator) return ' · AI 修复不可用';
   try {
     const summary = await options.scripts.summary(config.packageId);
     const baseVersion = summary.published?.version ?? summary.draft?.version;
-    if (baseVersion == null) return ' · AI 重新生成不可用：没有可修复的版本';
+    if (baseVersion == null) return ' · AI 修复不可用：没有可修复的版本';
     const result = await options.scripts.generateDraft(
       {
         packageId: config.packageId,
@@ -169,10 +169,10 @@ async function repairWithAi(
     );
     const version = result.version.version;
     if (!result.check?.passed) {
-      return ` · AI 重新生成的 v${version} 草稿未通过试运行：${result.check?.reason ?? ''}`;
+      return ` · AI 修复的 v${version} 未通过试运行：${result.check?.reason ?? ''}`;
     }
-    return ` · 脚本已重新生成为 v${version} 草稿（试运行 ${result.check.rows ?? 0} 行），待发布`;
+    return ` · AI 已修复为 v${version}（试运行 ${result.check.rows ?? 0} 行），等你确认使用`;
   } catch (error) {
-    return ` · AI 重新生成失败：${error instanceof Error ? error.message : String(error)}`;
+    return ` · AI 修复失败：${error instanceof Error ? error.message : String(error)}`;
   }
 }

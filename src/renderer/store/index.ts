@@ -43,6 +43,8 @@ export interface ScriptEditorTarget {
   step?: 'rules' | 'review';
   /** 对话「转成脚本」: generate from these confirmed key points as soon as the editor opens. */
   chat?: ChatScriptLaunch;
+  /** 新建脚本包 from an automation's 执行脚本 node: bind the package once it is created. */
+  onCreated?: (packageId: string) => void;
   /** Bumped on every open so the same target can be reopened. */
   nonce: number;
 }

@@ -5,6 +5,7 @@ import {
   Check,
   ChevronRight,
   Copy,
+  Eye,
   FileCode2,
   Folder,
   FolderOpen,
@@ -19,9 +20,12 @@ import {
   Send,
   Sparkles,
   Upload,
+  Wand2,
   X,
   XCircle,
 } from 'lucide-react';
+import { useConfirmDialog } from '../ConfirmDialog';
+import { useLeaveGuard } from '../../utils/leave-guard';
 import type {
   ScriptPackageSummary,
   ScriptPackageVersion,
@@ -133,6 +137,7 @@ export function ScriptPackageWorkbench({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const { confirm } = useConfirmDialog();
   const api = window.electronAPI.automation.scripts;
   const appConfig = useAppStore((state) => state.appConfig);
   const chat = target.chat;
@@ -192,6 +197,10 @@ export function ScriptPackageWorkbench({
     text: string;
   } | null>(null);
   const [codeView, setCodeView] = useState<'diff' | 'full'>('full');
+  // 确认结果 step: the trial output first; the code is under 高级.
+  const [reviewView, setReviewView] = useState<'result' | 'code'>('result');
+  // Last saved name / rule, for the 离开前确认.
+  const savedMetaRef = useRef<{ name: string; rulePrompt: string } | null>(null);
   const [diffBase, setDiffBase] = useState<ScriptPackageVersionDetail | null>(null);
   const [focusLine, setFocusLine] = useState<{ path: string; line: number } | null>(null);
   const [continueText, setContinueText] = useState('');
@@ -261,6 +270,10 @@ export function ScriptPackageWorkbench({
         setModelConfigSetId(editor?.modelConfigSetId ?? null);
         const lastRule = loadedVersions.find((version) => version.source === 'rule');
         setRulePrompt(editor?.rulePrompt ?? lastRule?.rulePrompt ?? '');
+        savedMetaRef.current = {
+          name: loadedSummary.name,
+          rulePrompt: editor?.rulePrompt ?? lastRule?.rulePrompt ?? '',
+        };
         // 基于 defaults to the current draft when there is one.
         setBaseVersion(loadedSummary.draft?.version ?? loadedSummary.published?.version ?? null);
         const initial =
@@ -481,6 +494,8 @@ export function ScriptPackageWorkbench({
         details: [checkText, ...(check?.warnings ?? []), result.agentSummary ?? ''].filter(Boolean),
         files: result.version.files.map((file) => file.path),
       };
+      if (!pkgId) target.onCreated?.(result.summary.id);
+      savedMetaRef.current = { name: result.summary.name, rulePrompt: prompt };
       setPackageId(result.summary.id);
       setNameEditing(false);
       await refresh(result.summary.id);
@@ -505,7 +520,10 @@ export function ScriptPackageWorkbench({
         });
       }
       // A failed final check stays on the console so the reason is visible.
-      if (!check || check.passed) setStep('review');
+      if (!check || check.passed) {
+        setReviewView('result');
+        setStep('review');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
@@ -531,12 +549,12 @@ export function ScriptPackageWorkbench({
     if (progressId) void api.cancelGenerate(progressId).catch(() => undefined);
   };
 
-  const runTrial = async (version: number | 'published' | null = viewVersion) => {
+  const runTrial = async (version: number | 'published' | null = viewVersion, inline = false) => {
     if (!packageId || testing) return;
     setTesting(true);
     setTrial(null);
     setTrialSuspicious(null);
-    setTrialOpen(true);
+    if (!inline) setTrialOpen(true);
     setTrialVersion(
       version == null || version === 'published' ? (published?.version ?? null) : version
     );
@@ -750,7 +768,10 @@ export function ScriptPackageWorkbench({
           passed: result.passed,
           text: t('fixError.reviewFixed', { version, rounds: result.rounds, result: verdictText }),
         });
-        if (result.passed) setStep('review');
+        if (result.passed) {
+          setReviewView('result');
+          setStep('review');
+        }
       }
       if (result.error) setError(result.error);
     } catch (err) {
@@ -818,6 +839,7 @@ export function ScriptPackageWorkbench({
           editor: { rulePrompt, runtime, modelConfigSetId },
         })
       );
+      savedMetaRef.current = { name: name.trim(), rulePrompt };
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -926,6 +948,50 @@ export function ScriptPackageWorkbench({
       baseVersion: fixInfo.version,
     });
   };
+
+  const metaDirty = packageId
+    ? Boolean(
+        savedMetaRef.current &&
+        (name.trim() !== savedMetaRef.current.name.trim() ||
+          rulePrompt.trim() !== savedMetaRef.current.rulePrompt.trim())
+      )
+    : Boolean(rulePrompt.trim());
+  const leaveBusy = generating || fixing;
+  const confirmOwnLeave = useLeaveGuard(metaDirty || leaveBusy, () =>
+    confirm({
+      title: t('data.rawTables.editor.leaveTitle'),
+      message: t(leaveBusy ? 'scripts.editor.leaveBusyMessage' : 'scripts.editor.leaveMessage'),
+      confirmLabel: t('data.editor.leaveWithoutSaving'),
+      cancelLabel: t('common.cancel'),
+    })
+  );
+  const handleClose = async () => {
+    if (await confirmOwnLeave()) onClose();
+  };
+
+  // 确认结果: run the shown version once so the step opens on its output table.
+  const reviewTrialFor =
+    step === 'review' && reviewView === 'result' && !generating && !fixing ? viewVersion : null;
+  useEffect(() => {
+    if (reviewTrialFor == null || testing) return;
+    if ((trial?.version ?? trialVersion) === reviewTrialFor) return;
+    void runTrial(reviewTrialFor, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewTrialFor]);
+
+  /** 不对: open the AI 修复 panel on the shown result, with the user's own description. */
+  const openUserFix = () => {
+    if (!trial?.ok) return;
+    setTrialSuspicious({
+      reason: t('fixError.userRejected'),
+      sample: `输出预览：\n${trial.preview ?? ''}`,
+    });
+    setTrialOpen(true);
+  };
+  const trialPreview =
+    trial?.ok && trial.columns
+      ? toPreview({ columns: trial.columns, rows: trial.previewRows ?? [], total: trial.rows ?? 0 })
+      : null;
 
   const statusBadge = published
     ? {
@@ -1054,7 +1120,10 @@ export function ScriptPackageWorkbench({
         </button>
         <button
           type="button"
-          onClick={() => setStep('review')}
+          onClick={() => {
+            setReviewView('code');
+            setStep('review');
+          }}
           data-testid="fix-view-changes"
           className="ui-accent-cell border-l border-border-subtle"
         >
@@ -1099,7 +1168,10 @@ export function ScriptPackageWorkbench({
           <button
             type="button"
             disabled={generating || viewVersion == null}
-            onClick={() => setStep('review')}
+            onClick={() => {
+              setReviewView('result');
+              setStep('review');
+            }}
             className="ui-accent-cell border-l border-border-subtle"
           >
             <FileCode2 className="h-3.5 w-3.5" />
@@ -1162,17 +1234,19 @@ export function ScriptPackageWorkbench({
         </button>
         <button
           type="button"
-          disabled={!detail || testing}
-          onClick={() => void runTrial(detail?.version ?? null)}
-          data-testid="script-trial"
-          className={toolCell}
+          onClick={() => setReviewView((view) => (view === 'result' ? 'code' : 'result'))}
+          data-testid="script-toggle-code"
+          aria-pressed={reviewView === 'code'}
+          className={`${toolCell} ${reviewView === 'code' ? 'bg-accent-muted text-accent' : ''}`}
         >
-          {testing ? (
-            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+          {reviewView === 'code' ? (
+            <Eye className="h-3.5 w-3.5" />
           ) : (
-            <Play className="h-3.5 w-3.5" />
+            <FileCode2 className="h-3.5 w-3.5" />
           )}
-          {t('scripts.editor.trialPreview')}
+          {reviewView === 'code'
+            ? t('data.rawTables.editor.viewResult')
+            : t('data.rawTables.editor.viewCodeAdvanced')}
         </button>
         {isPublished ? (
           <span className="inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-success">
@@ -1237,7 +1311,7 @@ export function ScriptPackageWorkbench({
         <div className="flex min-w-0 items-stretch">
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void handleClose()}
             data-testid="script-editor-back"
             className="inline-flex w-[104px] flex-shrink-0 items-center justify-center gap-1.5 border-r border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
           >
@@ -1547,7 +1621,88 @@ export function ScriptPackageWorkbench({
                 />
               ) : null}
 
-              {step === 'review' ? (
+              {step === 'review' && reviewView === 'result' ? (
+                <div
+                  className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                  data-testid="script-result"
+                >
+                  <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border-subtle px-2.5 text-[12.5px]">
+                    {testing || !trial ? (
+                      <span className="inline-flex items-center gap-1.5 text-text-muted">
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        {t('data.rawTables.editor.resultRunning')}
+                      </span>
+                    ) : trialFailedHere && trialReport ? (
+                      <>
+                        <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-error" />
+                        <span
+                          className="min-w-0 flex-1 truncate text-error"
+                          title={trialReport.message}
+                        >
+                          {t('fixError.trialFailed', { reason: trialReport.message })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setTrialOpen(true)}
+                          data-testid="script-result-fix"
+                          className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 px-2.5 text-[12px] font-medium text-error hover:bg-error/10"
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                          {t('data.rawTables.editor.abnormalFix')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+                        <span
+                          className="min-w-0 flex-1 truncate text-text-primary"
+                          data-testid="script-result-explain"
+                          title={trial.warnings?.join('；')}
+                        >
+                          {showingFix && fixInfo
+                            ? fixInfo.text
+                            : t('scripts.editor.resultExplain', {
+                                rows: trial.rows ?? 0,
+                                cols: trial.columns?.length ?? 0,
+                                seconds: (trial.durationMs / 1000).toFixed(1),
+                              })}
+                          {trial.warnings?.length ? (
+                            <span className="ml-2 text-warning">⚠ {trial.warnings.join('；')}</span>
+                          ) : null}
+                        </span>
+                        <span className="flex-shrink-0 font-medium text-text-secondary">
+                          {t('data.rawTables.editor.resultLooksRight')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={openUserFix}
+                          data-testid="script-result-wrong"
+                          className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-border-subtle px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                          {t('data.rawTables.editor.resultWrong')}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
+                    <GlassDataGridPreview
+                      preview={trialFailedHere ? null : trialPreview}
+                      isLoading={testing}
+                      error={null}
+                      currentPage={1}
+                      onPageChange={() => undefined}
+                      edgeToEdge
+                      labels={{
+                        loading: t('data.rawTables.editor.previewLoading'),
+                        empty: t('scripts.editor.noOutput'),
+                        total: (count) => t('data.rawTables.editor.previewTotal', { count }),
+                        pageSize: (count) => t('data.rawTables.editor.previewPageSize', { count }),
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : step === 'review' ? (
                 files.length === 0 ? (
                   <div className="flex min-h-0 flex-1 items-center justify-center bg-surface">
                     <div className="flex flex-col items-center gap-2 px-6 text-center">
@@ -1845,6 +2000,7 @@ export function ScriptPackageWorkbench({
                 onOpenLocation={(location) => {
                   setTrialOpen(false);
                   setStep('review');
+                  setReviewView('code');
                   if (trialVersionNumber != null) setViewVersion(trialVersionNumber);
                   setSelectedPath(location.file);
                   setCodeView('full');

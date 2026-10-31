@@ -161,13 +161,13 @@ describe('script.run action', () => {
       onScriptError: 'ai_repair',
     };
     await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      '汇率：选择器失效 · 脚本已重新生成为 v3 草稿（试运行 1 行），待发布'
+      '汇率：选择器失效 · AI 已修复为 v3（试运行 1 行），等你确认使用'
     );
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();
     // Second failure: the same v3 draft is overwritten.
     rate = 7.3;
-    await expect(action.execute(config, context(), node(config))).rejects.toThrow('v3 草稿');
+    await expect(action.execute(config, context(), node(config))).rejects.toThrow('AI 已修复为 v3');
     const summary = await scripts.summary('fx');
     expect(summary.draft).toMatchObject({ version: 3, source: 'ai_repair', baseVersion: 2 });
     expect(summary.versionCount).toBe(3);
@@ -184,7 +184,7 @@ describe('script.run action', () => {
     const { action } = setup();
     const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
     await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      'AI 重新生成不可用'
+      'AI 修复不可用'
     );
   });
 });

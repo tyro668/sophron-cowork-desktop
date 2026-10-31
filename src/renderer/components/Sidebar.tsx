@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom';
+import { confirmLeave } from '../utils/leave-guard';
 import { useDesktopAuthConnection } from '../hooks/useDesktopAuthConnection';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -449,19 +450,22 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     ]
   );
 
-  const handleDataPage = useCallback(() => {
+  const handleDataPage = useCallback(async () => {
+    if (!(await confirmLeave())) return;
     exitSelectMode();
     setMainView('data');
     setShowSettings(false);
   }, [exitSelectMode, setMainView, setShowSettings]);
 
-  const handleSkillsPage = useCallback(() => {
+  const handleSkillsPage = useCallback(async () => {
+    if (!(await confirmLeave())) return;
     exitSelectMode();
     setMainView('skills');
     setShowSettings(false);
   }, [exitSelectMode, setMainView, setShowSettings]);
 
-  const handleAutomationPage = useCallback(() => {
+  const handleAutomationPage = useCallback(async () => {
+    if (!(await confirmLeave())) return;
     exitSelectMode();
     setMainView('automation');
     setShowSettings(false);
@@ -543,6 +547,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   const handleSessionClick = useCallback(
     async (sessionId: string) => {
+      if (!(await confirmLeave())) return;
       setShowSettings(false);
       setMainView('chat');
 
@@ -593,7 +598,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     ]
   );
 
-  const handleNewSession = () => {
+  const handleNewSession = async () => {
+    if (!(await confirmLeave())) return;
     // Default the welcome picker to the previous conversation's project:
     // the session being viewed, or the most recently updated one.
     const previousCwd =

@@ -56,6 +56,7 @@ import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
 import { LlmPromptComposer } from '../LlmPromptComposer';
+import { useLeaveGuard } from '../../utils/leave-guard';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
@@ -139,8 +140,10 @@ export type RawTableEditorProps = {
     rawTable: DataRawTable,
     config: DataRawTableConfig,
     name?: string
-  ) => void | Promise<void>;
+  ) => void | Promise<void | boolean>;
   onSyncCloudSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
+  /** 刷新 a local file / folder table from its source (runs the refresh checks). */
+  onRefreshSource?: (rawTable: DataRawTable) => Promise<DataRawTable | undefined>;
   /** Opens the delete confirmation (never deletes without the dialog). */
   onDelete?: (rawTable: DataRawTable) => void | Promise<void>;
   /** Tab to show first (the source wizard opens a new table on its Data tab). */
@@ -169,13 +172,14 @@ export function RawTableEditorWorkbench({
   onChooseRawTableSource,
   onUpdateRawTableConfig,
   onSyncCloudSource,
+  onRefreshSource,
   onDelete,
   initialViewTab,
   rawSource,
   onBuildModeRebuilt,
 }: RawTableEditorProps) {
   const { t } = useTranslation();
-  const { confirmDelete } = useConfirmDialog();
+  const { confirm, confirmDelete } = useConfirmDialog();
   const appConfig = useAppStore((state) => state.appConfig);
   const targetId = draft?.id ?? rawTable?.id ?? '';
   const initialName = draft?.name ?? rawTable?.name ?? '';
@@ -254,6 +258,8 @@ export function RawTableEditorWorkbench({
     baseFiles: DataNormalizerProjectFile[];
   } | null>(null);
   const [codeView, setCodeView] = useState<'diff' | 'full'>('full');
+  // 确认结果 step: the output table first; the code is under 高级.
+  const [reviewView, setReviewView] = useState<'result' | 'code'>('result');
   const [focusLine, setFocusLine] = useState<{ path: string; line: number } | null>(null);
   const [continueText, setContinueText] = useState('');
   const lastFixFailureRef = useRef<FixFailure | null>(null);
@@ -301,6 +307,7 @@ export function RawTableEditorWorkbench({
     localSourceKind === initialSourceKind &&
     !isRawTableConfigEqual(localConfig, rawTable?.inputConfig);
   const canSave = Boolean(rawTable && trimmedName && !isBusy && (hasNameChanges || canSaveConfig));
+  const hasUnsavedWork = Boolean(draft ? false : hasNameChanges || canSaveConfig);
   const canPreview = Boolean(
     rawTable &&
     localSourceKind === initialSourceKind &&
@@ -633,6 +640,7 @@ export function RawTableEditorWorkbench({
         files: result.version.files,
         t,
       });
+      setReviewView('result');
       setCustomizeStep('review');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -755,9 +763,26 @@ export function RawTableEditorWorkbench({
         dataProcessing.strategy === 'customize' &&
         dataProcessing.artifactVersionStatus !== 'published'
       ) {
-        setCustomizeGenerationError(t('data.rawTables.editor.saveRequiresPublishedVersion'));
-        setCustomizeStep('review');
-        setVersionsDialogOpen(true);
+        // 保存 = 确认使用 the draft the table points at (publish it, then reimport).
+        const versionId = dataProcessing.artifactVersionId;
+        const artifactId = dataProcessing.artifactId;
+        void (async () => {
+          const version =
+            currentNormalizerVersion ??
+            (versionId && artifactId
+              ? (
+                  await dataClient
+                    .listRawTableNormalizerVersions({ artifactId })
+                    .catch(() => ({ versions: [] }))
+                ).versions.find((item) => item.id === versionId)
+              : undefined);
+          if (version) {
+            await applyNormalizerVersion(version, { keepRule: true });
+            return;
+          }
+          setCustomizeGenerationError(t('data.rawTables.editor.saveRequiresPublishedVersion'));
+          setCustomizeStep('review');
+        })();
         return;
       }
       void onUpdateRawTableConfig(rawTable, localConfig, localName);
@@ -768,12 +793,42 @@ export function RawTableEditorWorkbench({
     }
   };
 
+  const leaveBusy = customizeGenerating || fixing;
+  const confirmOwnLeave = useLeaveGuard(hasUnsavedWork || leaveBusy, () =>
+    confirm({
+      title: t('data.rawTables.editor.leaveTitle'),
+      message: t(
+        leaveBusy ? 'data.rawTables.editor.leaveBusyMessage' : 'data.rawTables.editor.leaveMessage'
+      ),
+      confirmLabel: t('data.editor.leaveWithoutSaving'),
+      cancelLabel: t('common.cancel'),
+    })
+  );
+  const handleBack = async () => {
+    if (await confirmOwnLeave()) onBack();
+  };
+
   const loadPreviewPage = async (page: number, source = rawTable, config = localConfig) => {
     if (!source || !dataClient.has('previewRawTableSource')) return;
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewPage(page);
     try {
+      // 数据异常: the table kept the previous rows — show those, not the broken source file.
+      if (
+        source.health &&
+        dataClient.has('previewRawTable') &&
+        isRawTableConfigEqual(config, source.inputConfig)
+      ) {
+        setPreviewData(
+          await dataClient.previewRawTable({
+            id: source.id,
+            limit: RAW_TABLE_PREVIEW_PAGE_SIZE,
+            offset: (page - 1) * RAW_TABLE_PREVIEW_PAGE_SIZE,
+          })
+        );
+        return;
+      }
       const nextPreview = await dataClient.previewRawTableSource({
         filePath: source.sourcePath,
         sourceKind: config.sourceKind,
@@ -790,6 +845,17 @@ export function RawTableEditorWorkbench({
   };
 
   const refreshData = async () => {
+    if (rawTable && !savedCloudSource && rawTable.sourceId && onRefreshSource) {
+      setCloudSyncBusy(true);
+      setPreviewError(null);
+      try {
+        const refreshed = await onRefreshSource(rawTable);
+        await loadPreviewPage(1, refreshed ?? rawTable);
+      } finally {
+        setCloudSyncBusy(false);
+      }
+      return;
+    }
     if (!rawTable || !savedCloudSource || !onSyncCloudSource) {
       await loadPreviewPage(previewPage);
       return;
@@ -882,12 +948,12 @@ export function RawTableEditorWorkbench({
     };
   };
 
-  const previewCustomizeDraft = async (page = 1) => {
+  const previewCustomizeDraft = async (page = 1, inline = false) => {
     if (dataProcessing.strategy !== 'customize' || !dataProcessing.artifactVersionId || !rawTable) {
       return;
     }
     const versionId = dataProcessing.artifactVersionId;
-    setPreviewOpen(true);
+    if (!inline) setPreviewOpen(true);
     setPreviewLoading(true);
     setPreviewError(null);
     setPreviewData(null);
@@ -1143,7 +1209,10 @@ export function RawTableEditorWorkbench({
         setCodeView('diff');
         setFocusLine(null);
         if (result.changedFiles[0]) setSelectedNormalizerFilePath(result.changedFiles[0]);
-        if (result.passed) setCustomizeStep('review');
+        if (result.passed) {
+          setReviewView('result');
+          setCustomizeStep('review');
+        }
       }
       if (result.error) setCustomizeGenerationError(result.error);
     } catch (err) {
@@ -1158,8 +1227,13 @@ export function RawTableEditorWorkbench({
     }
   };
 
-  const publishSpecificNormalizerVersion = async (
-    version: DataRawTableNormalizerArtifactVersion
+  /**
+   * 确认使用: publish the version (if it is still a draft) and apply it to the table right away,
+   * so a published version is always the one the table's data came from.
+   */
+  const applyNormalizerVersion = async (
+    version: DataRawTableNormalizerArtifactVersion,
+    options: { keepRule?: boolean } = {}
   ) => {
     if (dataProcessing.strategy !== 'customize' || !rawTable) {
       return;
@@ -1167,29 +1241,58 @@ export function RawTableEditorWorkbench({
     setCustomizeVersionActionId(version.id);
     setCustomizeGenerationError(null);
     try {
-      const result = await dataClient.publishRawTableNormalizerVersion({
-        versionId: version.id,
-      });
-      updateDataProcessing({
+      const published =
+        version.status === 'published'
+          ? { artifactId: version.artifactId, version }
+          : await dataClient
+              .publishRawTableNormalizerVersion({ versionId: version.id })
+              .then((result) => ({ artifactId: result.artifact.id, version: result.version }));
+      const next: Extract<DataRawTableProcessingConfig, { strategy: 'customize' }> = {
         ...dataProcessing,
-        artifactId: result.artifact.id,
-        artifactVersionId: result.version.id,
-        // A rollback also brings back that version's rule.
-        rulePrompt: result.version.rulePrompt,
-        artifactVersionStatus: result.version.status,
-        fileTreeHash: result.version.fileTreeHash,
-        dependencyLockHash: result.version.dependencyLockHash ?? undefined,
-        runtime: result.version.runtime,
-        entrypoint: result.version.entrypoint,
-        dependencyPrepare: result.version.dependencyPrepare,
-        sourceSummaryHash: result.version.sourceSummaryHash ?? undefined,
-      });
-      void refreshNormalizerVersions(result.artifact.id);
+        artifactId: published.artifactId,
+        artifactVersionId: published.version.id,
+        // A rollback also brings back that version's rule; 保存 keeps the rule being edited.
+        rulePrompt: options.keepRule ? dataProcessing.rulePrompt : published.version.rulePrompt,
+        artifactVersionStatus: 'published',
+        fileTreeHash: published.version.fileTreeHash,
+        dependencyLockHash: published.version.dependencyLockHash ?? undefined,
+        runtime: published.version.runtime,
+        entrypoint: published.version.entrypoint,
+        dependencyPrepare: published.version.dependencyPrepare,
+        sourceSummaryHash: published.version.sourceSummaryHash ?? undefined,
+      };
+      const nextConfig = withRawTableDataProcessing(localConfig, next);
+      setLocalConfig(nextConfig);
+      void refreshNormalizerVersions(published.artifactId);
+      if (onUpdateRawTableConfig && !isRawTableConfigEqual(nextConfig, rawTable.inputConfig)) {
+        const ok = await onUpdateRawTableConfig(rawTable, nextConfig, localName);
+        if (ok === false) setCustomizeGenerationError(t('data.rawTables.editor.applyFailed'));
+      }
     } catch (err) {
       setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
     } finally {
       setCustomizeVersionActionId(null);
     }
+  };
+
+  /** 不对: open the AI 修复 panel on the shown result, with the user's own description. */
+  const openUserFix = () => {
+    if (dataProcessing.strategy !== 'customize' || !dataProcessing.artifactVersionId) return;
+    const head = previewData ? previewData.columns.join(',') : '';
+    const lines = (previewData?.rows ?? [])
+      .slice(0, 5)
+      .map((row) => (previewData?.columns ?? []).map((c) => String(row[c] ?? '')).join(','));
+    setPreviewRun({
+      versionId: dataProcessing.artifactVersionId,
+      durationMs: previewRun?.durationMs ?? 0,
+      suspicious: {
+        reason: t('fixError.userRejected'),
+        sample: previewData
+          ? `输出预览（共 ${previewData.totalRows} 行）：\n${[head, ...lines].join('\n')}`
+          : '',
+      },
+    });
+    setPreviewOpen(true);
   };
 
   const deleteSpecificNormalizerVersion = async (
@@ -1236,6 +1339,18 @@ export function RawTableEditorWorkbench({
     }
   };
 
+  // 确认结果: run the current version once so the step opens on its output table.
+  const reviewPreviewFor =
+    customizeStep === 'review' && reviewView === 'result' && !fixing && !customizeGenerating
+      ? (customizeArtifactVersionId ?? null)
+      : null;
+  useEffect(() => {
+    if (!reviewPreviewFor || previewLoading) return;
+    if (previewRun?.versionId === reviewPreviewFor) return;
+    void previewCustomizeDraft(1, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reviewPreviewFor]);
+
   const customizeStepIndex = (['rules', 'generate', 'review'] as RawTableCustomizeStep[]).indexOf(
     customizeStep
   );
@@ -1269,7 +1384,7 @@ export function RawTableEditorWorkbench({
         >
           <div className="flex min-w-0 items-stretch">
             <button
-              onClick={onBack}
+              onClick={() => void handleBack()}
               className="inline-flex w-[104px] flex-shrink-0 items-center justify-center gap-1.5 border-r border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
@@ -1787,7 +1902,84 @@ export function RawTableEditorWorkbench({
                     />
                   ) : null}
 
-                  {customizeStep === 'review' ? (
+                  {customizeStep === 'review' && reviewView === 'result' ? (
+                    <div
+                      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                      data-testid="raw-customize-result"
+                    >
+                      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border-subtle px-2.5 text-[12.5px]">
+                        {previewLoading || !previewRun ? (
+                          <span className="inline-flex items-center gap-1.5 text-text-muted">
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            {t('data.rawTables.editor.resultRunning')}
+                          </span>
+                        ) : previewFailedHere && normalizerReport ? (
+                          <>
+                            <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-error" />
+                            <span
+                              className="min-w-0 flex-1 truncate text-error"
+                              title={normalizerReport.message}
+                            >
+                              {t('fixError.previewFailed', { reason: normalizerReport.message })}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewOpen(true)}
+                              data-testid="raw-result-fix"
+                              className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 px-2.5 text-[12px] font-medium text-error hover:bg-error/10"
+                            >
+                              <Wand2 className="h-3.5 w-3.5" />
+                              {t('data.rawTables.editor.abnormalFix')}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+                            <span
+                              className="min-w-0 flex-1 truncate text-text-primary"
+                              data-testid="raw-result-explain"
+                            >
+                              {showingFix && fixInfo
+                                ? fixInfo.text
+                                : t('data.rawTables.editor.resultExplain', {
+                                    rows: previewData?.totalRows ?? 0,
+                                    cols: previewData?.columns.length ?? 0,
+                                  })}
+                            </span>
+                            <span className="flex-shrink-0 font-medium text-text-secondary">
+                              {t('data.rawTables.editor.resultLooksRight')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={openUserFix}
+                              data-testid="raw-result-wrong"
+                              className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-border-subtle px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
+                            >
+                              <Wand2 className="h-3.5 w-3.5" />
+                              {t('data.rawTables.editor.resultWrong')}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
+                        <GlassDataGridPreview
+                          preview={previewFailedHere ? null : previewData}
+                          isLoading={previewLoading}
+                          error={null}
+                          currentPage={previewPage}
+                          onPageChange={(page) => void previewCustomizeDraft(page, true)}
+                          edgeToEdge
+                          labels={{
+                            loading: t('data.rawTables.editor.previewLoading'),
+                            empty: t('data.rawTables.editor.previewEmpty'),
+                            total: (count) => t('data.rawTables.editor.previewTotal', { count }),
+                            pageSize: (count) =>
+                              t('data.rawTables.editor.previewPageSize', { count }),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : customizeStep === 'review' ? (
                     normalizerProjectFiles.length === 0 ? (
                       <div className="flex min-h-0 flex-1 items-center justify-center bg-surface">
                         <div className="flex flex-col items-center gap-2 px-6 text-center">
@@ -2052,7 +2244,10 @@ export function RawTableEditorWorkbench({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setCustomizeStep('review')}
+                          onClick={() => {
+                            setReviewView('code');
+                            setCustomizeStep('review');
+                          }}
                           data-testid="fix-view-changes"
                           className="ui-accent-cell border-l border-border-subtle"
                         >
@@ -2100,7 +2295,10 @@ export function RawTableEditorWorkbench({
                           <button
                             type="button"
                             disabled={customizeGenerating || normalizerProjectFiles.length === 0}
-                            onClick={() => setCustomizeStep('review')}
+                            onClick={() => {
+                              setReviewView('result');
+                              setCustomizeStep('review');
+                            }}
                             data-testid="raw-customize-view-code"
                             className="ui-accent-cell border-l border-border-subtle"
                           >
@@ -2111,7 +2309,8 @@ export function RawTableEditorWorkbench({
                       </>
                     );
                   } else {
-                    const isPublished = dataProcessing.artifactVersionStatus === 'published';
+                    const isPublished =
+                      dataProcessing.artifactVersionStatus === 'published' && !canSaveConfig;
                     const summaryStatus = currentNormalizerVersion
                       ? currentNormalizerVersion.status === 'published'
                         ? t('data.rawTables.editor.publishedVersion')
@@ -2176,19 +2375,21 @@ export function RawTableEditorWorkbench({
                         </button>
                         <button
                           type="button"
-                          disabled={
-                            !customizeArtifactVersionId || previewLoading || !rawTable || fixing
+                          onClick={() =>
+                            setReviewView((view) => (view === 'result' ? 'code' : 'result'))
                           }
-                          onClick={() => void previewCustomizeDraft()}
-                          data-testid="raw-customize-preview"
-                          className={toolCell}
+                          data-testid="raw-customize-toggle-code"
+                          aria-pressed={reviewView === 'code'}
+                          className={`${toolCell} ${reviewView === 'code' ? 'bg-accent-muted text-accent' : ''}`}
                         >
-                          {previewLoading ? (
-                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
+                          {reviewView === 'code' ? (
                             <Eye className="h-3.5 w-3.5" />
+                          ) : (
+                            <FileCode2 className="h-3.5 w-3.5" />
                           )}
-                          {t('data.rawTables.editor.previewNormalizedDraft')}
+                          {reviewView === 'code'
+                            ? t('data.rawTables.editor.viewResult')
+                            : t('data.rawTables.editor.viewCodeAdvanced')}
                         </button>
                         {isPublished ? (
                           <span
@@ -2204,7 +2405,7 @@ export function RawTableEditorWorkbench({
                             disabled={!currentNormalizerVersion || !!customizeVersionActionId}
                             onClick={() => {
                               if (currentNormalizerVersion) {
-                                void publishSpecificNormalizerVersion(currentNormalizerVersion);
+                                void applyNormalizerVersion(currentNormalizerVersion);
                               }
                             }}
                             data-testid="raw-customize-publish"
@@ -2571,7 +2772,7 @@ export function RawTableEditorWorkbench({
           loading={normalizerVersionsLoading}
           onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
           onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
-          onPublish={(version) => void publishSpecificNormalizerVersion(version)}
+          onPublish={(version) => void applyNormalizerVersion(version)}
           publishingVersionId={customizeVersionActionId}
           sourceOf={(version) =>
             t(
@@ -2610,6 +2811,7 @@ export function RawTableEditorWorkbench({
                 onOpenLocation={(location) => {
                   setPreviewOpen(false);
                   setCustomizeStep('review');
+                  setReviewView('code');
                   setSelectedNormalizerFilePath(location.file);
                   setCodeView('full');
                   setFocusLine({ path: location.file, line: location.line });

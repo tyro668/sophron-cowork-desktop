@@ -77,6 +77,7 @@ function renderWorkbench(options: {
   onUpdateRawTableConfig?: ReturnType<typeof vi.fn>;
   versions?: DataRawTableNormalizerArtifactVersion[];
   publish?: ReturnType<typeof vi.fn>;
+  preview?: ReturnType<typeof vi.fn>;
 }) {
   const listRawTableNormalizerVersions = vi.fn(async () => ({
     versions: options.versions ?? [],
@@ -88,7 +89,11 @@ function renderWorkbench(options: {
       publishRawTableNormalizerVersion:
         options.publish ?? vi.fn(async () => ({ artifact: {}, version: {} })),
       deleteRawTableNormalizerVersion: vi.fn(async () => undefined),
-      previewRawTableNormalizerVersion: vi.fn(),
+      previewRawTableNormalizerVersion:
+        options.preview ??
+        vi.fn(async () => {
+          throw new Error('no preview');
+        }),
       onRawTableNormalizerDraftProgress: vi.fn(() => () => undefined),
     },
     skills: { getAll: async () => [] },
@@ -170,7 +175,7 @@ describe('RawTableEditorWorkbench custom draft persistence', () => {
     expect(promptTextarea().value).toBe('dedupe by id');
   });
 
-  it('rejects save for an unpublished draft, keeps the draft, and publishing unlocks save', async () => {
+  it('saving an unconfirmed draft publishes it and applies it to the table', async () => {
     const publish = vi.fn(async () => ({
       artifact: {
         id: 'art_1',
@@ -205,23 +210,54 @@ describe('RawTableEditorWorkbench custom draft persistence', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    // No doomed IPC round-trip; the draft stays put and the hint points to
-    // publishing — the versions tab becomes active.
-    expect(onUpdateRawTableConfig).not.toHaveBeenCalled();
-    expect(await screen.findByText(/not published yet/)).toBeTruthy();
-    const publishButton = await screen.findByRole('button', { name: 'Publish' });
-    expect(findStrategySelect().textContent).toBe('Custom');
-
-    fireEvent.click(publishButton);
+    // 保存 on an unconfirmed draft = 确认使用: publish it, then apply it to the table.
     await waitFor(() => expect(publish).toHaveBeenCalledWith({ versionId: 'ver_1' }));
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onUpdateRawTableConfig).toHaveBeenCalledTimes(1));
+    expect(findStrategySelect().textContent).toBe('Custom');
     const savedConfig = onUpdateRawTableConfig.mock.calls[0][1] as DataRawTableConfig;
     expect(savedConfig.dataProcessing).toMatchObject({
       strategy: 'customize',
       artifactVersionStatus: 'published',
       artifactVersionId: 'ver_1',
+      rulePrompt: 'keep paid rows, drop test data',
     });
+  });
+
+  it('确认结果 opens on the output table and 确认使用 publishes and applies it', async () => {
+    const publish = vi.fn(async () => ({
+      artifact: { id: 'art_1' },
+      version: { ...DRAFT_VERSION, status: 'published', publishedAt: 2 },
+    }));
+    const preview = vi.fn(async () => ({
+      preview: {
+        columns: ['门店', '销售额'],
+        columnTypes: [],
+        rows: [
+          { 门店: 'A', 销售额: '10' },
+          { 门店: 'B', 销售额: '20' },
+        ],
+        fileCount: 1,
+        limit: 50,
+        offset: 0,
+        totalRows: 2,
+      },
+    }));
+    const onUpdateRawTableConfig = vi.fn(async () => true);
+    renderWorkbench({
+      rawTable: makeRawTable({ ...AUTO_CONFIG, dataProcessing: CUSTOMIZE_DRAFT_PROCESSING }),
+      onUpdateRawTableConfig,
+      versions: [DRAFT_VERSION],
+      publish,
+      preview,
+    }).render();
+    expect(await screen.findByText('Look right?')).toBeTruthy();
+    expect(screen.getByTestId('raw-result-explain').textContent).toContain('2 rows × 2 columns');
+    expect(screen.queryByTestId('raw-customize-review')).toBeNull();
+    fireEvent.click(screen.getByTestId('raw-customize-publish'));
+    await waitFor(() => expect(publish).toHaveBeenCalledWith({ versionId: 'ver_1' }));
+    await waitFor(() => expect(onUpdateRawTableConfig).toHaveBeenCalledTimes(1));
+    // Code stays one click away under 高级.
+    fireEvent.click(screen.getByTestId('raw-customize-toggle-code'));
+    expect(await screen.findByTestId('raw-customize-review')).toBeTruthy();
   });
 });

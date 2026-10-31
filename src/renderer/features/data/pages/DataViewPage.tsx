@@ -343,6 +343,7 @@ export function DataViewPage() {
             onChooseRawTableSource={actions.handleUpdateRawTableSource}
             onUpdateRawTableConfig={actions.handleUpdateRawTableConfig}
             onSyncCloudSource={actions.handleRefreshCloudRawTable}
+            onRefreshSource={actions.handleRefreshRawTable}
             onDelete={actions.handleDeleteRawTable}
             initialViewTab={editorInitialTab}
             rawSource={
