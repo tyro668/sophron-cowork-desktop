@@ -436,6 +436,21 @@
         "file": "File",
         "notConfigured": "Not configured",
         "cloud": "Cloud table"
+      },
+      "deleteNormalizerToo": "Also delete its processing script (no other raw table uses it)",
+      "normalizers": {
+        "menu": "Processing scripts…",
+        "title": "Processing scripts",
+        "summary": "{{count}} total · {{unused}} unused",
+        "colName": "Name",
+        "colUsedBy": "Used by raw tables",
+        "colUpdated": "Updated",
+        "unused": "Unused",
+        "inUseHint": "Still used by raw tables; switch them to another processing mode or delete them first",
+        "deleteTitle": "Delete processing script?",
+        "deleteImpact": "Deletes every version, its code repository and secrets",
+        "deleted": "Deleted “{{name}}”",
+        "empty": "No processing scripts yet"
       }
     },
     "resultTables": {

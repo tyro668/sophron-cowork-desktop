@@ -9,6 +9,7 @@ import {
   CalendarClock,
   CloudDownload,
   Eye,
+  FileCode2,
   FolderInput,
   PencilLine,
   Plus,
@@ -43,6 +44,7 @@ import {
   getRawTableSourceMeta,
   matchesSearchText,
 } from './shared';
+import { NormalizerManagerDialog } from './normalizer-manager-dialog';
 import {
   AssignGroupDialog,
   buildGroupSections,
@@ -122,6 +124,7 @@ export function RawTablesPanel({
   const lastChildBySource = useRef(new Map<string, string>());
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [automationsOpen, setAutomationsOpen] = useState(false);
+  const [normalizersOpen, setNormalizersOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [expandedMerges, setExpandedMerges] = useState<Set<string>>(new Set());
@@ -578,6 +581,13 @@ export function RawTablesPanel({
                 onClick: () => setAutomationsOpen(true),
               },
               {
+                key: 'normalizers',
+                label: t('data.rawTables.normalizers.menu'),
+                icon: <FileCode2 className="h-3.5 w-3.5" />,
+                disabled: bulkBusy,
+                onClick: () => setNormalizersOpen(true),
+              },
+              {
                 key: 'refresh',
                 label: t('data.actions.refresh'),
                 icon: <RefreshCw className="h-3.5 w-3.5" />,
@@ -689,6 +699,7 @@ export function RawTablesPanel({
           )}
         </div>
       </div>
+      <NormalizerManagerDialog open={normalizersOpen} onClose={() => setNormalizersOpen(false)} />
       <AssignGroupDialog
         open={assignDialogOpen}
         onOpenChange={setAssignDialogOpen}

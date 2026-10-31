@@ -436,6 +436,21 @@
         "file": "文件",
         "notConfigured": "未配置",
         "cloud": "云端表"
+      },
+      "deleteNormalizerToo": "同时删除它的处理脚本（没有其他原始表在用）",
+      "normalizers": {
+        "menu": "处理脚本…",
+        "title": "处理脚本",
+        "summary": "共 {{count}} 个 · {{unused}} 个未使用",
+        "colName": "名称",
+        "colUsedBy": "使用它的原始表",
+        "colUpdated": "更新时间",
+        "unused": "未使用",
+        "inUseHint": "还有原始表在用，先把它们改成其他处理方式或删除",
+        "deleteTitle": "删除处理脚本？",
+        "deleteImpact": "删除所有版本、代码仓库和密钥",
+        "deleted": "已删除「{{name}}」",
+        "empty": "还没有处理脚本"
       }
     },
     "resultTables": {
