@@ -4565,7 +4565,8 @@
       "deletePackage": "删除脚本包…",
       "deleteTitle": "删除脚本包？",
       "deleteImpact": "删除所有版本、文件夹（含 git 仓库）和密钥",
-      "deleted": "已删除「{{name}}」"
+      "deleted": "已删除「{{name}}」",
+      "missingBanner": "这个脚本包的文件夹已被删除，只剩版本记录。可在右上角 ⋯ 里删除它。"
     }
   },
   "fixError": {

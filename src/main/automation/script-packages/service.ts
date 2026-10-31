@@ -226,7 +226,7 @@ export class ScriptPackageService {
     for (const id of this.store.packageIds()) {
       if (seen.has(id) || !PACKAGE_ID_PATTERN.test(id)) continue;
       if (existsSync(path.join(this.rootDir, id, 'manifest.json'))) continue;
-      result.push({ ...(await this.summaryUnsynced(id, this.packageDir(id))), missing: true });
+      result.push(await this.summaryUnsynced(id, this.packageDir(id)));
     }
     return result.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
   }
@@ -258,6 +258,7 @@ export class ScriptPackageService {
       draft: draft && toVersion(draft),
       versionCount: records.length,
       ...(state.origin ? { origin: state.origin } : {}),
+      ...(records.length > 0 && !existsSync(dir) ? { missing: true } : {}),
     };
     let manifest: ScriptManifest;
     try {

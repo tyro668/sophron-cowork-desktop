@@ -85,7 +85,7 @@ export function NormalizerManagerDialog({ open, onClose }: { open: boolean; onCl
                 <th className="px-4 font-medium">{tr('colName')}</th>
                 <th className="w-[38%] px-2 font-medium">{tr('colUsedBy')}</th>
                 <th className="w-[130px] px-2 font-medium">{tr('colUpdated')}</th>
-                <th className="w-[72px] px-2" />
+                <th className="w-[84px] px-2" />
               </tr>
             </thead>
             <tbody>
@@ -94,6 +94,7 @@ export function NormalizerManagerDialog({ open, onClose }: { open: boolean; onCl
                   key={item.artifact.id}
                   className="h-9 border-b border-dashed border-border-muted"
                   data-testid="normalizer-row"
+                  data-artifact-id={item.artifact.id}
                 >
                   <td className="truncate px-4 text-text-primary" title={item.artifact.name}>
                     {item.artifact.name}
@@ -118,7 +119,7 @@ export function NormalizerManagerDialog({ open, onClose }: { open: boolean; onCl
                       title={item.usedBy.length > 0 ? tr('inUseHint') : undefined}
                       onClick={() => void remove(item)}
                       data-testid="normalizer-delete"
-                      className="inline-flex h-7 items-center gap-1 rounded px-2 text-[12px] text-error hover:bg-error/5 disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-50 disabled:hover:bg-transparent"
+                      className="inline-flex h-7 items-center gap-1 whitespace-nowrap rounded px-2 text-[12px] text-error hover:bg-error/5 disabled:cursor-not-allowed disabled:text-text-muted disabled:opacity-50 disabled:hover:bg-transparent"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       {t('common.delete')}

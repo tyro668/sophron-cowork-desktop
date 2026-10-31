@@ -4565,7 +4565,8 @@
       "deletePackage": "Delete script package…",
       "deleteTitle": "Delete script package?",
       "deleteImpact": "Deletes every version, the folder (with its git repository) and secrets",
-      "deleted": "Deleted “{{name}}”"
+      "deleted": "Deleted “{{name}}”",
+      "missingBanner": "This package's folder was deleted; only its versions remain. Delete it from ⋯ at the top right."
     }
   },
   "fixError": {

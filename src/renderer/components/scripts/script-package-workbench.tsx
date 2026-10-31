@@ -295,7 +295,7 @@ export function ScriptPackageWorkbench({
   }, [api, refresh, t, target.packageId, target.version]);
 
   useEffect(() => {
-    if (!packageId || viewVersion == null) {
+    if (!packageId || viewVersion == null || summary?.missing) {
       setDetail(null);
       return;
     }
@@ -317,7 +317,7 @@ export function ScriptPackageWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [api, packageId, viewVersion, versions]);
+  }, [api, packageId, viewVersion, versions, summary?.missing]);
 
   useEffect(() => {
     if (!packageId) return;
@@ -1413,6 +1413,15 @@ export function ScriptPackageWorkbench({
         </div>
       </div>
 
+      {summary?.missing ? (
+        <div
+          className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-error/10 px-3 py-1.5 text-[12.5px] text-error"
+          data-testid="script-missing"
+        >
+          <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+          {t('scripts.editor.missingBanner')}
+        </div>
+      ) : null}
       <Tabs
         value={tab}
         onValueChange={(value) => setTab(value as typeof tab)}
