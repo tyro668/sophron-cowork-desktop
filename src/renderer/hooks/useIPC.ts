@@ -1,3 +1,4 @@
+import { NEW_TASK_EVENT } from '../utils/new-task';
 import { useEffect, useCallback } from 'react';
 import { useAppStore } from '../store';
 import type {
@@ -354,8 +355,8 @@ export function useIPC() {
             break;
 
           case 'new-session':
-            store.setActiveSession(null);
-            store.setShowSettings(false);
+            // Tray / dock 新建任务: same path as the sidebar button (leave guard, chat view).
+            window.dispatchEvent(new Event(NEW_TASK_EVENT));
             break;
 
           case 'navigate':

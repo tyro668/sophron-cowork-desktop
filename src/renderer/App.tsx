@@ -110,6 +110,7 @@ function App() {
   const setIsConfigured = useAppStore((s) => s.setIsConfigured);
   const setAppConfig = useAppStore((s) => s.setAppConfig);
   const clearGlobalNotice = useAppStore((s) => s.clearGlobalNotice);
+  const newTaskNonce = useAppStore((s) => s.newTaskNonce);
   const setSandboxSetupComplete = useAppStore((s) => s.setSandboxSetupComplete);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const setContextPanelCollapsed = useAppStore((s) => s.setContextPanelCollapsed);
@@ -315,7 +316,7 @@ function App() {
                     </div>
                   ))}
 
-                {activeMainRouteId === 'welcome' && <WelcomeView />}
+                {activeMainRouteId === 'welcome' && <WelcomeView key={newTaskNonce} />}
                 {scriptEditor && (
                   <div className="app-main-panel absolute inset-0 z-20 flex min-h-0">
                     <PanelErrorBoundary

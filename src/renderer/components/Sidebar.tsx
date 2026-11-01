@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { confirmLeave } from '../utils/leave-guard';
+import { NEW_TASK_EVENT } from '../utils/new-task';
 import { useDesktopAuthConnection } from '../hooks/useDesktopAuthConnection';
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -605,9 +606,10 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     const previousCwd =
       sessions.find((session) => session.id === activeSessionId)?.cwd ??
       [...sessions].sort((a, b) => b.updatedAt - a.updatedAt)[0]?.cwd;
-    setMainView('chat');
-    setActiveSession(null);
-    setShowSettings(false);
+    exitSelectMode();
+    // One store update: chat view, no active session, settings closed, a fresh welcome input.
+    // The previous conversation is left as it was; the next message starts a new session.
+    useAppStore.getState().openNewTask();
     if (previousCwd && previousCwd !== useAppStore.getState().workingDir) {
       void setWorkingDirPath(previousCwd);
     }
@@ -678,8 +680,13 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       event.preventDefault();
       newSessionRef.current();
     };
+    const onNewTask = () => newSessionRef.current();
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener(NEW_TASK_EVENT, onNewTask);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(NEW_TASK_EVENT, onNewTask);
+    };
   }, [isMac]);
 
   // F2 renames the active task (ignored while typing in a field).

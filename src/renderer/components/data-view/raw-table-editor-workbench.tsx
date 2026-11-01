@@ -805,15 +805,30 @@ export function RawTableEditorWorkbench({
   };
 
   const leaveBusy = customizeGenerating || fixing;
-  const confirmOwnLeave = useLeaveGuard(hasUnsavedWork || leaveBusy, () =>
-    confirm({
-      title: t('data.rawTables.editor.leaveTitle'),
-      message: t(
-        leaveBusy ? 'data.rawTables.editor.leaveBusyMessage' : 'data.rawTables.editor.leaveMessage'
-      ),
-      confirmLabel: t('data.editor.leaveWithoutSaving'),
-      cancelLabel: t('common.cancel'),
-    })
+  // The data page stays mounted while hidden; only ask while it is the page on screen.
+  const dataPageVisible = useAppStore((s) => s.mainView === 'data' && !s.showSettings);
+  const confirmOwnLeave = useLeaveGuard(
+    hasUnsavedWork || leaveBusy,
+    () =>
+      confirm({
+        title: t('data.rawTables.editor.leaveTitle'),
+        message: t(
+          leaveBusy
+            ? 'data.rawTables.editor.leaveBusyMessage'
+            : 'data.rawTables.editor.leaveMessage'
+        ),
+        confirmLabel: t('data.editor.leaveWithoutSaving'),
+        cancelLabel: t('common.cancel'),
+      }),
+    {
+      active: dataPageVisible,
+      // 放弃修改 from the sidebar: the result would not be applied anyway, so stop the AI run
+      // and close the editor instead of keeping the discarded edits around on the hidden page.
+      onDiscard: () => {
+        if (leaveBusy) cancelNormalizerAgent();
+        onBack();
+      },
+    }
   );
   const handleBack = async () => {
     if (await confirmOwnLeave()) onBack();
