@@ -1,8 +1,10 @@
+import { cancelledError, isCancelledError } from '../../../shared/cancel';
 import { formatLocation, runAutoFixLoop, type FixErrorReport } from '../../../shared/fix-error';
 import {
   applyNormalizerGenerationProgress,
   formatGenerationElapsed,
   type GenerationHistoryItem,
+  markNormalizerGenerationCancelled,
   markNormalizerGenerationError,
   type NormalizerGenerationLog,
   type NormalizerGenerationStepPhase,
@@ -52,6 +54,8 @@ export interface FixFlowResult {
   lastVerify?: VerifyResult;
   changedFiles: string[];
   error?: string;
+  /** 取消 during the fix: nothing was saved, the console shows 已取消. */
+  cancelled?: boolean;
 }
 
 export function fixStepTitles(
@@ -85,6 +89,8 @@ export async function runFixFlow(options: {
     onProgress: (event: { phase: string; kind: 'message' | 'delta'; text: string }) => void
   ) => Promise<FixTurnResult>;
   verify: (fixed: FixTurnResult) => Promise<VerifyResult>;
+  /** True once the user clicked 取消: no further round starts. */
+  cancelled?: () => boolean;
 }): Promise<FixFlowResult> {
   const { log, flush, t } = options;
   const max = Math.max(1, Math.min(5, options.maxRounds));
@@ -98,8 +104,10 @@ export async function runFixFlow(options: {
   const result = await runAutoFixLoop<FixFailure>({
     maxRounds: max,
     initialFailure: options.initial,
+    shouldStop: options.cancelled,
     fix: async (failure, round, previous) => {
       roundStartedAt = Date.now();
+      if (options.cancelled?.()) throw cancelledError();
       if (round > 1) log.steps = [];
       log.roundLabel = multi ? t('fixError.roundLabel', { round, max }) : undefined;
       flush();
@@ -180,8 +188,32 @@ export async function runFixFlow(options: {
     },
   });
   log.finishedAt = Date.now();
+  if (result.stoppedReason === 'cancelled') {
+    markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+    flush();
+    return {
+      passed: false,
+      rounds: result.rounds.length,
+      last,
+      lastVerify,
+      changedFiles: [...changed],
+      cancelled: true,
+    };
+  }
   if (result.stoppedReason === 'fix_error') {
     const reason = result.rounds.at(-1)?.reason ?? '';
+    if (isCancelledError(reason) || options.cancelled?.()) {
+      markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+      flush();
+      return {
+        passed: false,
+        rounds: result.rounds.length,
+        last,
+        lastVerify,
+        changedFiles: [...changed],
+        cancelled: true,
+      };
+    }
     markNormalizerGenerationError(log, t('fixError.fixError', { reason }));
     flush();
     return {
@@ -237,7 +269,12 @@ export function historyFromLog(
     {
       title: log.turnTitle ?? fallbackTitle,
       detail: [elapsed, files.length ? `${files.length} 个文件` : ''].filter(Boolean).join(' · '),
-      status: log.outcome?.status === 'error' ? 'error' : 'success',
+      status:
+        log.outcome?.status === 'error'
+          ? 'error'
+          : log.outcome?.status === 'cancelled'
+            ? 'cancelled'
+            : 'success',
       lines: [
         ...(log.rounds ?? []).map(
           (round) => `${round.status === 'success' ? '✓' : '✕'} ${round.title}`

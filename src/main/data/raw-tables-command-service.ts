@@ -1,3 +1,4 @@
+import { cancelledError } from '../../shared/cancel';
 import { extname } from 'path';
 import { getWorkbookSheetNames } from './store/input-source';
 import type { DataPipelineStore } from './data-pipeline-store';
@@ -401,7 +402,9 @@ export class RawTablesCommandService {
         sourceSummary: summary,
         runtimeConfig: input.runtimeConfig,
         onProgress: input.onProgress,
+        signal: input.signal,
       });
+      input.signal?.throwIfAborted();
       // Self-test: preview the generated draft on the real source; a failing preview goes to the
       // agent, which edits and previews until it passes (or hits its limits).
       const preview = this.normalizerPreviewFn(input, template);
@@ -467,6 +470,7 @@ export class RawTablesCommandService {
         summary,
       };
     } catch (error) {
+      if (input.signal?.aborted) throw cancelledError();
       input.onProgress?.({
         phase: 'error',
         kind: 'message',
@@ -548,6 +552,7 @@ export class RawTablesCommandService {
         preview: this.normalizerPreviewFn(input, base),
         signal: input.signal,
       });
+      input.signal?.throwIfAborted();
       input.onProgress?.({
         phase: 'saving',
         kind: 'message',
@@ -578,6 +583,7 @@ export class RawTablesCommandService {
         replaced: saved.replaced,
       };
     } catch (error) {
+      if (input.signal?.aborted) throw cancelledError();
       input.onProgress?.({
         phase: 'error',
         kind: 'message',

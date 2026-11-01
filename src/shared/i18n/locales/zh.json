@@ -406,7 +406,8 @@
         "resultWrong": "不对，交给 AI 修复",
         "viewResult": "查看结果",
         "viewCodeAdvanced": "代码（高级）",
-        "refreshDone": "已刷新"
+        "refreshDone": "已刷新",
+        "generationOutputCancelled": "已取消"
       },
       "status": {
         "available": "可用",
@@ -4640,7 +4641,8 @@
     "copyFixLog": "复制日志",
     "emptyOutput": "通过但结果异常：输出 0 行",
     "userRejected": "用户确认结果不对（请看补充说明）",
-    "userRejectedTitle": "结果不对 · {{version}}"
+    "userRejectedTitle": "结果不对 · {{version}}",
+    "cancelled": "已取消，没有保存任何修改"
   },
   "chatScript": {
     "convert": "转成脚本",

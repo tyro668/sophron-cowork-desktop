@@ -66,6 +66,8 @@ export function createAutomationApi(): ElectronApi['automation'] {
         ipcRenderer.invoke('automation.scripts.cancelGenerate', progressId),
       chatTurns: (sessionId) => ipcRenderer.invoke('automation.scripts.chatTurns', sessionId),
       chatProposal: (input) => ipcRenderer.invoke('automation.scripts.chatProposal', input),
+      cancelChatProposal: (requestId) =>
+        ipcRenderer.invoke('automation.scripts.cancelChatProposal', requestId),
       onGenerateProgress: (callback) => {
         const listener = (_event: Electron.IpcRendererEvent, data: ScriptGenerateProgressEvent) =>
           callback(data);

@@ -1,4 +1,6 @@
 import { shell } from 'electron';
+import { asCancelled } from '../../../shared/cancel';
+import { cancelAiRun, startAiRun } from '../../agent/ai-runs';
 import { handleIpc } from '../../ipc-handle';
 import { appContext } from '../../app/context';
 import { configStore } from '../../config/config-store';
@@ -55,7 +57,6 @@ function requireSession(sessionId: string) {
 }
 
 /** Running 规则生成 / AI 修复 agents by progressId, for 取消. */
-const running = new Map<string, AbortController>();
 
 function secretScope(kind: 'script' | 'normalizer', id: string): string {
   return kind === 'script' ? scriptSecretScope(id) : normalizerSecretScope(id);
@@ -81,10 +82,12 @@ export function registerScriptPackageIpc(): void {
     (_event, kind: 'script' | 'normalizer', id: string, name: string) =>
       requireSecretStore().delete(secretScope(kind, id), name)
   );
-  handleIpc('automation.scripts.cancelGenerate', (_event, progressId: string) => {
-    running.get(progressId)?.abort();
-    return { cancelled: running.has(progressId) };
-  });
+  handleIpc('automation.scripts.cancelGenerate', (_event, progressId: string) => ({
+    cancelled: cancelAiRun(`script:${progressId}`),
+  }));
+  handleIpc('automation.scripts.cancelChatProposal', (_event, requestId: string) => ({
+    cancelled: cancelAiRun(`chat-proposal:${requestId}`),
+  }));
   handleIpc('automation.scripts.list', () => requireScripts().list());
   handleIpc('automation.scripts.get', (_event, id: string) => requireScripts().summary(id));
   handleIpc('automation.scripts.open', async (_event, id: string) => {
@@ -137,26 +140,38 @@ export function registerScriptPackageIpc(): void {
   });
   handleIpc(
     'automation.scripts.chatProposal',
-    async (_event, input: { sessionId: string; messageId?: string }) => {
+    async (event, input: { sessionId: string; messageId?: string; requestId?: string }) => {
       const { session, messages } = requireSession(input.sessionId);
-      const config = await resolveAppConfigForAuth(configStore.getAll());
-      return buildChatScriptProposal({
-        sessionId: session.id,
-        sessionTitle: session.title,
-        sessionStatus: session.status,
-        messages,
-        messageId: input.messageId,
-        packages: await requireScripts().list(),
-        secrets: collectSecretValues(config),
-        extract: async (prompt, systemPrompt) =>
-          (
-            await runPiAiOneShot(prompt, systemPrompt, config, {
-              temperature: 0.1,
-              maxTokens: 2000,
-              reasoning: 'off',
-            })
-          ).text,
-      });
+      const run = startAiRun(
+        `chat-proposal:${input.requestId || `${input.sessionId}:${Date.now()}`}`,
+        event.sender
+      );
+      try {
+        const config = await resolveAppConfigForAuth(configStore.getAll());
+        return await buildChatScriptProposal({
+          sessionId: session.id,
+          sessionTitle: session.title,
+          sessionStatus: session.status,
+          messages,
+          messageId: input.messageId,
+          packages: await requireScripts().list(),
+          secrets: collectSecretValues(config),
+          signal: run.signal,
+          extract: async (prompt, systemPrompt) =>
+            (
+              await runPiAiOneShot(prompt, systemPrompt, config, {
+                temperature: 0.1,
+                maxTokens: 2000,
+                reasoning: 'off',
+                signal: run.signal,
+              })
+            ).text,
+        });
+      } catch (error) {
+        throw asCancelled(error, run.signal);
+      } finally {
+        run.release();
+      }
     }
   );
   handleIpc('automation.scripts.generateDraft', async (event, raw: ScriptGenerateDraftInput) => {
@@ -178,12 +193,12 @@ export function registerScriptPackageIpc(): void {
     const runtimeConfig = configSetId
       ? ((await resolveModelRuntimeConfigForAutomation(configSetId)) ?? undefined)
       : undefined;
-    const controller = new AbortController();
-    if (input.progressId) running.set(input.progressId, controller);
+    // Tracked even without a progressId: closing the window or quitting aborts the run.
+    const run = startAiRun(`script:${input.progressId || `anon:${Date.now()}`}`, event.sender);
     try {
       return await requireScripts().generateDraft(input, generator, {
         runtimeConfig,
-        signal: controller.signal,
+        signal: run.signal,
         onProgress: input.progressId
           ? (progress) => {
               if (!event.sender.isDestroyed())
@@ -194,8 +209,10 @@ export function registerScriptPackageIpc(): void {
             }
           : undefined,
       });
+    } catch (error) {
+      throw asCancelled(error, run.signal);
     } finally {
-      if (input.progressId) running.delete(input.progressId);
+      run.release();
     }
   });
 }

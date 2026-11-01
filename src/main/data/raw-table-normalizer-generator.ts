@@ -40,6 +40,8 @@ export interface GenerateRawTableNormalizerProjectInput {
   sourceSummary: DataRawTableSourceSummary;
   runtimeConfig?: AgentRuntimeConfig;
   onProgress?: RawTableNormalizerProjectProgressCallback;
+  /** 取消: aborts the in-flight model requests (the provider stream honours it). */
+  signal?: AbortSignal;
 }
 
 export type RawTableNormalizerSourceStructureAnalysis = Record<string, unknown>;
@@ -142,8 +144,10 @@ export function createLlmRawTableNormalizerProjectGenerator(
           temperature: 0,
           maxTokens: 8_000,
           onTextDelta: analysisProgress.append,
+          signal: input.signal,
         }
       );
+      input.signal?.throwIfAborted();
       analysisProgress.fallback(analysisResponse.text);
       const sourceStructureAnalysis = parseSourceStructureAnalysis(analysisResponse.text);
       const codeProgress = createJsonProgressWriter(input, 'code_generation');
@@ -160,6 +164,7 @@ export function createLlmRawTableNormalizerProjectGenerator(
           temperature: 0.1,
           maxTokens: 16_000,
           onTextDelta: codeProgress.append,
+          signal: input.signal,
         }
       );
       codeProgress.fallback(response.text);
