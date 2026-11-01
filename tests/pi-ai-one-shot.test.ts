@@ -252,6 +252,22 @@ describe('probeWithPiAi', () => {
     ).rejects.toMatchObject({ name: 'AbortError' });
   });
 
+  it('sends no request when cancelled before the call goes out', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      runPiAiOneShot('test', '', createConfig(), {
+        signal: controller.signal,
+        onTextDelta: () => {},
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    await expect(
+      runPiAiOneShot('test', '', createConfig(), { signal: controller.signal })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mocks.completeSimple).not.toHaveBeenCalled();
+    expect(mocks.streamSimple).not.toHaveBeenCalled();
+  });
+
   it('does not fall back to saved api key when the draft explicitly clears it', async () => {
     const result = await probeWithPiAi(
       {

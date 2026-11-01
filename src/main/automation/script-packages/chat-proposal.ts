@@ -182,7 +182,7 @@ export async function buildChatScriptProposal(
         await input.extract(extractionPrompt(turn, laterUserTexts), EXTRACT_SYSTEM),
         secrets
       );
-    } catch (error) {
+    } catch {
       // Cancelled: no fallback 要点, the caller shows 已取消.
       if (input.signal?.aborted) throw cancelledError();
       points = null;
