@@ -1,3 +1,4 @@
+import { abortAllAiRuns } from '../agent/ai-runs';
 import { app, BrowserWindow } from 'electron';
 import { closeDatabase } from '../db/database';
 import { stopNavServer } from '../nav-server';
@@ -42,6 +43,8 @@ export async function cleanupSandboxResources(): Promise<void> {
 
   stopNavServer();
   backgroundRepairs.stop();
+  const aborted = abortAllAiRuns();
+  if (aborted > 0) log(`[App] Aborted ${aborted} running AI generation(s)`);
   appContext.skillsManager?.stopStorageMonitoring();
   appContext.tray?.destroy();
   appContext.tray = null;

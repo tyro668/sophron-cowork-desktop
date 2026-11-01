@@ -1,3 +1,4 @@
+import { isCancelledError } from '../../../shared/cancel';
 import { modesForSource } from './raw-source-detail';
 import { useInlineModeChange } from './raw-source-mode-change';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
@@ -111,6 +112,7 @@ import {
   getPreferredNormalizerFilePath,
   inferNormalizerLanguageFromRulePrompt,
   isRawTableConfigEqual,
+  markNormalizerGenerationCancelled,
   markNormalizerGenerationError,
   markNormalizerGenerationSuccess,
   withRawTableDataProcessing,
@@ -268,6 +270,8 @@ export function RawTableEditorWorkbench({
   const fixNotesRef = useRef<string[]>([]);
   /** progressId of the running generation / fix agent, for 取消. */
   const activeAgentProgressRef = useRef<string | null>(null);
+  /** 取消 clicked during the current generation / fix turn. */
+  const cancelRequestedRef = useRef(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   // Last customize config seen while editing — restored when the strategy
   // select toggles back to 自定义, so the generated-draft linkage survives
@@ -594,6 +598,7 @@ export function RawTableEditorWorkbench({
     setCustomizeGenerationError(null);
     const progressId = createNormalizerGenerationProgressId();
     activeAgentProgressRef.current = progressId;
+    cancelRequestedRef.current = false;
     const unsubscribeProgress = dataClient.onRawTableNormalizerDraftProgress(
       (event: DataRawTableNormalizerDraftProgressEvent) => {
         if (event.progressId !== progressId) return;
@@ -644,6 +649,10 @@ export function RawTableEditorWorkbench({
       setReviewView('result');
       setCustomizeStep('review');
     } catch (err) {
+      if (isCancelledError(err)) {
+        markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       setCustomizeGenerationError(message);
       markNormalizerGenerationError(log, message);
@@ -656,6 +665,7 @@ export function RawTableEditorWorkbench({
   };
 
   const cancelNormalizerAgent = () => {
+    cancelRequestedRef.current = true;
     const progressId = activeAgentProgressRef.current;
     if (progressId)
       void dataClient.cancelRawTableNormalizerDraft(progressId).catch(() => undefined);
@@ -1064,6 +1074,7 @@ export function RawTableEditorWorkbench({
     setGenerationLog({ ...log, steps: [...log.steps] });
     const progressId = createNormalizerGenerationProgressId();
     activeAgentProgressRef.current = progressId;
+    cancelRequestedRef.current = false;
     const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
       Boolean
     );
@@ -1087,6 +1098,7 @@ export function RawTableEditorWorkbench({
         note: notes.join('\n') || undefined,
         verifyKind: 'preview',
         t,
+        cancelled: () => cancelRequestedRef.current,
         fix: async (request, onProgress) => {
           forward = onProgress;
           const fixed = await dataClient.generateRawTableNormalizerDraft({
@@ -1217,6 +1229,10 @@ export function RawTableEditorWorkbench({
       }
       if (result.error) setCustomizeGenerationError(result.error);
     } catch (err) {
+      if (isCancelledError(err)) {
+        markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
       setCustomizeGenerationError(message);
@@ -2166,8 +2182,11 @@ export function RawTableEditorWorkbench({
                     );
                   const toolCell =
                     'inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50';
+                  const generateCancelled =
+                    !customizeGenerating && generationLog?.outcome?.status === 'cancelled';
                   const generateFailed =
-                    !customizeGenerating && generationLog?.outcome?.status === 'error';
+                    generateCancelled ||
+                    (!customizeGenerating && generationLog?.outcome?.status === 'error');
                   let cols = '';
                   let cells: ReactNode = null;
                   if (customizeStep === 'rules') {
@@ -2265,11 +2284,13 @@ export function RawTableEditorWorkbench({
                         {noteCell(
                           customizeGenerating
                             ? t('data.rawTables.editor.customizeGeneratingHint')
-                            : generateFailed
-                              ? t('data.rawTables.editor.customizeErrorHint')
-                              : generationLog?.outcome
-                                ? t('data.rawTables.editor.customizeDoneHint')
-                                : t('data.rawTables.editor.generatedStatusEmpty')
+                            : generateCancelled
+                              ? t('fixError.cancelled')
+                              : generateFailed
+                                ? t('data.rawTables.editor.customizeErrorHint')
+                                : generationLog?.outcome
+                                  ? t('data.rawTables.editor.customizeDoneHint')
+                                  : t('data.rawTables.editor.generatedStatusEmpty')
                         )}
                         {customizeGenerating ? (
                           <button

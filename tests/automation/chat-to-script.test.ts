@@ -187,6 +187,28 @@ describe('buildChatScriptProposal', () => {
     expect(proposal.existing).toBeUndefined();
   });
 
+  it('取消 / closing the dialog aborts the extraction instead of falling back', async () => {
+    const controller = new AbortController();
+    let received: AbortSignal | undefined;
+    const pending = buildChatScriptProposal({
+      sessionId: 's1',
+      sessionTitle: 'OSChina更新榜单获取',
+      messages: fetchTurn(),
+      packages: [],
+      signal: controller.signal,
+      extract: () =>
+        new Promise<string>((_resolve, reject) => {
+          received = controller.signal;
+          controller.signal.addEventListener('abort', () =>
+            reject(new DOMException('This operation was aborted', 'AbortError'))
+          );
+        }),
+    });
+    controller.abort();
+    await expect(pending).rejects.toThrow('E_CANCELLED');
+    expect(received?.aborted).toBe(true);
+  });
+
   it('falls back to the turn facts and offers 更新已有包 for a converted turn', async () => {
     const messages = [...fetchTurn(), text('user', '以后每天 8 点跑')];
     const pkg = {

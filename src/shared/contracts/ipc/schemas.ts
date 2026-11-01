@@ -576,7 +576,10 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'automation.scripts.lastOutput': [str],
   'automation.scripts.cancelGenerate': [str],
   'automation.scripts.chatTurns': [str],
-  'automation.scripts.chatProposal': [z.looseObject({ sessionId: str, messageId: strOpt })],
+  'automation.scripts.chatProposal': [
+    z.looseObject({ sessionId: str, messageId: strOpt, requestId: strOpt }),
+  ],
+  'automation.scripts.cancelChatProposal': [str],
   'automation.scripts.generateDraft': [
     z.looseObject({
       packageId: strOpt,

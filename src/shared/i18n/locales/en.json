@@ -406,7 +406,8 @@
         "resultWrong": "No, let AI fix it",
         "viewResult": "View result",
         "viewCodeAdvanced": "Code (advanced)",
-        "refreshDone": "Refreshed"
+        "refreshDone": "Refreshed",
+        "generationOutputCancelled": "Cancelled"
       },
       "status": {
         "available": "Available",
@@ -4640,7 +4641,8 @@
     "copyFixLog": "Copy log",
     "emptyOutput": "Passed but looks wrong: 0 output rows",
     "userRejected": "The user says the result is wrong (see the note)",
-    "userRejectedTitle": "Result is wrong · {{version}}"
+    "userRejectedTitle": "Result is wrong · {{version}}",
+    "cancelled": "Cancelled — nothing was saved"
   },
   "chatScript": {
     "convert": "Convert to script",

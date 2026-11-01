@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, CircleDashed, Copy, Loader2, TriangleAlert, X } from 'lucide-react';
+import {
+  Ban,
+  Check,
+  ChevronDown,
+  CircleDashed,
+  Copy,
+  Loader2,
+  TriangleAlert,
+  X,
+} from 'lucide-react';
 import {
   formatGenerationElapsed,
   type GenerationHistoryItem,
@@ -27,6 +36,9 @@ function StepStatusIcon({ status }: { status: NormalizerGenerationStepStatus }) 
   }
   if (status === 'error') {
     return <X className="h-3.5 w-3.5 text-error" />;
+  }
+  if (status === 'cancelled') {
+    return <Ban className="h-3.5 w-3.5 text-text-muted" />;
   }
   return <Check className="h-3.5 w-3.5 text-success" />;
 }
@@ -145,6 +157,8 @@ function FoldedTurnRow({
       >
         {item.status === 'success' ? (
           <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
+        ) : item.status === 'cancelled' ? (
+          <Ban className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
         ) : (
           <X className="h-3.5 w-3.5 flex-shrink-0 text-error" />
         )}
@@ -198,7 +212,7 @@ function serializeGenerationLog(
   if (log) {
     for (const item of log.history ?? []) {
       lines.push(
-        `${item.status === 'success' ? '✓' : '✕'} ${item.title}${item.detail ? ` · ${item.detail}` : ''}`
+        `${item.status === 'success' ? '✓' : item.status === 'cancelled' ? '–' : '✕'} ${item.title}${item.detail ? ` · ${item.detail}` : ''}`
       );
       for (const line of item.lines ?? []) lines.push(`  ${line}`);
     }
@@ -209,7 +223,14 @@ function serializeGenerationLog(
       for (const line of round.lines) lines.push(`  ${line}`);
     }
     for (const step of log.steps) {
-      const mark = step.status === 'active' ? '…' : step.status === 'error' ? '✕' : '✓';
+      const mark =
+        step.status === 'active'
+          ? '…'
+          : step.status === 'error'
+            ? '✕'
+            : step.status === 'cancelled'
+              ? '–'
+              : '✓';
       lines.push(
         `${mark} ${log.stepTitles?.[step.phase] ?? stepTitles?.[step.phase] ?? t(STEP_TITLE_KEYS[step.phase])}`
       );
@@ -218,7 +239,7 @@ function serializeGenerationLog(
     }
     if (log.outcome) {
       lines.push(
-        `${log.outcome.status === 'success' ? '✓' : log.outcome.status === 'warning' ? '⚠' : '✕'} ${log.outcome.title}`
+        `${{ success: '✓', warning: '⚠', cancelled: '–', error: '✕' }[log.outcome.status]} ${log.outcome.title}`
       );
       lines.push(...log.outcome.details, ...log.outcome.files);
     }
@@ -270,6 +291,7 @@ export function RawTableGenerationConsole({
   }, [log, isStreaming, errorMessage]);
 
   const elapsedMs = log ? (log.finishedAt ?? now) - log.startedAt : 0;
+  const cancelled = !isStreaming && !errorMessage && log?.outcome?.status === 'cancelled';
   const failed = !isStreaming && (log?.outcome?.status === 'error' || !!errorMessage);
   const extraError =
     !isStreaming &&
@@ -286,6 +308,14 @@ export function RawTableGenerationConsole({
     <span className="inline-flex h-5 items-center gap-1.5 rounded bg-error/10 px-1.5 text-[11px] font-medium text-error">
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {t('data.rawTables.editor.generationOutputFailedTitle')}
+    </span>
+  ) : cancelled ? (
+    <span
+      className="inline-flex h-5 items-center gap-1.5 rounded bg-surface-muted px-1.5 text-[11px] font-medium text-text-muted"
+      data-testid="generation-cancelled"
+    >
+      <Ban className="h-3 w-3" />
+      {t('data.rawTables.editor.generationOutputCancelled')}
     </span>
   ) : log?.outcome ? (
     <span className="inline-flex h-5 items-center gap-1.5 rounded bg-success/10 px-1.5 text-[11px] font-medium text-success">
@@ -310,7 +340,17 @@ export function RawTableGenerationConsole({
         </div>
         <div
           className="flex min-w-0 items-center gap-2.5 px-2.5"
-          data-status={isStreaming ? 'running' : failed ? 'error' : log?.outcome ? 'done' : 'idle'}
+          data-status={
+            isStreaming
+              ? 'running'
+              : failed
+                ? 'error'
+                : cancelled
+                  ? 'cancelled'
+                  : log?.outcome
+                    ? 'done'
+                    : 'idle'
+          }
         >
           {statusChip}
           {log ? (
@@ -434,6 +474,8 @@ export function RawTableGenerationConsole({
                     <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
                   ) : log.outcome.status === 'warning' ? (
                     <TriangleAlert className="h-3.5 w-3.5 flex-shrink-0 text-warning" />
+                  ) : log.outcome.status === 'cancelled' ? (
+                    <Ban className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
                   ) : (
                     <X className="h-3.5 w-3.5 flex-shrink-0 text-error" />
                   )}
@@ -445,7 +487,9 @@ export function RawTableGenerationConsole({
                           ? 'var(--color-success)'
                           : log.outcome.status === 'warning'
                             ? 'var(--color-warning)'
-                            : 'var(--color-error)',
+                            : log.outcome.status === 'cancelled'
+                              ? 'var(--code-preview-muted)'
+                              : 'var(--color-error)',
                     }}
                   >
                     {log.outcome.title}

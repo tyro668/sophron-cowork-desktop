@@ -1,3 +1,4 @@
+import { isCancelledError } from '../../../shared/cancel';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -76,6 +77,7 @@ import { RawTableConfigRow } from '../data-view/raw-table-editor-workbench';
 import {
   applyNormalizerGenerationProgress,
   createNormalizerGenerationProgressId,
+  markNormalizerGenerationCancelled,
   markNormalizerGenerationError,
   truncateGenerationLogText,
   type NormalizerGenerationLog,
@@ -214,6 +216,8 @@ export function ScriptPackageWorkbench({
   const fixNotesRef = useRef<string[]>([]);
   /** progressId of the running 规则生成 / AI 修复 agent, for 取消. */
   const activeProgressRef = useRef<string | null>(null);
+  /** 取消 clicked during the current generation / fix turn. */
+  const cancelRequestedRef = useRef(false);
   const initialised = useRef(false);
 
   const refresh = useCallback(
@@ -452,6 +456,7 @@ export function ScriptPackageWorkbench({
     fixNotesRef.current = [];
     const progressId = createNormalizerGenerationProgressId();
     activeProgressRef.current = progressId;
+    cancelRequestedRef.current = false;
     const unsubscribe = api.onGenerateProgress((event) => {
       if (event.progressId !== progressId || event.phase === 'complete') return;
       applyNormalizerGenerationProgress(log, event);
@@ -529,6 +534,11 @@ export function ScriptPackageWorkbench({
         setStep('review');
       }
     } catch (err) {
+      if (isCancelledError(err)) {
+        markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+        if (anchor && chat) setJob(anchor, null);
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
       setError(message);
@@ -549,6 +559,7 @@ export function ScriptPackageWorkbench({
   };
 
   const cancelAgent = () => {
+    cancelRequestedRef.current = true;
     const progressId = activeProgressRef.current;
     if (progressId) void api.cancelGenerate(progressId).catch(() => undefined);
   };
@@ -667,6 +678,7 @@ export function ScriptPackageWorkbench({
     setGenerationLog({ ...log });
     const progressId = createNormalizerGenerationProgressId();
     activeProgressRef.current = progressId;
+    cancelRequestedRef.current = false;
     const notes = [...fixNotesRef.current, (input.request ?? input.note ?? '').trim()].filter(
       Boolean
     );
@@ -687,6 +699,7 @@ export function ScriptPackageWorkbench({
         note: notes.join('\n') || undefined,
         verifyKind: 'trial',
         t,
+        cancelled: () => cancelRequestedRef.current,
         fix: async (request, onProgress) => {
           forward = onProgress;
           const fixed = await api.generateDraft({
@@ -779,6 +792,10 @@ export function ScriptPackageWorkbench({
       }
       if (result.error) setError(result.error);
     } catch (err) {
+      if (isCancelledError(err)) {
+        markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       markNormalizerGenerationError(log, message);
       setError(message);
@@ -1161,7 +1178,8 @@ export function ScriptPackageWorkbench({
       </>
     );
   } else if (step === 'generate') {
-    const failed = !generating && generationLog?.outcome?.status === 'error';
+    const cancelled = !generating && generationLog?.outcome?.status === 'cancelled';
+    const failed = cancelled || (!generating && generationLog?.outcome?.status === 'error');
     actionCols = '104px minmax(0,1fr) 120px';
     actionCells = (
       <>
@@ -1169,9 +1187,11 @@ export function ScriptPackageWorkbench({
         {noteCell(
           generating
             ? t('data.rawTables.editor.customizeGeneratingHint')
-            : failed
-              ? t('data.rawTables.editor.customizeErrorHint')
-              : t('data.rawTables.editor.customizeDoneHint')
+            : cancelled
+              ? t('fixError.cancelled')
+              : failed
+                ? t('data.rawTables.editor.customizeErrorHint')
+                : t('data.rawTables.editor.customizeDoneHint')
         )}
         {generating ? (
           <button

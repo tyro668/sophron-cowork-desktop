@@ -594,7 +594,11 @@ export interface ElectronApi {
       chatProposal: (input: {
         sessionId: string;
         messageId?: string;
+        /** Id for cancelChatProposal (dialog 取消 / closed). */
+        requestId?: string;
       }) => Promise<ChatScriptProposal>;
+      /** Abort a running chatProposal extraction. */
+      cancelChatProposal: (requestId: string) => Promise<{ cancelled: boolean }>;
       onGenerateProgress: (callback: (event: ScriptGenerateProgressEvent) => void) => () => void;
     };
     /** Encrypted secrets of a script package / normalizer (env vars at run time; values write-only). */

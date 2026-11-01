@@ -47,7 +47,7 @@ export function createNormalizerGenerationProgressId(): string {
 export type NormalizerGenerationStepPhase =
   'source_summary' | 'source_analysis' | 'code_generation' | 'saving' | 'verify';
 
-export type NormalizerGenerationStepStatus = 'active' | 'done' | 'error';
+export type NormalizerGenerationStepStatus = 'active' | 'done' | 'error' | 'cancelled';
 
 export interface NormalizerGenerationStep {
   phase: NormalizerGenerationStepPhase;
@@ -60,7 +60,7 @@ export interface NormalizerGenerationStep {
 export interface GenerationHistoryItem {
   title: string;
   detail?: string;
-  status: 'success' | 'error';
+  status: 'success' | 'error' | 'cancelled';
   lines?: string[];
 }
 
@@ -89,7 +89,7 @@ export interface NormalizerGenerationLog {
   stepTitles?: Partial<Record<NormalizerGenerationStepPhase, string>>;
   outcome?: {
     /** warning: passed, but e.g. the on_empty fallback was used (yellow). */
-    status: 'success' | 'warning' | 'error';
+    status: 'success' | 'warning' | 'error' | 'cancelled';
     title: string;
     details: string[];
     files: string[];
@@ -207,6 +207,16 @@ export function markNormalizerGenerationSuccess(
     details: [],
     files: input.files.map((file) => file.path),
   };
+}
+
+/** 取消: the running step stops (neutral, not an error) and nothing was saved. */
+export function markNormalizerGenerationCancelled(
+  log: NormalizerGenerationLog,
+  title: string
+): void {
+  for (const step of log.steps) if (step.status === 'active') step.status = 'cancelled';
+  log.finishedAt = Date.now();
+  log.outcome = { status: 'cancelled', title, details: [], files: [] };
 }
 
 export function markNormalizerGenerationError(log: NormalizerGenerationLog, message: string): void {

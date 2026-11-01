@@ -3,6 +3,7 @@
  * columns, extracted by one model call into structured 要点 and redacted before and after. What
  * the dialog shows is exactly what the generation agent receives.
  */
+import { cancelledError } from '../../../shared/cancel';
 import type { Message, SessionStatus } from '../../../shared/contracts/session';
 import type { ScriptPackageSummary } from '../../../shared/automation/script-package';
 import {
@@ -37,6 +38,8 @@ export interface BuildChatScriptProposalInput {
   extract?: ChatPointsExtractor;
   /** Extra values to redact (e.g. from the app config). */
   secrets?: string[];
+  /** 取消 / dialog closed: aborts the extraction request; the proposal then rejects. */
+  signal?: AbortSignal;
 }
 
 export class ChatScriptProposalError extends Error {}
@@ -180,9 +183,12 @@ export async function buildChatScriptProposal(
         secrets
       );
     } catch {
+      // Cancelled: no fallback 要点, the caller shows 已取消.
+      if (input.signal?.aborted) throw cancelledError();
       points = null;
     }
   }
+  if (input.signal?.aborted) throw cancelledError();
   if (!points || points.endpoints.length === 0) {
     fallback = true;
     points = {

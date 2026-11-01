@@ -1,3 +1,4 @@
+import { cancelledError } from '../../../shared/cancel';
 import { createHash } from 'crypto';
 import { existsSync } from 'fs';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'fs/promises';
@@ -530,15 +531,32 @@ export class ScriptPackageService {
     });
   }
 
+  /** Give back a reserved repair that was stopped (pause / disable / quit): it doesn't count. */
+  releaseAutoRepair(id: string, at: number): Promise<void> {
+    return this.withLock(id, async () => {
+      const dir = this.packageDir(id);
+      if (!existsSync(dir)) return;
+      const state = await this.readState(dir);
+      const attempts = state.repairAttempts ?? [];
+      const index = attempts.lastIndexOf(at);
+      if (index < 0) return;
+      await this.patchState(dir, {
+        repairAttempts: [...attempts.slice(0, index), ...attempts.slice(index + 1)],
+      });
+    });
+  }
+
   /** Trial-run the working tree with the pass verdict (what the agent's self-test sees). */
   async checkWorkingTree(
     id: string,
-    timeoutMs = DEFAULT_CHECK_TIMEOUT_MS
+    timeoutMs = DEFAULT_CHECK_TIMEOUT_MS,
+    signal?: AbortSignal
   ): Promise<ScriptDraftCheck> {
     const leaks = await this.secretLeaks(id);
     if (leaks.length > 0)
       return { passed: false, reason: describeSecretLeaks(leaks), durationMs: 0 };
-    const run = await this.testRun(id, { timeoutMs, target: 'working' });
+    const run = await this.testRun(id, { timeoutMs, target: 'working', signal });
+    signal?.throwIfAborted();
     return {
       passed: run.ok,
       ...(run.ok ? {} : { reason: run.error ?? '试运行失败' }),
@@ -612,13 +630,14 @@ export class ScriptPackageService {
         },
         workspace: {
           dir,
-          test: () => this.checkWorkingTree(id, options.checkTimeoutMs),
+          test: () => this.checkWorkingTree(id, options.checkTimeoutMs, options.signal),
           secrets: this.secretEnv(id),
         },
         runtimeConfig: options.runtimeConfig,
         signal: options.signal,
         onProgress: (phase, text) => emit({ phase, kind: 'message', text }),
       });
+      options.signal?.throwIfAborted();
       if (outcome.stop === 'error' && outcome.selfTests === 0)
         throw new ScriptPackageError(`AI 修复失败：${outcome.error ?? '模型出错'}`, 'invalid');
       const after = await this.normalizeWorkingManifest(id, { name, runtime: base.runtime });
@@ -630,7 +649,9 @@ export class ScriptPackageService {
         kind: 'message',
         text: `修改 ${changedFiles.join('、')}，写入 AI 修复草稿。`,
       });
-      const check = await this.checkWorkingTree(id, options.checkTimeoutMs);
+      const check = await this.checkWorkingTree(id, options.checkTimeoutMs, options.signal);
+      // Cancelled during the final check: nothing is saved, the folder goes back as it was.
+      options.signal?.throwIfAborted();
       const saved = await this.endAgentEdit(id, {
         source: 'ai_repair',
         rulePrompt: [
@@ -662,6 +683,8 @@ export class ScriptPackageService {
       };
     } catch (error) {
       if (started) await this.endAgentEdit(started, null).catch(() => undefined);
+      // Cancelled: no error line in the console, the renderer shows 已取消.
+      if (options.signal?.aborted) throw cancelledError();
       emit({ phase: 'error', kind: 'message', text: errorText(error) });
       throw error;
     }
@@ -727,7 +750,7 @@ export class ScriptPackageService {
       started = id;
       const workspace = {
         dir,
-        test: () => this.checkWorkingTree(id, options.checkTimeoutMs),
+        test: () => this.checkWorkingTree(id, options.checkTimeoutMs, options.signal),
         secrets: this.secretEnv(id),
       };
       const onProgress = (phase: ScriptAgentPhase, text: string) =>
@@ -745,6 +768,7 @@ export class ScriptPackageService {
         signal: options.signal,
         onProgress,
       });
+      options.signal?.throwIfAborted();
       if (outcome.stop === 'error' && !existsSync(path.join(dir, 'manifest.json')))
         throw new ScriptPackageError(`生成失败：${outcome.error ?? '模型出错'}`, 'invalid');
       if (outcome.stop === 'max_turns' || outcome.stop === 'timeout')
@@ -791,6 +815,7 @@ export class ScriptPackageService {
           signal: options.signal,
           onProgress,
         });
+        options.signal?.throwIfAborted();
         if (fixed.summary) summaryText = fixed.summary;
         files = await this.normalizeWorkingManifest(id, {
           name: packageName,
@@ -829,6 +854,8 @@ export class ScriptPackageService {
       };
     } catch (error) {
       if (started) await this.endAgentEdit(started, null).catch(() => undefined);
+      // Cancelled: no error line in the console, the renderer shows 已取消.
+      if (options.signal?.aborted) throw cancelledError();
       emit({ phase: 'error', kind: 'message', text: errorText(error) });
       throw error;
     }
@@ -1032,7 +1059,7 @@ export class ScriptPackageService {
   /** Dry run of a version (default: published): installs deps, runs, nothing is imported. */
   async testRun(
     id: string,
-    options: { timeoutMs: number; target?: ScriptRunTarget }
+    options: { timeoutMs: number; target?: ScriptRunTarget; signal?: AbortSignal }
   ): Promise<ScriptTestRunResult> {
     const startedAt = this.now();
     try {
@@ -1077,14 +1104,14 @@ export class ScriptPackageService {
    */
   run(
     id: string,
-    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget }
+    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget; signal?: AbortSignal }
   ): Promise<ScriptRunOutput> {
     return this.withLock(id, () => this.runUnlocked(id, options));
   }
 
   private async runUnlocked(
     id: string,
-    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget }
+    options: { timeoutMs: number; dryRun?: boolean; target?: ScriptRunTarget; signal?: AbortSignal }
   ): Promise<ScriptRunOutput> {
     const packageDir = this.packageDir(id);
     if (!existsSync(path.join(packageDir, 'manifest.json'))) {
@@ -1106,7 +1133,9 @@ export class ScriptPackageService {
     // Sandboxed code shares the host network: refuse code addressing this computer's services.
     const local = findLocalHostRefs(await readWorkingFiles(dir).catch(() => []));
     if (local.length > 0) throw new ScriptPackageError(describeLocalHostRefs(local), 'invalid');
-    const installedDeps = await this.ensureDeps(dir, manifest);
+    options.signal?.throwIfAborted();
+    const installedDeps = await this.ensureDeps(dir, manifest, options.signal);
+    options.signal?.throwIfAborted();
     const outDir = path.join(packageDir, STATE_DIR, 'runs', String(this.now()));
     await mkdir(outDir, { recursive: true });
     const format = manifest.output?.format ?? 'csv';
@@ -1133,6 +1162,7 @@ export class ScriptPackageService {
         }),
         sandbox: { writable: [dir, outDir] },
         redact: Object.values(secretEnv),
+        signal: options.signal,
       });
       const durationMs = this.now() - startedAt;
       const log = processLog(result);
@@ -1270,7 +1300,11 @@ export class ScriptPackageService {
   }
 
   /** Returns true when an install ran. The deps hash is tracked in the run dir's state. */
-  private async ensureDeps(dir: string, manifest: ScriptManifest): Promise<boolean> {
+  private async ensureDeps(
+    dir: string,
+    manifest: ScriptManifest,
+    signal?: AbortSignal
+  ): Promise<boolean> {
     const hash = await this.depsHash(dir, manifest);
     const state = await this.readState(dir);
     if (!hash) {
@@ -1293,12 +1327,13 @@ export class ScriptPackageService {
         cwd: dir,
         timeoutMs: INSTALL_TIMEOUT_MS,
         sandbox: { writable: [dir] },
+        signal,
       });
       if (venv.code !== 0) fail('venv', venv);
       const pip = await runProcess(
         venvPython(dir),
         ['-m', 'pip', 'install', '--disable-pip-version-check', '-r', 'requirements.txt'],
-        { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS, sandbox: { writable: [dir] } }
+        { cwd: dir, timeoutMs: INSTALL_TIMEOUT_MS, sandbox: { writable: [dir] }, signal }
       );
       if (pip.code !== 0) fail('pip', pip);
     } else {
@@ -1311,6 +1346,7 @@ export class ScriptPackageService {
         cwd: dir,
         timeoutMs: INSTALL_TIMEOUT_MS,
         sandbox: { writable: [dir] },
+        signal,
       });
       if (install.code !== 0) fail('npm', install);
     }

@@ -1,3 +1,4 @@
+import { isCancelledError } from '../../../shared/cancel';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Loader2, Wand2, X } from 'lucide-react';
@@ -43,10 +44,13 @@ export function ChatToScriptDialog() {
   useEffect(() => {
     if (!target) return;
     let cancelled = false;
+    let settled = false;
+    // Closing the dialog (or picking another turn) aborts the extraction request in main.
+    const requestId = `${target.sessionId}:${anchorId ?? 'latest'}:${Date.now()}`;
     setLoading(true);
     setError(null);
     void window.electronAPI.automation.scripts
-      .chatProposal({ sessionId: target.sessionId, messageId: anchorId })
+      .chatProposal({ sessionId: target.sessionId, messageId: anchorId, requestId })
       .then((next) => {
         if (cancelled) return;
         setProposal(next);
@@ -56,13 +60,19 @@ export function ChatToScriptDialog() {
         setWriteMode('update');
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled && !isCancelledError(err))
+          setError(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
+        settled = true;
         if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
+      if (!settled)
+        void window.electronAPI.automation.scripts
+          .cancelChatProposal(requestId)
+          .catch(() => undefined);
     };
   }, [target, anchorId]);
 
