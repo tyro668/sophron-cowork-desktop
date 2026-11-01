@@ -285,6 +285,8 @@ export async function runPiAiOneShot(
   // Use pi-ai's completeSimple for a one-shot call
   // Pass apiKey directly in options — completeSimple uses options.apiKey || env var
   const userMsg: PiUserMessage = { role: 'user', content: prompt, timestamp: Date.now() };
+  // Cancelled before the request went out: send nothing.
+  options?.signal?.throwIfAborted();
   log(
     '[OneShot] Calling completeSimple:',
     resolvedModel.provider,
@@ -303,7 +305,6 @@ export async function runPiAiOneShot(
     systemPrompt,
     messages: [userMsg],
   };
-  options?.signal?.throwIfAborted();
   const requestOptionsWithAuth = {
     ...requestOptions,
     // One-shot callers own their output budget; conversation thinking settings
@@ -373,7 +374,20 @@ async function streamPiAiOneShotResponse(
   }
 ): Promise<Awaited<ReturnType<typeof completeSimple>>> {
   const stream = streamSimple(model, context, options);
+  const signal = options?.signal;
+  let deltas = 0;
+  let afterAbort = 0;
+  let abortedAt = 0;
+  const onAbort = () => {
+    abortedAt = Date.now();
+    log('[OneShot] cancel requested after', deltas, 'stream deltas; aborting the request');
+  };
+  signal?.addEventListener('abort', onAbort, { once: true });
   for await (const event of stream) {
+    if (event.type === 'text_delta' || event.type === 'thinking_delta') {
+      deltas += 1;
+      if (abortedAt) afterAbort += 1;
+    }
     if (event.type === 'text_delta') {
       const delta = normalizeStreamDelta(event.delta);
       if (delta) {
@@ -393,6 +407,16 @@ async function streamPiAiOneShotResponse(
         event.error.errorMessage
       );
     }
+  }
+  signal?.removeEventListener('abort', onAbort);
+  if (abortedAt) {
+    log(
+      '[OneShot] stream closed',
+      Date.now() - abortedAt,
+      'ms after cancel;',
+      afterAbort,
+      'deltas arrived after cancel'
+    );
   }
   return stream.result();
 }

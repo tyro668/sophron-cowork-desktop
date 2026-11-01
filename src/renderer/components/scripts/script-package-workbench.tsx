@@ -1178,7 +1178,8 @@ export function ScriptPackageWorkbench({
       </>
     );
   } else if (step === 'generate') {
-    const failed = !generating && generationLog?.outcome?.status === 'error';
+    const cancelled = !generating && generationLog?.outcome?.status === 'cancelled';
+    const failed = cancelled || (!generating && generationLog?.outcome?.status === 'error');
     actionCols = '104px minmax(0,1fr) 120px';
     actionCells = (
       <>
@@ -1186,9 +1187,11 @@ export function ScriptPackageWorkbench({
         {noteCell(
           generating
             ? t('data.rawTables.editor.customizeGeneratingHint')
-            : failed
-              ? t('data.rawTables.editor.customizeErrorHint')
-              : t('data.rawTables.editor.customizeDoneHint')
+            : cancelled
+              ? t('fixError.cancelled')
+              : failed
+                ? t('data.rawTables.editor.customizeErrorHint')
+                : t('data.rawTables.editor.customizeDoneHint')
         )}
         {generating ? (
           <button

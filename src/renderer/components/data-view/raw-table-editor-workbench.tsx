@@ -2182,8 +2182,11 @@ export function RawTableEditorWorkbench({
                     );
                   const toolCell =
                     'inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50';
+                  const generateCancelled =
+                    !customizeGenerating && generationLog?.outcome?.status === 'cancelled';
                   const generateFailed =
-                    !customizeGenerating && generationLog?.outcome?.status === 'error';
+                    generateCancelled ||
+                    (!customizeGenerating && generationLog?.outcome?.status === 'error');
                   let cols = '';
                   let cells: ReactNode = null;
                   if (customizeStep === 'rules') {
@@ -2281,11 +2284,13 @@ export function RawTableEditorWorkbench({
                         {noteCell(
                           customizeGenerating
                             ? t('data.rawTables.editor.customizeGeneratingHint')
-                            : generateFailed
-                              ? t('data.rawTables.editor.customizeErrorHint')
-                              : generationLog?.outcome
-                                ? t('data.rawTables.editor.customizeDoneHint')
-                                : t('data.rawTables.editor.generatedStatusEmpty')
+                            : generateCancelled
+                              ? t('fixError.cancelled')
+                              : generateFailed
+                                ? t('data.rawTables.editor.customizeErrorHint')
+                                : generationLog?.outcome
+                                  ? t('data.rawTables.editor.customizeDoneHint')
+                                  : t('data.rawTables.editor.generatedStatusEmpty')
                         )}
                         {customizeGenerating ? (
                           <button

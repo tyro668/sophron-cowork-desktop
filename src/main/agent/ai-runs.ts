@@ -51,6 +51,7 @@ export function startAiRun(
 export function cancelAiRun(id: string): boolean {
   const entry = runs.get(id);
   if (!entry) return false;
+  log('[AiRuns] cancel', id);
   entry.controller.abort();
   return true;
 }
