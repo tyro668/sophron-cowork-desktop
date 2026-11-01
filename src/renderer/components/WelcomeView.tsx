@@ -560,6 +560,11 @@ export function WelcomeView() {
     }
   };
 
+  // 新建任务 remounts this view: the cursor starts in the empty input.
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, []);
+
   // Adjust height when prompt changes
   useEffect(() => {
     adjustTextareaHeight();

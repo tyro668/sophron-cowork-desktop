@@ -152,6 +152,10 @@ interface AppState {
   sessions: Session[];
   projects: Project[];
   activeSessionId: string | null;
+  /** Bumped by 新建任务: the welcome view remounts empty with focus in its input. */
+  newTaskNonce: number;
+  /** 新建任务: chat view, no active session, settings closed, fresh welcome input. */
+  openNewTask: () => void;
 
   // Per-session state (messages, partials, turns, traces, etc.)
   sessionStates: Record<string, SessionState>;
@@ -363,6 +367,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   projects: [],
   activeSessionId: null,
+  newTaskNonce: 0,
+  openNewTask: () =>
+    set((state) => ({
+      mainView: 'chat' as const,
+      activeSessionId: null,
+      showSettings: false,
+      newTaskNonce: state.newTaskNonce + 1,
+    })),
   sessionStates: {},
   isLoading: false,
   mainView: 'chat',
