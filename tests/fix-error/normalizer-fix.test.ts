@@ -248,6 +248,60 @@ describe('LLM normalizer fix turn', () => {
     expect(phases).toContain('code_generation');
   });
 
+  it('规则生成 forwards 取消 to its one-shot model calls and stops after the aborted one', async () => {
+    const controller = new AbortController();
+    const signals: Array<AbortSignal | undefined> = [];
+    vi.mocked(runPiAiOneShot).mockReset();
+    vi.mocked(runPiAiOneShot).mockImplementation(async (_prompt, _system, _config, options) => {
+      signals.push(options?.signal);
+      controller.abort(); // the user clicks 取消 while the first request streams
+      return { text: '{"sourceKind":"csv"}' } as Awaited<ReturnType<typeof runPiAiOneShot>>;
+    });
+    const generator = createLlmRawTableNormalizerProjectGenerator(() => ({}) as AppConfig);
+    await expect(
+      generator.generate({
+        name: 'orders',
+        primaryLanguage: 'node',
+        rulePrompt: 'copy',
+        sourceSummary: {
+          sourcePath: '/tmp/orders.csv',
+          sourceKind: 'csv',
+          generatedAt: 0,
+          hash: 'h',
+          fileCount: 1,
+          sampledFileCount: 1,
+          truncated: false,
+          notes: [],
+          files: [],
+        },
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(signals).toEqual([controller.signal]); // the code-generation call never started
+  });
+
+  it('the one-shot AI 修复 fallback forwards 取消 too', async () => {
+    const controller = new AbortController();
+    vi.mocked(runPiAiOneShot).mockReset();
+    vi.mocked(runPiAiOneShot).mockImplementation(async (_prompt, _system, _config, options) => {
+      expect(options?.signal).toBe(controller.signal);
+      throw new DOMException('This operation was aborted', 'AbortError');
+    });
+    const template = createRawTableNormalizerProjectTemplate('node', 'copy');
+    const generator = createLlmRawTableNormalizerProjectGenerator(() => ({}) as AppConfig);
+    await expect(
+      generator.fix!({
+        name: 'orders',
+        primaryLanguage: 'node',
+        rulePrompt: 'copy',
+        files: template.files,
+        baseLabel: 'v1 草稿',
+        request: { error: 'boom' },
+        signal: controller.signal,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('rejects a fix that changes nothing', async () => {
     const template = createRawTableNormalizerProjectTemplate('node', 'copy');
     const current = template.files.map((file) =>

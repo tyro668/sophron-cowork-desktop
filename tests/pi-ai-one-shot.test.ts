@@ -220,6 +220,27 @@ describe('probeWithPiAi', () => {
     expect(mocks.completeSimple).not.toHaveBeenCalled();
   });
 
+  it('forwards the AbortSignal to the provider on the streaming path', async () => {
+    const controller = new AbortController();
+    mocks.streamSimple.mockImplementationOnce((_model, _context, options) => ({
+      async *[Symbol.asyncIterator]() {
+        yield { type: 'text_delta', delta: 'partial' };
+        controller.abort();
+      },
+      result: async () => ({
+        content: [{ type: 'text', text: 'partial' }],
+        stopReason: options?.signal?.aborted ? 'aborted' : 'stop',
+      }),
+    }));
+    await expect(
+      runPiAiOneShot('test', '', createConfig(), {
+        signal: controller.signal,
+        onTextDelta: () => undefined,
+      })
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(mocks.streamSimple.mock.calls.at(-1)?.[2].signal).toBe(controller.signal);
+  });
+
   it('rejects cancellation even when the provider resolves an aborted response', async () => {
     const controller = new AbortController();
     mocks.completeSimple.mockImplementationOnce(async () => {

@@ -172,9 +172,10 @@ async function startRepair(
     const baseVersion = summary.published?.version ?? summary.draft?.version;
     if (baseVersion == null) return ' · AI 修复不可用：没有可修复的版本';
     if (repairs.isRunning(config.packageId)) return ' · AI 正在修复（由更早的一次运行发起）';
+    const bookedAt = options.now();
     const booked = await options.scripts.reserveAutoRepair(
       config.packageId,
-      options.now(),
+      bookedAt,
       options.repairPolicy ?? DEFAULT_REPAIR_POLICY
     );
     if (!booked.ok) return ` · 未交给 AI 修复：${booked.reason}`;
@@ -187,7 +188,8 @@ async function startRepair(
         reason,
         baseVersion,
         context,
-        stop
+        stop,
+        bookedAt
       );
       await settleRunError(options, context, outcome);
     });
@@ -204,7 +206,8 @@ async function repairOnce(
   reason: string,
   baseVersion: number,
   context: AutomationRunContext,
-  stop: AbortSignal
+  stop: AbortSignal,
+  bookedAt: number
 ): Promise<string> {
   const signal = AbortSignal.any([stop, AbortSignal.timeout(REPAIR_TIMEOUT_MS)]);
   try {
@@ -229,7 +232,12 @@ async function repairOnce(
     }
     return ` · AI 已修复为 v${version}（试运行 ${result.check.rows ?? 0} 行），等你确认使用`;
   } catch (error) {
-    if (stop.aborted) return ' · AI 修复已停止（自动化已暂停、停用或删除）';
+    if (stop.aborted) {
+      // Stopped by the user (pause / disable / delete) or app quit: the model request was
+      // aborted and nothing was saved, so it doesn't count toward the cooldown / daily cap.
+      await options.scripts.releaseAutoRepair(config.packageId, bookedAt).catch(() => undefined);
+      return ' · AI 修复已停止（自动化已暂停、停用或删除），本次不计入修复次数';
+    }
     if (signal.aborted) return ` · AI 修复超时（${formatTimeout(REPAIR_TIMEOUT_MS)}）`;
     return ` · AI 修复失败：${error instanceof Error ? error.message : String(error)}`;
   }

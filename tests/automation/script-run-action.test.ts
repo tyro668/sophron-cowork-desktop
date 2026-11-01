@@ -241,7 +241,7 @@ describe('script.run action', () => {
     expect(run.executionSummary?.steps?.[0]?.error).toBe(outcome);
     expect(lastError).toBe(outcome);
     // The self-test uses the node's timeout.
-    expect(check).toHaveBeenCalledWith('fx', 20_000);
+    expect(check).toHaveBeenCalledWith('fx', 20_000, expect.any(AbortSignal));
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();
     // Second failure while the v3 draft waits for review: no new repair.
@@ -299,6 +299,64 @@ describe('script.run action', () => {
     repairs.stop('a1');
     expect((await settled()).error).toContain('AI 修复已停止');
     expect(repairs.isRunning('fx')).toBe(false);
+  });
+
+  it('ai_repair policy: a stopped repair does not count toward the cooldown / daily cap', async () => {
+    await breakPublished();
+    let calls = 0;
+    const fix = vi.fn((input: FixScriptFilesInput) => {
+      calls += 1;
+      if (calls > 1) return Promise.reject(new Error('模型不可用'));
+      return new Promise<never>((_resolve, reject) =>
+        input.signal?.addEventListener('abort', () => reject(new Error('aborted')))
+      );
+    });
+    const { action } = setup({ generate: vi.fn(), fix }, { cooldownMs: 60 * 60_000, dailyCap: 1 });
+    const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
+    await failRun(action, config);
+    await vi.waitFor(() => expect(fix).toHaveBeenCalled());
+    repairs.stop('a1');
+    expect((await settled()).error).toContain('本次不计入修复次数');
+    // Nothing was saved, and the next failure may repair again despite cooldown and cap = 1.
+    expect((await scripts.summary('fx')).draft?.source).not.toBe('ai_repair');
+    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await repairs.idle();
+    expect(fix).toHaveBeenCalledTimes(2);
+    expect(await failRun(action, config)).toContain('未交给 AI 修复');
+  });
+
+  it('AI 修复 cancelled during its final trial run saves no draft and restores the folder', async () => {
+    await breakPublished();
+    const before = await scripts.listVersions('fx');
+    const controller = new AbortController();
+    const fix = vi.fn(async (input: FixScriptFilesInput) => {
+      writeFileSync(
+        path.join(input.workspace.dir, 'main.js'),
+        "setTimeout(() => require('fs').writeFileSync(process.env.SOPHRON_OUTPUT, 'a\\n1\\n'), 30000)"
+      );
+      setTimeout(() => controller.abort(), 300);
+      return { summary: '改好了', stop: 'done' as const, selfTests: 0 };
+    });
+    const started = Date.now();
+    const published = (await scripts.summary('fx')).published!.version;
+    await expect(
+      scripts.generateDraft(
+        {
+          packageId: 'fx',
+          rulePrompt: 'fix',
+          baseVersion: published,
+          runtime: 'node',
+          fix: { error: '选择器失效' },
+        },
+        { generate: vi.fn(), fix },
+        { signal: controller.signal, checkTimeoutMs: 60_000 }
+      )
+    ).rejects.toThrow('E_CANCELLED');
+    // The final trial run was killed instead of running to its 30 s end.
+    expect(Date.now() - started).toBeLessThan(15_000);
+    await scripts.list(); // folder sync: a leftover edit would become a 手动修改 draft here
+    expect(await scripts.listVersions('fx')).toHaveLength(before.length);
+    expect(readFileSync(path.join(root, 'fx', 'main.js'), 'utf8')).toContain('选择器失效');
   });
 
   it('ai_repair policy without a generator reports it is unavailable', async () => {
