@@ -453,11 +453,18 @@ export function resolvePiRegistryModel(
   modelString: string,
   options: PiModelLookupOptions = {}
 ): Model<Api> | undefined {
+  // ChatGPT (Codex) sign-in only speaks the codex responses protocol. When the catalog drops a
+  // codex model id (pi-ai 1.5 dropped gpt-5.5 / gpt-5.3-codex from openai-codex), the same id under
+  // the plain `openai` provider must not be picked up: that would switch to the API-key Responses
+  // protocol. Return undefined so callers build the synthetic codex model instead.
+  const codexOnly =
+    options.configProvider === 'openai-codex' || options.rawProvider === 'openai-codex';
   for (const candidate of buildPiModelLookupCandidates(modelString, options)) {
     const model = (getModel as (...args: unknown[]) => Model<Api> | undefined)(
       candidate.provider as PiRegistryProvider,
       candidate.model
     );
+    if (model && codexOnly && model.provider !== 'openai-codex') continue;
     if (model) {
       return applyPiModelRuntimeOverrides(model, options);
     }
