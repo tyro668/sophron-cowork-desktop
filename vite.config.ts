@@ -62,6 +62,15 @@ export default defineConfig({
                 'glob',
                 'dotenv',
               ],
+              output: {
+                // pi-ai 1.5 modules import each other in a cycle (compat <-> coding-agent
+                // radius/config). Split into separate chunks, the cycle runs top-level code
+                // before the other chunk's exports exist ("normalizeRadiusGatewayUrl is not a
+                // function" at startup). Keep every @earendil-works module in one chunk.
+                codeSplitting: {
+                  groups: [{ name: 'pi', test: /node_modules[\\/]@earendil-works[\\/]/ }],
+                },
+              },
             },
           },
         },

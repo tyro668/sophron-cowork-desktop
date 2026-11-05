@@ -161,7 +161,7 @@ describe('pi model resolution helpers', () => {
   });
 
   it('resolves codex models from the pi-ai registry without downgrading the api', () => {
-    const model = resolvePiRegistryModel('openai-codex/gpt-5.5', {
+    const model = resolvePiRegistryModel('openai-codex/gpt-6.1-sol', {
       configProvider: 'openai-codex',
       rawProvider: 'openai-codex',
       customBaseUrl: 'https://chatgpt.com/backend-api',
@@ -172,6 +172,17 @@ describe('pi model resolution helpers', () => {
     expect(model?.provider).toBe('openai-codex');
     expect(model?.api).toBe('openai-codex-responses');
     expect(model?.baseUrl).toBe('https://chatgpt.com/backend-api');
+  });
+
+  it('never downgrades a codex id dropped from the catalog to the plain openai provider', () => {
+    // pi-ai 1.5 removed gpt-5.5 from openai-codex but still lists it under openai.
+    const model = resolvePiRegistryModel('openai-codex/gpt-5.5', {
+      configProvider: 'openai-codex',
+      rawProvider: 'openai-codex',
+      customBaseUrl: 'https://chatgpt.com/backend-api',
+      customProtocol: 'openai',
+    });
+    expect(model).toBeUndefined();
   });
 
   it('builds synthetic codex models for ids missing from the registry', () => {
