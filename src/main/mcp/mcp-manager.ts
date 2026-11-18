@@ -15,6 +15,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { createHash } from 'crypto';
 import { app, BrowserWindow } from 'electron';
 
@@ -22,9 +23,29 @@ import path from 'path';
 import { log, logError, logWarn, logCtx, logCtxError, logTiming } from '../utils/logger';
 import { getDefaultShell } from '../utils/shell-resolver';
 import { sanitizeUrlForLog } from '../utils/sanitize-url';
+import { formatMcpTransportError } from './mcp-http-error';
+import {
+  clearMcpOAuthTokens,
+  deleteMcpOAuthCredentials,
+  isUnauthorizedError,
+  prepareMcpOAuthSession,
+  type PreparedMcpOAuth,
+} from './mcp-oauth';
 
 const MCP_LIST_TOOLS_TIMEOUT_MS = 5 * 60 * 1000;
 const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
+
+export type MCPConnectionStatus =
+  'connecting' | 'connected' | 'failed' | 'disabled' | 'authorizing' | 'needs_auth';
+
+export type MCPConnectOptions = {
+  interactiveAuth?: boolean;
+};
+
+export type MCPConnectResult = {
+  authorizing?: boolean;
+  needsAuth?: boolean;
+};
 
 type RefreshToolsResult =
   | { kind: 'success'; serverId: string; tools: MCPTool[] }
@@ -44,6 +65,10 @@ export interface MCPServerConfig {
   url?: string; // For SSE / Streamable HTTP: server URL
   headers?: Record<string, string>; // For SSE / Streamable HTTP: HTTP headers
   enabled: boolean;
+}
+
+function isRemoteMcpType(type: MCPServerConfig['type']): boolean {
+  return type === 'sse' || type === 'streamable-http';
 }
 
 /**
@@ -237,7 +262,9 @@ export class MCPManager {
   // Guards against concurrent reconnect/update operations on the same server
   private reconnectingServers: Set<string> = new Set();
   // Tracks per-server connection status for UI display
-  private connectionStatus = new Map<string, 'connecting' | 'connected' | 'failed'>();
+  private connectionStatus = new Map<string, MCPConnectionStatus>();
+  // In-flight browser OAuth flows, keyed by server id
+  private pendingAuth = new Map<string, PreparedMcpOAuth>();
 
   /**
    * Get bundled Node.js path
@@ -587,18 +614,21 @@ export class MCPManager {
    * Update a single server configuration and reconnect if needed
    * This is more efficient than reinitializing all servers
    */
-  async updateServer(config: MCPServerConfig): Promise<void> {
+  async updateServer(
+    config: MCPServerConfig,
+    options: MCPConnectOptions = { interactiveAuth: true }
+  ): Promise<MCPConnectResult> {
     // Defer if initialization is in progress to avoid races
     if (this.initializingServers) {
       log('[MCPManager] Deferring update during initialization');
-      return;
+      return {};
     }
     // Prevent concurrent update while a reconnect is already in progress for this server
     if (this.reconnectingServers.has(config.id)) {
       logWarn(
         `[MCPManager] Skipping updateServer for ${config.name}: reconnect already in progress`
       );
-      return;
+      return {};
     }
     log(`[MCPManager] Updating server: ${config.name} (enabled: ${config.enabled})`);
     this.lastConfigFingerprint = null;
@@ -610,30 +640,41 @@ export class MCPManager {
     const isConnected = this.clients.has(config.id);
 
     if (config.enabled && !isConnected) {
-      // Need to connect
       try {
-        await this.connectServer(config);
-        await this.refreshTools();
+        return await this.connectAndRefresh(config, options);
       } catch (error) {
         logError(`[MCPManager] Failed to connect to server ${config.name}:`, error);
         throw error;
       }
-    } else if (!config.enabled && isConnected) {
-      // Need to disconnect
-      await this.disconnectServer(config.id);
+    } else if (!config.enabled && (isConnected || this.pendingAuth.has(config.id))) {
+      await this.cancelAuthorization(config.id);
+      if (this.clients.has(config.id)) {
+        await this.disconnectServer(config.id);
+      }
+      this.connectionStatus.set(config.id, 'disabled');
       await this.refreshTools();
+      return {};
     } else if (config.enabled && isConnected) {
-      // Config changed, reconnect
       await this.disconnectServer(config.id);
       try {
-        await this.connectServer(config);
-        await this.refreshTools();
+        return await this.connectAndRefresh(config, options);
       } catch (error) {
         logError(`[MCPManager] Failed to reconnect server ${config.name}:`, error);
         throw error;
       }
     }
-    // If disabled and not connected, nothing to do
+    return {};
+  }
+
+  private async connectAndRefresh(
+    config: MCPServerConfig,
+    options?: MCPConnectOptions
+  ): Promise<MCPConnectResult> {
+    const result = await this.connectServer(config, options);
+    if (!result.authorizing && !result.needsAuth) {
+      await this.refreshTools();
+    }
+    return result;
   }
 
   /**
@@ -642,8 +683,10 @@ export class MCPManager {
   async removeServer(serverId: string): Promise<void> {
     log(`[MCPManager] Removing server: ${serverId}`);
     this.lastConfigFingerprint = null;
+    await this.cancelAuthorization(serverId);
     await this.disconnectServer(serverId);
     this.serverConfigs.delete(serverId);
+    deleteMcpOAuthCredentials(serverId);
     await this.refreshTools();
   }
 
@@ -729,15 +772,27 @@ export class MCPManager {
   /**
    * Connect to a single MCP server
    */
-  private async connectServer(config: MCPServerConfig): Promise<void> {
+  private async connectServer(
+    config: MCPServerConfig,
+    options?: MCPConnectOptions
+  ): Promise<MCPConnectResult> {
     log(`[MCPManager] Connecting to MCP server: ${config.name} (${config.type})`);
 
     // Mark status as connecting at the very start, before any transport creation
     this.connectionStatus.set(config.id, 'connecting');
 
     try {
-      await this.connectServerInternal(config);
+      const result = await this.connectServerInternal(config, options);
+      if (result.authorizing) {
+        this.connectionStatus.set(config.id, 'authorizing');
+        return result;
+      }
+      if (result.needsAuth) {
+        this.connectionStatus.set(config.id, 'needs_auth');
+        return result;
+      }
       this.connectionStatus.set(config.id, 'connected');
+      return {};
     } catch (error) {
       this.connectionStatus.set(config.id, 'failed');
       throw error;
@@ -748,8 +803,12 @@ export class MCPManager {
    * Internal connect logic — separated so connectServer can guarantee
    * connectionStatus is always set to 'connected' or 'failed'.
    */
-  private async connectServerInternal(config: MCPServerConfig): Promise<void> {
+  private async connectServerInternal(
+    config: MCPServerConfig,
+    options?: MCPConnectOptions
+  ): Promise<MCPConnectResult> {
     let transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport;
+    let oauthSession: PreparedMcpOAuth | null = null;
     let commandForLogging = '';
     let argsForLogging: string[] = [];
 
@@ -932,44 +991,12 @@ export class MCPManager {
       });
 
       log(`[MCPManager] STDIO transport created successfully`);
-    } else if (config.type === 'sse') {
-      if (!config.url) {
-        throw new Error(`SSE server ${config.name} requires a URL`);
-      }
-
-      let sseUrl: URL;
-      try {
-        sseUrl = new URL(config.url);
-      } catch {
-        throw new Error(
-          `SSE server ${config.name} has a malformed URL: "${sanitizeUrlForLog(config.url)}"`
-        );
-      }
-
-      // Create SSE transport — headers must be passed via requestInit, not as a raw dict
-      transport = new SSEClientTransport(sseUrl, { requestInit: { headers: config.headers } });
-    } else if (config.type === 'streamable-http') {
-      if (!config.url) {
-        throw new Error(`Streamable HTTP server ${config.name} requires a URL`);
-      }
-
-      log(`[MCPManager] Creating Streamable HTTP transport: ${sanitizeUrlForLog(config.url)}`);
-
-      let httpUrl: URL;
-      try {
-        httpUrl = new URL(config.url);
-      } catch {
-        throw new Error(
-          `Streamable HTTP server ${config.name} has a malformed URL: "${sanitizeUrlForLog(config.url)}"`
-        );
-      }
-
-      // Create Streamable HTTP transport
-      const requestInit: RequestInit = {};
-      if (config.headers && Object.keys(config.headers).length > 0) {
-        requestInit.headers = config.headers;
-      }
-      transport = new StreamableHTTPClientTransport(httpUrl, { requestInit });
+    } else if (isRemoteMcpType(config.type)) {
+      oauthSession = await prepareMcpOAuthSession({
+        serverId: config.id,
+        interactive: Boolean(options?.interactiveAuth),
+      });
+      transport = this.createRemoteTransport(config, oauthSession.provider);
     } else {
       throw new Error(`Unsupported transport type: ${config.type}`);
     }
@@ -1085,7 +1112,18 @@ export class MCPManager {
       } catch {
         /* ignore close error */
       }
-      throw error;
+
+      if (oauthSession && isUnauthorizedError(error)) {
+        if (options?.interactiveAuth && oauthSession.loopback) {
+          this.beginPendingAuthorization(config, oauthSession);
+          return { authorizing: true };
+        }
+        await oauthSession.loopback?.close().catch(() => undefined);
+        return { needsAuth: true };
+      }
+
+      await oauthSession?.loopback?.close().catch(() => undefined);
+      throw new Error(formatMcpTransportError(error), { cause: error });
     }
 
     // Store client and transport
@@ -1098,6 +1136,113 @@ export class MCPManager {
     if (config.name.toLowerCase().includes('chrome')) {
       await this.ensureChromeReady(config.id, config.name, client);
     }
+    return {};
+  }
+
+  private createRemoteTransport(
+    config: MCPServerConfig,
+    authProvider: OAuthClientProvider
+  ): SSEClientTransport | StreamableHTTPClientTransport {
+    if (!config.url) {
+      throw new Error(`${config.type} server ${config.name} requires a URL`);
+    }
+
+    let remoteUrl: URL;
+    try {
+      remoteUrl = new URL(config.url);
+    } catch {
+      throw new Error(
+        `${config.type} server ${config.name} has a malformed URL: "${sanitizeUrlForLog(config.url)}"`
+      );
+    }
+
+    const requestInit: RequestInit = {};
+    if (config.headers && Object.keys(config.headers).length > 0) {
+      requestInit.headers = config.headers;
+    }
+
+    if (config.type === 'sse') {
+      // Headers must be passed via requestInit, not as a raw dict
+      return new SSEClientTransport(remoteUrl, { requestInit, authProvider });
+    }
+
+    log(`[MCPManager] Creating Streamable HTTP transport: ${sanitizeUrlForLog(config.url)}`);
+    return new StreamableHTTPClientTransport(remoteUrl, { requestInit, authProvider });
+  }
+
+  /**
+   * After the SDK has opened the system browser, wait for the loopback callback,
+   * exchange the authorization code, and reconnect with the stored tokens.
+   */
+  private beginPendingAuthorization(config: MCPServerConfig, session: PreparedMcpOAuth): void {
+    const previous = this.pendingAuth.get(config.id);
+    if (previous) {
+      previous.loopback?.cancel('Superseded by a new authorization attempt');
+      void previous.loopback?.close();
+    }
+    this.pendingAuth.set(config.id, session);
+
+    void (async () => {
+      const loopback = session.loopback;
+      if (!loopback) return;
+      try {
+        const { code } = await loopback.waitForCallback;
+        const tokenTransport = this.createRemoteTransport(config, session.provider);
+        await tokenTransport.finishAuth(code);
+        await tokenTransport.close().catch(() => undefined);
+        await loopback.close().catch(() => undefined);
+        if (this.pendingAuth.get(config.id) !== session) return;
+        this.pendingAuth.delete(config.id);
+        log(`[MCPManager] OAuth token exchange succeeded for ${config.name}; reconnecting`);
+        await this.connectAndRefresh(config, { interactiveAuth: false });
+      } catch (error) {
+        await loopback.close().catch(() => undefined);
+        if (this.pendingAuth.get(config.id) === session) {
+          this.pendingAuth.delete(config.id);
+        }
+        if (this.connectionStatus.get(config.id) === 'authorizing') {
+          this.connectionStatus.set(config.id, 'needs_auth');
+        }
+        logError(
+          `[MCPManager] Authorization did not complete for ${config.name}:`,
+          error instanceof Error ? error.message : error
+        );
+      }
+    })();
+  }
+
+  async cancelAuthorization(serverId: string): Promise<void> {
+    const pending = this.pendingAuth.get(serverId);
+    if (!pending) {
+      if (this.connectionStatus.get(serverId) === 'authorizing') {
+        this.connectionStatus.set(serverId, 'needs_auth');
+      }
+      return;
+    }
+    pending.loopback?.cancel('MCP authorization cancelled');
+    await pending.loopback?.close().catch(() => undefined);
+    this.pendingAuth.delete(serverId);
+    if (this.connectionStatus.get(serverId) === 'authorizing') {
+      this.connectionStatus.set(serverId, 'needs_auth');
+    }
+    log(`[MCPManager] Cancelled authorization for ${serverId}`);
+  }
+
+  async reauthorizeServer(serverId: string): Promise<MCPConnectResult> {
+    const config = this.serverConfigs.get(serverId);
+    if (!config) {
+      throw new Error(`MCP server not found: ${serverId}`);
+    }
+    if (!config.enabled) {
+      throw new Error(`MCP server ${config.name} is disabled`);
+    }
+    await this.cancelAuthorization(serverId);
+    clearMcpOAuthTokens(serverId);
+    if (this.clients.has(serverId) || this.transports.has(serverId)) {
+      await this.disconnectServer(serverId);
+    }
+    this.serverConfigs.set(serverId, config);
+    return this.connectAndRefresh(config, { interactiveAuth: true });
   }
 
   /**
@@ -1407,6 +1552,10 @@ export class MCPManager {
    * Disconnect from all servers
    */
   async disconnectAll(): Promise<void> {
+    const pendingIds = Array.from(this.pendingAuth.keys());
+    for (const serverId of pendingIds) {
+      await this.cancelAuthorization(serverId);
+    }
     const serverIds = Array.from(this.clients.keys());
     for (const serverId of serverIds) {
       await this.disconnectServer(serverId);
@@ -1704,14 +1853,14 @@ export class MCPManager {
     id: string;
     name: string;
     connected: boolean;
-    status: 'connecting' | 'connected' | 'failed' | 'disabled';
+    status: MCPConnectionStatus;
     toolCount: number;
   }> {
     const status: Array<{
       id: string;
       name: string;
       connected: boolean;
-      status: 'connecting' | 'connected' | 'failed' | 'disabled';
+      status: MCPConnectionStatus;
       toolCount: number;
     }> = [];
 
@@ -1722,7 +1871,7 @@ export class MCPManager {
       ).length;
 
       // Derive status: use connectionStatus map if available, otherwise infer from enabled/connected
-      let serverStatus: 'connecting' | 'connected' | 'failed' | 'disabled';
+      let serverStatus: MCPConnectionStatus;
       const trackedStatus = this.connectionStatus.get(serverId);
       if (!config.enabled) {
         serverStatus = 'disabled';

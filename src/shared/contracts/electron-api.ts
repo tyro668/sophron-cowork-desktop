@@ -350,11 +350,17 @@ export interface ElectronApi {
   mcp: {
     getServers: () => Promise<McpServerConfig[]>;
     getServer: (serverId: string) => Promise<McpServerConfig | undefined>;
-    saveServer: (config: McpServerConfig) => Promise<{ success: boolean; error?: string }>;
+    saveServer: (
+      config: McpServerConfig
+    ) => Promise<{ success: boolean; error?: string; authorizing?: boolean; needsAuth?: boolean }>;
     deleteServer: (serverId: string) => Promise<{ success: boolean }>;
     getTools: () => Promise<McpTool[]>;
     getServerStatus: () => Promise<McpServerStatus[]>;
     getPresets: () => Promise<McpPresetsMap>;
+    cancelAuthorization: (serverId: string) => Promise<{ success: boolean; error?: string }>;
+    reauthorize: (
+      serverId: string
+    ) => Promise<{ success: boolean; error?: string; authorizing?: boolean; needsAuth?: boolean }>;
   };
   skills: {
     getAll: () => Promise<Skill[]>;

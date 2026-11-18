@@ -25,18 +25,26 @@ export function registerMcpIpc(): void {
   });
 
   handleIpc('mcp.saveServer', async (_event, config: MCPServerConfig) => {
+    // Persist first so a required OAuth login does not lose the connector.
     mcpConfigStore.saveServer(config);
-    // Update only this specific server, not all servers
     if (appContext.sessionManager) {
       const mcpManager = appContext.sessionManager.getMCPManager();
       try {
-        await mcpManager.updateServer(config);
+        const result = await mcpManager.updateServer(config, { interactiveAuth: true });
         appContext.sessionManager.invalidateMcpServersCache();
+        if (result.authorizing) {
+          log(`[MCP] Server ${config.name} saved; waiting for browser authorization`);
+          return { success: true, authorizing: true };
+        }
+        if (result.needsAuth) {
+          log(`[MCP] Server ${config.name} saved; authorization is required`);
+          return { success: true, needsAuth: true };
+        }
         log(`[MCP] Server ${config.name} updated successfully`);
       } catch (err) {
         logError('[MCP] Failed to update server:', err);
-        // Roll back: save the config with enabled=false so a broken connector
-        // is not retried on next app startup
+        // Roll back enabled=false only for non-auth connection failures so a
+        // broken connector is not retried on next app startup.
         if (config.enabled) {
           mcpConfigStore.saveServer({ ...config, enabled: false });
         }
@@ -45,6 +53,33 @@ export function registerMcpIpc(): void {
       }
     }
     return { success: true };
+  });
+
+  handleIpc('mcp.cancelAuthorization', async (_event, serverId: string) => {
+    if (!appContext.sessionManager) return { success: true };
+    try {
+      await appContext.sessionManager.getMCPManager().cancelAuthorization(serverId);
+      return { success: true };
+    } catch (err) {
+      logError('[MCP] Failed to cancel authorization:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  handleIpc('mcp.reauthorize', async (_event, serverId: string) => {
+    if (!appContext.sessionManager) {
+      return { success: false, error: 'Session manager is not ready' };
+    }
+    try {
+      const result = await appContext.sessionManager.getMCPManager().reauthorizeServer(serverId);
+      appContext.sessionManager.invalidateMcpServersCache();
+      if (result.authorizing) return { success: true, authorizing: true };
+      if (result.needsAuth) return { success: true, needsAuth: true };
+      return { success: true };
+    } catch (err) {
+      logError('[MCP] Failed to reauthorize server:', err);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
   });
 
   handleIpc('mcp.deleteServer', async (_event, serverId: string) => {

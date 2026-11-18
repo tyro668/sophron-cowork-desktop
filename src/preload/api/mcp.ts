@@ -12,12 +12,20 @@ export function createMcpApi(): ElectronApi['mcp'] {
     getServers: (): Promise<McpServerConfig[]> => ipcRenderer.invoke('mcp.getServers'),
     getServer: (serverId: string): Promise<McpServerConfig | undefined> =>
       ipcRenderer.invoke('mcp.getServer', serverId),
-    saveServer: (config: McpServerConfig): Promise<{ success: boolean; error?: string }> =>
+    saveServer: (
+      config: McpServerConfig
+    ): Promise<{ success: boolean; error?: string; authorizing?: boolean; needsAuth?: boolean }> =>
       ipcRenderer.invoke('mcp.saveServer', config),
     deleteServer: (serverId: string): Promise<{ success: boolean }> =>
       ipcRenderer.invoke('mcp.deleteServer', serverId),
     getTools: (): Promise<McpTool[]> => ipcRenderer.invoke('mcp.getTools'),
     getServerStatus: (): Promise<McpServerStatus[]> => ipcRenderer.invoke('mcp.getServerStatus'),
     getPresets: (): Promise<McpPresetsMap> => ipcRenderer.invoke('mcp.getPresets'),
+    cancelAuthorization: (serverId: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke('mcp.cancelAuthorization', serverId),
+    reauthorize: (
+      serverId: string
+    ): Promise<{ success: boolean; error?: string; authorizing?: boolean; needsAuth?: boolean }> =>
+      ipcRenderer.invoke('mcp.reauthorize', serverId),
   };
 }
