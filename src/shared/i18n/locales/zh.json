@@ -3118,7 +3118,11 @@
     "reauthorize": "重新授权",
     "cancelAuthorization": "取消授权",
     "authorizationFailed": "授权未完成，请重试",
-    "authorizationCancelled": "已取消授权"
+    "authorizationCancelled": "已取消授权",
+    "headers": "请求头",
+    "headerNamePlaceholder": "Authorization",
+    "headerValuePlaceholder": "Bearer <token>",
+    "noHeaders": "未配置请求头"
   },
   "credentials": {
     "envVars": "环境变量",

@@ -706,9 +706,21 @@ function ServerForm({
   // Environment variables (for tokens, etc.)
   const [envVars, setEnvVars] = useState<Record<string, string>>(server?.env || {});
   const [showEnvSection, setShowEnvSection] = useState(Object.keys(server?.env || {}).length > 0);
+  // HTTP headers for remote SSE / Streamable HTTP connectors
+  const [headers, setHeaders] = useState<Record<string, string>>(server?.headers || {});
+  const [showHeadersSection, setShowHeadersSection] = useState(
+    Object.keys(server?.headers || {}).length > 0
+  );
+  const [isAddingHeader, setIsAddingHeader] = useState(false);
+  const [newHeaderKey, setNewHeaderKey] = useState('');
+  const [newHeaderValue, setNewHeaderValue] = useState('');
 
   function handleEnvChange(key: string, value: string) {
     setEnvVars((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function handleHeaderChange(key: string, value: string) {
+    setHeaders((prev) => ({ ...prev, [key]: value }));
   }
 
   const [isAddingEnvVar, setIsAddingEnvVar] = useState(false);
@@ -743,6 +755,34 @@ function ServerForm({
     });
   }
 
+  const handleAddHeader = () => {
+    setIsAddingHeader(true);
+    setShowHeadersSection(true);
+  };
+
+  const handleSaveNewHeader = () => {
+    if (newHeaderKey.trim()) {
+      setHeaders((prev) => ({ ...prev, [newHeaderKey.trim()]: newHeaderValue.trim() }));
+      setNewHeaderKey('');
+      setNewHeaderValue('');
+      setIsAddingHeader(false);
+    }
+  };
+
+  const handleCancelNewHeader = () => {
+    setNewHeaderKey('');
+    setNewHeaderValue('');
+    setIsAddingHeader(false);
+  };
+
+  function handleRemoveHeader(key: string) {
+    setHeaders((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -760,9 +800,12 @@ function ServerForm({
       }
       config.command = command.trim();
       config.args = args.trim() ? args.trim().split(/\s+/) : [];
-      // Include environment variables
-      if (Object.keys(envVars).length > 0) {
-        config.env = envVars;
+      const mergedEnv =
+        isAddingEnvVar && newEnvKey.trim()
+          ? { ...envVars, [newEnvKey.trim()]: newEnvValue.trim() }
+          : envVars;
+      if (Object.keys(mergedEnv).length > 0) {
+        config.env = mergedEnv;
       }
     } else {
       if (!url.trim()) {
@@ -770,6 +813,13 @@ function ServerForm({
         return;
       }
       config.url = url.trim();
+      const mergedHeaders =
+        isAddingHeader && newHeaderKey.trim()
+          ? { ...headers, [newHeaderKey.trim()]: newHeaderValue.trim() }
+          : headers;
+      if (Object.keys(mergedHeaders).length > 0) {
+        config.headers = mergedHeaders;
+      }
     }
 
     onSave(config);
@@ -964,19 +1014,120 @@ function ServerForm({
           </div>
         </>
       ) : (
-        <div className="ui-form-row">
-          <label className="ui-form-label items-center">{t('mcp.url')}</label>
-          <div className="ui-form-value py-1.5">
-            <Input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://example.com/mcp"
-              className="h-8 px-2.5 font-mono text-[13px]"
-              required
-            />
+        <>
+          <div className="ui-form-row">
+            <label className="ui-form-label items-center">{t('mcp.url')}</label>
+            <div className="ui-form-value py-1.5">
+              <Input
+                type="url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/mcp"
+                className="h-8 px-2.5 font-mono text-[13px]"
+                required
+              />
+            </div>
           </div>
-        </div>
+
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{t('mcp.headers')}</div>
+            <div className="ui-form-value space-y-2 py-1.5">
+              <div className="flex items-center justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowHeadersSection(!showHeadersSection)}
+                  className="h-auto px-1 py-0.5 text-xs text-accent hover:text-accent-hover"
+                >
+                  {showHeadersSection ? t('mcp.hide') : t('mcp.show')}
+                </Button>
+              </div>
+              {showHeadersSection && (
+                <div className="space-y-2 rounded-md border border-border-subtle bg-surface-muted p-2">
+                  {Object.entries(headers).map(([key, value]) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <span
+                        className="text-xs font-mono text-text-secondary w-32 truncate"
+                        title={key}
+                      >
+                        {key}
+                      </span>
+                      <Input
+                        type="password"
+                        value={value}
+                        onChange={(e) => handleHeaderChange(key, e.target.value)}
+                        placeholder={t('mcp.headerValuePlaceholder')}
+                        className="h-8 flex-1 px-2.5 font-mono text-[13px]"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveHeader(key)}
+                        className="h-8 w-8 text-text-muted hover:bg-error/10 hover:text-error"
+                        title={t('mcp.removeVar')}
+                        aria-label={t('mcp.removeVar')}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  {Object.keys(headers).length === 0 && !isAddingHeader && (
+                    <p className="text-xs text-text-muted text-center py-2">{t('mcp.noHeaders')}</p>
+                  )}
+                  {isAddingHeader && (
+                    <div className="space-y-2 p-2 rounded bg-background border border-accent/30">
+                      <Input
+                        type="text"
+                        value={newHeaderKey}
+                        onChange={(e) => setNewHeaderKey(e.target.value)}
+                        placeholder={t('mcp.headerNamePlaceholder')}
+                        className="h-8 border-border px-2.5 font-mono text-[13px]"
+                        autoFocus
+                      />
+                      <Input
+                        type="password"
+                        value={newHeaderValue}
+                        onChange={(e) => setNewHeaderValue(e.target.value)}
+                        placeholder={t('mcp.headerValuePlaceholder')}
+                        className="h-8 border-border px-2.5 font-mono text-[13px]"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveNewHeader}
+                          disabled={!newHeaderKey.trim()}
+                          className="h-auto flex-1 px-3 py-1 text-xs"
+                        >
+                          {t('common.save')}
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={handleCancelNewHeader}
+                          className="h-auto flex-1 border-transparent bg-surface-muted px-3 py-1 text-xs hover:bg-surface-active"
+                        >
+                          {t('common.cancel')}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {!isAddingHeader && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleAddHeader}
+                      className="mt-2 h-auto w-full gap-1 border-dashed border-border px-3 py-1.5 text-xs hover:border-accent hover:bg-accent-muted hover:text-accent"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {t('mcp.headers')}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
       )}
 
       <div className="ui-form-row">

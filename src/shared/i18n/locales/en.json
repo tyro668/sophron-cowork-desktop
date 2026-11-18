@@ -3118,7 +3118,11 @@
     "reauthorize": "Reauthorize",
     "cancelAuthorization": "Cancel authorization",
     "authorizationFailed": "Authorization did not complete. Please try again.",
-    "authorizationCancelled": "Authorization cancelled"
+    "authorizationCancelled": "Authorization cancelled",
+    "headers": "Headers",
+    "headerNamePlaceholder": "Authorization",
+    "headerValuePlaceholder": "Bearer <token>",
+    "noHeaders": "No headers configured"
   },
   "credentials": {
     "envVars": "Environment Variables",
