@@ -12,6 +12,14 @@ vi.mock('electron', () => ({
   BrowserWindow: {
     getAllWindows: () => [],
   },
+  shell: {
+    openExternal: async () => undefined,
+  },
+  safeStorage: {
+    isEncryptionAvailable: () => false,
+    encryptString: (value: string) => Buffer.from(value),
+    decryptString: (value: Buffer) => value.toString('utf8'),
+  },
 }));
 
 // Mock logger to suppress output during tests

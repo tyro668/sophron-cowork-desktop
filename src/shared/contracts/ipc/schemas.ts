@@ -421,6 +421,8 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'mcp.getTools': [],
   'mcp.getServerStatus': [],
   'mcp.getPresets': [],
+  'mcp.cancelAuthorization': [str],
+  'mcp.reauthorize': [str],
   // skills
   'skills.getAll': [],
   'skills.getUsageCounts': [numOpt],

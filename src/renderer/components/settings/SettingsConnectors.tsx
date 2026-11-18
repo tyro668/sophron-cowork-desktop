@@ -165,6 +165,9 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
         // Keep form open so the user can see and act on the error
         return;
       }
+      if (result?.authorizing) {
+        showToast('success', t('mcp.authorizationOpened'));
+      }
       await loadAll();
       setEditingServer(null);
       setShowAddForm(false);
@@ -193,6 +196,38 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
   async function handleToggleEnabled(server: MCPServerConfig) {
     await handleSaveServer({ ...server, enabled: !server.enabled });
+  }
+
+  async function handleReauthorize(serverId: string) {
+    setIsLoading(true);
+    try {
+      const result = await window.electronAPI.mcp.reauthorize(serverId);
+      if (result && !result.success && result.error) {
+        setError(result.error);
+        return;
+      }
+      if (result?.authorizing) {
+        showToast('success', t('mcp.authorizationOpened'));
+      }
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('mcp.authorizationFailed'));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleCancelAuth(serverId: string) {
+    setIsLoading(true);
+    try {
+      await window.electronAPI.mcp.cancelAuthorization(serverId);
+      showToast('success', t('mcp.authorizationCancelled'));
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('mcp.authorizationFailed'));
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   function getServerStatus(serverId: string) {
@@ -242,6 +277,8 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                   onEdit={() => setEditingServer(server)}
                   onDelete={() => handleDeleteServer(server.id)}
                   onToggleEnabled={() => handleToggleEnabled(server)}
+                  onReauthorize={() => handleReauthorize(server.id)}
+                  onCancelAuth={() => handleCancelAuth(server.id)}
                   isLoading={isLoading}
                 />
               );
@@ -426,6 +463,8 @@ function ServerCard({
   onEdit,
   onDelete,
   onToggleEnabled,
+  onReauthorize,
+  onCancelAuth,
   isLoading,
 }: {
   server: MCPServerConfig;
@@ -435,6 +474,8 @@ function ServerCard({
   onEdit: () => void;
   onDelete: () => void;
   onToggleEnabled: () => void;
+  onReauthorize: () => void;
+  onCancelAuth: () => void;
   isLoading: boolean;
 }) {
   const { t } = useTranslation();
@@ -454,7 +495,9 @@ function ServerCard({
                     ? 'bg-success'
                     : serverStatus === 'failed'
                       ? 'bg-error'
-                      : serverStatus === 'connecting'
+                      : serverStatus === 'connecting' ||
+                          serverStatus === 'authorizing' ||
+                          serverStatus === 'needs_auth'
                         ? 'bg-warning'
                         : 'bg-text-muted'
                 }`}
@@ -490,7 +533,9 @@ function ServerCard({
                     ? 'bg-success/10 text-success'
                     : serverStatus === 'failed'
                       ? 'bg-error/10 text-error'
-                      : serverStatus === 'connecting'
+                      : serverStatus === 'connecting' ||
+                          serverStatus === 'authorizing' ||
+                          serverStatus === 'needs_auth'
                         ? 'bg-warning/10 text-warning'
                         : 'bg-accent-muted text-accent'
                 }`}
@@ -499,10 +544,44 @@ function ServerCard({
                   ? `✓ ${t('mcp.connected')}`
                   : serverStatus === 'failed'
                     ? t('mcp.failed', { defaultValue: 'Connection failed' })
-                    : serverStatus === 'connecting'
-                      ? `⏳ ${t('mcp.connecting')}`
-                      : t('mcp.disabled', { defaultValue: 'Disabled' })}
+                    : serverStatus === 'authorizing'
+                      ? `⏳ ${t('mcp.authorizing')}`
+                      : serverStatus === 'needs_auth'
+                        ? t('mcp.needsAuth')
+                        : serverStatus === 'connecting'
+                          ? `⏳ ${t('mcp.connecting')}`
+                          : t('mcp.disabled', { defaultValue: 'Disabled' })}
               </div>
+              {(serverStatus === 'authorizing' ||
+                serverStatus === 'needs_auth' ||
+                (serverStatus === 'failed' &&
+                  (server.type === 'sse' || server.type === 'streamable-http'))) && (
+                <div className="flex items-center gap-2 mt-1">
+                  {serverStatus === 'authorizing' ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      disabled={isLoading}
+                      onClick={onCancelAuth}
+                    >
+                      {t('mcp.cancelAuthorization')}
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      disabled={isLoading}
+                      onClick={onReauthorize}
+                    >
+                      {t('mcp.reauthorize')}
+                    </Button>
+                  )}
+                </div>
+              )}
               <div className="flex items-center gap-4 mt-2">
                 <button
                   onClick={() => setShowTools(!showTools)}

@@ -3111,7 +3111,14 @@
     "urlRequired": "URL is required",
     "toolCount": "{{count}} tools",
     "callCount": "{{count}} calls",
-    "status": "Status"
+    "status": "Status",
+    "authorizing": "Waiting for browser authorization...",
+    "needsAuth": "Authorization required",
+    "authorizationOpened": "Authorization opened in your system browser. The connector will connect automatically after you sign in.",
+    "reauthorize": "Reauthorize",
+    "cancelAuthorization": "Cancel authorization",
+    "authorizationFailed": "Authorization did not complete. Please try again.",
+    "authorizationCancelled": "Authorization cancelled"
   },
   "credentials": {
     "envVars": "Environment Variables",
