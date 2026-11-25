@@ -3,7 +3,7 @@ import { dialog, type OpenDialogOptions } from 'electron';
 import type {
   CloudConnectionActionResult,
   CloudConnectionGroupInput,
-  CloudConnectionTableInput,
+  CloudConnectionTableRefInput,
 } from '../../../shared/contracts';
 import { appContext } from '../../app/context';
 import { handleIpc } from '../../ipc-handle';
@@ -63,45 +63,22 @@ export function registerCloudConnectionIpc(): void {
     run(() => getCloudConnectionService().deleteGroup(id))
   );
   handleIpc(
-    'cloudConnection.saveTable',
-    (_event, groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
-      run(() => getCloudConnectionService().saveTable(groupId, originalName, input))
+    'cloudConnection.addTableRefs',
+    (_event, groupId: string, refs: CloudConnectionTableRefInput[]) =>
+      run(() => getCloudConnectionService().addTableRefs(groupId, refs))
   );
-  handleIpc('cloudConnection.deleteTable', (_event, groupId: string, tableName: string) =>
-    run(() => getCloudConnectionService().deleteTable(groupId, tableName))
+  handleIpc(
+    'cloudConnection.updateTableRef',
+    (_event, groupId: string, reportName: string, input: { reportName: string }) =>
+      run(() => getCloudConnectionService().updateTableRef(groupId, reportName, input))
   );
-  handleIpc('cloudConnection.removeLegacyFile', (_event, groupId: string, filePath: string) =>
-    run(() => getCloudConnectionService().removeLegacyFile(groupId, filePath))
+  handleIpc('cloudConnection.deleteTable', (_event, groupId: string, reportName: string) =>
+    run(() => getCloudConnectionService().deleteTable(groupId, reportName))
   );
   handleIpc('cloudConnection.refreshTables', (_event, groupId?: string) =>
     run(() => getCloudConnectionService().refreshTables(groupId))
   );
-  handleIpc('cloudConnection.previewTable', (_event, groupId: string, tableId: string) =>
-    getCloudConnectionService().previewTable(groupId, tableId)
-  );
-  handleIpc(
-    'cloudConnection.previewDraft',
-    (_event, groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
-      getCloudConnectionService().previewDraft(groupId, originalName, input)
-  );
-  handleIpc('cloudConnection.pickDirectory', async () => {
-    const [dir] = await showOpen({ properties: ['openDirectory'] });
-    return dir ?? null;
-  });
-  handleIpc(
-    'cloudConnection.pickTablePath',
-    async (_event, groupId: string, kind: 'file' | 'directory') => {
-      const service = getCloudConnectionService();
-      const group = service.getState().groups.find((g) => g.id === groupId);
-      const [picked] = await showOpen({
-        defaultPath: group?.directoryPath || undefined,
-        properties: [kind === 'directory' ? 'openDirectory' : 'openFile'],
-        filters:
-          kind === 'file'
-            ? [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
-            : undefined,
-      });
-      return picked ? service.relativePathInGroup(groupId, picked) : null;
-    }
+  handleIpc('cloudConnection.previewTable', (_event, groupId: string, reportName: string) =>
+    getCloudConnectionService().previewTable(groupId, reportName)
   );
 }

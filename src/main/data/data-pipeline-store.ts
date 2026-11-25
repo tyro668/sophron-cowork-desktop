@@ -308,6 +308,22 @@ export class DataPipelineStore {
   findResultTableByPhysicalName(tableName: string): Promise<DataResultTable | null> {
     return this.rawTableRepo.findResultTableByPhysicalName(tableName);
   }
+  describeBoundTable(tableKind: 'raw' | 'result', id: string) {
+    return this.rawTables.describeBoundTable(tableKind, id);
+  }
+  previewBoundTable(tableKind: 'raw' | 'result', id: string, limit = 100, offset = 0) {
+    return this.rawTables.previewBoundTable(tableKind, id, limit, offset);
+  }
+  iterateBoundTableRows(
+    tableKind: 'raw' | 'result',
+    id: string,
+    writeRow: (row: (string | null)[]) => Promise<void>
+  ) {
+    return this.rawTables.iterateBoundTableRows(tableKind, id, writeRow);
+  }
+  refreshRawTableIfSourceChanged(id: string) {
+    return this.rawTables.refreshRawTableIfSourceChanged(id);
+  }
 
   // ---- normalizer artifacts ----
   saveRawTableNormalizerDraft(

@@ -2,6 +2,7 @@
 import type {
   DataRawTableColumnTypeOverride,
   DataRawTableConfig,
+  DataRawTableFolderConfig,
   DataRawTablePreview,
   DataRawTableSourceKind,
   DataRawTable,
@@ -29,7 +30,8 @@ import {
   normalizePreviewOffset,
   normalizePreviewRow,
   PreparedRawTableImport,
-  buildUnionSqlFromTempTables,
+  buildUnionSqlFromTempTablesWithStrategy,
+  LOCAL_AGENT_SYSTEM_FIELDS,
   csvCell,
   rawTableNameFromPath,
   defaultExcelConfig,
@@ -47,7 +49,8 @@ import { RawTableRepository } from '../repositories/raw-table-repository';
 import { TableCommitJournal } from '../repositories/table-commit-journal';
 import { RawSourceRepository } from '../repositories/raw-source-repository';
 import { NormalizerService } from './normalizer-service';
-import { basename, relative } from 'path';
+import * as fs from 'fs';
+import { basename, dirname, relative } from 'path';
 import type { DataColumnTypeInfo } from '../../../../shared/data-field-types';
 import type { DataRawFolderMergeReport } from '../../../../shared/contracts';
 import { getWorkbookSheetNames, resolveSheetBySelector } from '../input-source';
@@ -607,7 +610,7 @@ export class RawTableService {
         throw new Error('No Excel or Csv files were found for the input table');
       }
 
-      const unionSql = buildUnionSqlFromTempTables(tempTables);
+      const unionSql = await this.unionSqlFor(tempTables, config);
       previewTable = tableNameFromId('rawTable_preview_union', uuidv4());
       await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(previewTable)} AS ${unionSql}`);
       const countRows = await this.ctx.queryRows<{ count: number | string }>(
@@ -757,7 +760,7 @@ export class RawTableService {
         );
       }
 
-      await this.createRawTableTableFromTempTables(tableName, tempTables);
+      await this.createRawTableTableFromTempTables(tableName, tempTables, config);
       const rowCount = await this.ctx.countRows(tableName);
       const columnCount = (await this.ctx.getTableColumns(tableName)).length;
       const nextConfig: DataRawTableConfig =
@@ -819,41 +822,63 @@ export class RawTableService {
       filledColumns: [],
     };
     const perFile: Array<{ file: string; table: string; types: DataColumnTypeInfo[] }> = [];
+    const allSheets = folderConfig.sheetStrategy === 'all';
+    const password = folderConfig.password;
+    let subIndex = 0;
     for (const [index, filePath] of importFiles.entries()) {
       const file = relative(sourcePath, filePath) || basename(filePath);
       if (excluded.has(file)) continue;
-      let fileConfig: DataRawTableConfig = config;
-      if (isExcelFile(filePath)) {
-        const sheetName = resolveSheetBySelector(
-          folderConfig.sheetSelector,
-          getWorkbookSheetNames(filePath)
-        );
-        if (!sheetName) {
-          report.missingSheetFiles.push(file);
-          continue;
-        }
-        fileConfig = { ...defaultExcelConfig(filePath), sheetName };
-      }
-      const tempTable = tableNameFromId(prefix, `${uuidv4()}_${index}`);
-      await this.createImportTempTable(tempTable, filePath, index, true, fileConfig);
-      if (folderConfig.skipEmptyFiles && (await this.ctx.countRows(tempTable)) === 0) {
-        await this.ctx.dropTableIfExists(tempTable);
+      const sheetNames = isExcelFile(filePath)
+        ? allSheets
+          ? getWorkbookSheetNames(filePath, password)
+          : [
+              resolveSheetBySelector(
+                folderConfig.sheetSelector,
+                getWorkbookSheetNames(filePath, password)
+              ),
+            ].filter((name): name is string => Boolean(name))
+        : [null];
+      if (isExcelFile(filePath) && sheetNames.length === 0) {
+        report.missingSheetFiles.push(file);
         continue;
       }
-      const types = await this.ctx.inferTableColumnTypes(tempTable);
-      await this.castTempTableToVarchar(tempTable);
-      if (folderConfig.keepSourceFileName) {
-        // Relative to the source folder (posix separators) so same-named files in
-        // different sub-folders stay distinguishable.
-        await this.appendConstantColumn(
-          tempTable,
-          SOURCE_FILE_SYSTEM_COLUMN,
-          file.split(/[\\/]/).join('/')
-        );
+      for (const sheetName of sheetNames) {
+        let fileConfig: DataRawTableConfig = config;
+        if (isExcelFile(filePath)) {
+          const excel = defaultExcelConfig(filePath);
+          fileConfig = {
+            ...excel,
+            sheetName: sheetName ?? excel.sheetName,
+            headerMode: folderConfig.headerMode === 'manual' ? 'manual' : 'auto',
+            headerRow: folderConfig.headerRow ?? 1,
+            password,
+            fieldStrategy: folderConfig.fieldStrategy,
+            columnTypeOverrides: folderConfig.columnTypeOverrides,
+          };
+        }
+        const tempTable = tableNameFromId(prefix, `${uuidv4()}_${index}_${subIndex}`);
+        subIndex += 1;
+        await this.createImportTempTable(tempTable, filePath, index, true, fileConfig);
+        if (folderConfig.skipEmptyFiles && (await this.ctx.countRows(tempTable)) === 0) {
+          await this.ctx.dropTableIfExists(tempTable);
+          continue;
+        }
+        const types = await this.ctx.inferTableColumnTypes(tempTable);
+        await this.castTempTableToVarchar(tempTable);
+        await this.appendFolderSystemColumns(tempTable, {
+          sourcePath,
+          filePath,
+          file,
+          sheetName: sheetName ?? '',
+          folderConfig,
+        });
+        perFile.push({ file, table: tempTable, types });
       }
-      perFile.push({ file, table: tempTable, types });
     }
-    const conflicts = findTypeConflicts(perFile.map((f) => ({ file: f.file, types: f.types })));
+    const skipConflicts = folderConfig.schemaStrategy !== 'align_by_index';
+    const conflicts = skipConflicts
+      ? findTypeConflicts(perFile.map((f) => ({ file: f.file, types: f.types })))
+      : new Map<string, string[]>();
     for (const entry of perFile) {
       const columns = conflicts.get(entry.file);
       if (columns) {
@@ -861,7 +886,7 @@ export class RawTableService {
         await this.ctx.dropTableIfExists(entry.table);
         continue;
       }
-      report.includedFiles.push(entry.file);
+      if (!report.includedFiles.includes(entry.file)) report.includedFiles.push(entry.file);
       tempTables.push(entry.table);
     }
     report.filledColumns = findFilledColumns(
@@ -913,11 +938,20 @@ export class RawTableService {
     const columnTypeOverrides =
       config.sourceKind === 'cloud' ? undefined : config.columnTypeOverrides;
     if (isExcelFile(filePath)) {
-      const workbookConfig = config.sourceKind === 'excel' ? config : defaultExcelConfig(filePath);
+      const workbookConfig =
+        config.sourceKind === 'excel'
+          ? config
+          : {
+              ...defaultExcelConfig(filePath),
+              password: 'password' in config ? config.password : undefined,
+            };
       await this.createTempTableFromWorkbookRows(
         tableName,
         parseWorkbookRows(filePath, workbookConfig),
-        columnTypeOverrides
+        'fieldStrategy' in config && config.fieldStrategy === 'all_text'
+          ? undefined
+          : columnTypeOverrides,
+        'fieldStrategy' in config && config.fieldStrategy === 'all_text'
       );
       return;
     }
@@ -962,7 +996,8 @@ export class RawTableService {
   async createTempTableFromWorkbookRows(
     tableName: string,
     parsed: ParsedWorkbookRows,
-    columnTypeOverrides?: DataRawTableColumnTypeOverride[]
+    columnTypeOverrides?: DataRawTableColumnTypeOverride[],
+    allText = false
   ): Promise<void> {
     if (parsed.columns.length === 0) {
       throw new Error('Excel workbook has no readable columns');
@@ -972,8 +1007,8 @@ export class RawTableService {
       (columnTypeOverrides ?? []).map((override) => [override.name, override.type])
     );
     const inferredTypes = inferWorkbookColumnTypes(parsed);
-    const resolvedTypes = parsed.columns.map(
-      (column, index) => overrideMap.get(column) ?? inferredTypes[index]
+    const resolvedTypes = parsed.columns.map((column, index) =>
+      allText ? ('text' as const) : (overrideMap.get(column) ?? inferredTypes[index])
     );
     const columnSql = parsed.columns
       .map(
@@ -1005,23 +1040,232 @@ export class RawTableService {
       await this.ctx.runSql(sql, values);
     }
   }
-  async createRawTableTableFromTempTables(tableName: string, tempTables: string[]): Promise<void> {
+  async createRawTableTableFromTempTables(
+    tableName: string,
+    tempTables: string[],
+    config?: DataRawTableConfig
+  ): Promise<void> {
     if (tempTables.length === 0) {
       throw new Error('No Excel or Csv files were found for the input table');
     }
 
-    const unionSql = buildUnionSqlFromTempTables(tempTables);
+    const unionSql = await this.unionSqlFor(tempTables, config);
     const unionTable = tableNameFromId('rawTable_import_union', uuidv4());
     try {
       await this.ctx.runSql(`CREATE TEMP TABLE ${quoteIdentifier(unionTable)} AS ${unionSql}`);
-      await this.ctx.createTypedTableFromRelation(tableName, unionTable);
+      if (config && 'fieldStrategy' in config && config.fieldStrategy === 'all_text') {
+        await this.ctx.runSql(
+          `CREATE TABLE ${quoteIdentifier(tableName)} AS SELECT * FROM ${quoteIdentifier(unionTable)}`
+        );
+      } else {
+        await this.ctx.createTypedTableFromRelation(tableName, unionTable);
+      }
     } finally {
       await this.ctx.dropTableIfExists(unionTable).catch(() => undefined);
     }
   }
+
+  private async unionSqlFor(tempTables: string[], config?: DataRawTableConfig): Promise<string> {
+    const strategy =
+      config?.sourceKind === 'folder' && config.schemaStrategy === 'align_by_index'
+        ? 'align_by_index'
+        : 'align_by_name';
+    if (strategy === 'align_by_index') {
+      const columnNames: string[][] = [];
+      for (const tempTable of tempTables) {
+        columnNames.push(await this.ctx.getTableColumns(tempTable));
+      }
+      return buildUnionSqlFromTempTablesWithStrategy(tempTables, strategy, columnNames);
+    }
+    return buildUnionSqlFromTempTablesWithStrategy(tempTables, 'align_by_name');
+  }
+
+  private async appendFolderSystemColumns(
+    tableName: string,
+    input: {
+      sourcePath: string;
+      filePath: string;
+      file: string;
+      sheetName: string;
+      folderConfig: DataRawTableFolderConfig;
+    }
+  ): Promise<void> {
+    const fields = input.folderConfig.systemFields;
+    if (fields === 'none') return;
+    if (fields === 'local_agent') {
+      const relDir = relative(input.sourcePath, dirname(input.filePath)).split(/[\\/]/).join('/');
+      const folderName = relDir
+        ? `${basename(input.sourcePath)}/${relDir}`
+        : basename(input.sourcePath);
+      await this.appendConstantColumn(tableName, LOCAL_AGENT_SYSTEM_FIELDS[0], folderName);
+      await this.appendConstantColumn(
+        tableName,
+        LOCAL_AGENT_SYSTEM_FIELDS[1],
+        basename(input.filePath)
+      );
+      await this.appendConstantColumn(tableName, LOCAL_AGENT_SYSTEM_FIELDS[2], input.sheetName);
+      return;
+    }
+    if (input.folderConfig.keepSourceFileName !== false || fields === 'source_file') {
+      await this.appendConstantColumn(
+        tableName,
+        SOURCE_FILE_SYSTEM_COLUMN,
+        input.file.split(/[\\/]/).join('/')
+      );
+    }
+    if (input.folderConfig.sheetStrategy === 'all' && input.sheetName) {
+      await this.appendConstantColumn(tableName, SHEET_SYSTEM_COLUMN, input.sheetName);
+    }
+  }
+  async describeBoundTable(
+    tableKind: 'raw' | 'result',
+    id: string
+  ): Promise<{
+    materialized: boolean;
+    name: string;
+    tableName: string;
+    sourceId?: string | null;
+    sourcePath?: string;
+    sourceKind?: string;
+    updatedAt: number;
+    healthReason?: string;
+    columns: string[];
+    columnTypes: import('../../../../shared/data-field-types').DataColumnTypeInfo[];
+    rowCount: number;
+  }> {
+    await this.ctx.ensureMetadataReady();
+    const record =
+      tableKind === 'result'
+        ? await this.rawTables.getResultTableRecord(id)
+        : await this.rawTables.getRawTableRecord(id);
+    if (!record) {
+      throw new Error(tableKind === 'result' ? '结果表不存在' : '原始表不存在');
+    }
+    await this.ctx.ensureReady();
+    const materialized = await this.ctx.physicalTableExists(record.tableName);
+    const columns = materialized ? await this.ctx.getTableColumns(record.tableName) : [];
+    const columnTypes = materialized ? await this.ctx.getTableColumnTypes(record.tableName) : [];
+    const rowCount = materialized ? await this.ctx.countRows(record.tableName) : 0;
+    const healthReason =
+      tableKind === 'raw' && 'health' in record && record.health ? record.health.reason : undefined;
+    return {
+      materialized,
+      name: record.name,
+      tableName: record.tableName,
+      sourceId: tableKind === 'raw' ? (record as { sourceId?: string | null }).sourceId : undefined,
+      sourcePath: tableKind === 'raw' ? (record as { sourcePath?: string }).sourcePath : undefined,
+      sourceKind: tableKind === 'raw' ? (record as { sourceKind?: string }).sourceKind : undefined,
+      updatedAt: record.updatedAt,
+      healthReason,
+      columns,
+      columnTypes,
+      rowCount,
+    };
+  }
+
+  async previewBoundTable(
+    tableKind: 'raw' | 'result',
+    id: string,
+    limit = 100,
+    offset = 0
+  ): Promise<{
+    materialized: boolean;
+    name: string;
+    columns: string[];
+    columnTypes: import('../../../../shared/data-field-types').DataColumnTypeInfo[];
+    rows: Array<Record<string, string | number | boolean | null>>;
+    rowCount: number;
+  }> {
+    const described = await this.describeBoundTable(tableKind, id);
+    if (!described.materialized) {
+      return {
+        materialized: false,
+        name: described.name,
+        columns: [],
+        columnTypes: [],
+        rows: [],
+        rowCount: 0,
+      };
+    }
+    const safeLimit = Math.max(1, Math.min(500, Math.floor(limit)));
+    const safeOffset = Math.max(0, Math.floor(offset));
+    const rows = await this.ctx.queryRows<Record<string, unknown>>(
+      `SELECT * FROM ${quoteIdentifier(described.tableName)} LIMIT ${safeLimit} OFFSET ${safeOffset}`
+    );
+    return {
+      materialized: true,
+      name: described.name,
+      columns: described.columns,
+      columnTypes: described.columnTypes,
+      rows: rows.map(normalizePreviewRow),
+      rowCount: described.rowCount,
+    };
+  }
+
+  async iterateBoundTableRows(
+    tableKind: 'raw' | 'result',
+    id: string,
+    writeRow: (row: (string | null)[]) => Promise<void>
+  ): Promise<{ columns: string[]; rowCount: number; materialized: boolean }> {
+    const described = await this.describeBoundTable(tableKind, id);
+    if (!described.materialized) {
+      return { columns: described.columns, rowCount: 0, materialized: false };
+    }
+    const pageSize = 1000;
+    let offset = 0;
+    let written = 0;
+    for (;;) {
+      const rows = await this.ctx.queryRows<Record<string, unknown>>(
+        `SELECT * FROM ${quoteIdentifier(described.tableName)} LIMIT ${pageSize} OFFSET ${offset}`
+      );
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        const values = described.columns.map((column) => {
+          const value = row[column];
+          if (value === null || value === undefined) return null;
+          return String(value);
+        });
+        await writeRow(values);
+        written += 1;
+      }
+      offset += rows.length;
+      if (rows.length < pageSize) break;
+    }
+    return { columns: described.columns, rowCount: written, materialized: true };
+  }
+
+  async refreshRawTableIfSourceChanged(id: string): Promise<void> {
+    const rawTable = await this.rawTables.getRawTableRecord(id);
+    if (!rawTable || rawTable.sourceKind === 'cloud') return;
+    const sourcePath = rawTable.sourcePath;
+    if (
+      !sourcePath ||
+      sourcePath.startsWith('duckdb://') ||
+      sourcePath.startsWith('raw-table://')
+    ) {
+      return;
+    }
+    let newest = 0;
+    try {
+      const files = getImportSourceFiles(sourcePath, rawTable.sourceKind, rawTable.inputConfig);
+      for (const filePath of files) {
+        newest = Math.max(newest, Math.trunc(fs.statSync(filePath).mtimeMs));
+      }
+    } catch {
+      return;
+    }
+    if (newest <= rawTable.updatedAt) return;
+    await this.updateRawTable({
+      id,
+      filePath: sourcePath,
+      sourceKind: rawTable.sourceKind,
+      config: rawTable.inputConfig,
+    });
+  }
 }
 
 /** System column naming the file each merged row came from. */
+
 export const SOURCE_FILE_SYSTEM_COLUMN = '_来源文件';
 /** System column naming the sheet each merged row came from. */
 export const SHEET_SYSTEM_COLUMN = '_sheet';

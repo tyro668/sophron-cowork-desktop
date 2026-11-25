@@ -2,11 +2,11 @@
  * 云连接服务：把 `src/main/local-agent`（本地宝云端通道 + Excel 数据源）接到应用里。
  *
  * - 配置（config.yaml 解析结果，含 token）由 store 加密保存，token 不进入渲染进程、不写日志；
- * - 数据源按 Java 本地宝的「分组」组织：每个分组 = 一个 `LocalDatasourceBean`（分组名 =
- *   sourceName、目录、自动读表策略、手动表），连接成功后按 Java 协议上报表、响应云端请求；
- * - 分组 / 手动表变化时按 Java `ConfigStorage.compareAndInit` 的规则上报：
- *   新增分组 → source/single `addSource`；删除 → `sourceDelete`（空表列表）；目录或策略变化 →
- *   `updateSingle`；只改手动表时仅当表 id 集合变化才 `updateSingle`（`LocalClientProxy.updateTables`）；
+ * - 数据源按「逻辑分组」组织：分组名 = 云端 sourceName，分组内的表只能引用已有原始表 / 结果表；
+ *   连接成功后按 Java 协议上报表、从 DuckDB 物化结果取数；
+ * - 分组 / 引用变化时按 Java `ConfigStorage.compareAndInit` 的规则上报：
+ *   新增分组 → source/single `addSource`；删除 → `sourceDelete`（空表列表）；引用集合变化 →
+ *   `updateSingle`；
  *   分组名仅创建时可配置（与 Java 界面一致，服务端靠名字识别），`updateGroup` 拒绝改名，不会走
  *   `sourceDelete` + `addSource`；
  * - 状态变化通过 `notify` 推给渲染进程。
@@ -14,7 +14,6 @@
  * 本文件不依赖 electron，便于单测；electron 相关的存储与对话框在 store.ts / ipc.ts。
  */
 import { randomUUID } from 'node:crypto';
-import { stat } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type {
@@ -24,26 +23,32 @@ import type {
   CloudConnectionGroupInput,
   CloudConnectionState,
   CloudConnectionStatus,
-  CloudConnectionTableConfig,
   CloudConnectionTableEntry,
-  CloudConnectionTableInput,
   CloudConnectionTablePreview,
+  CloudConnectionTableRef,
+  CloudConnectionTableRefInput,
+  LegacyCloudConnectionTableConfig,
 } from '../../../shared/contracts';
 import { parseLocalAgentConfig } from '../../local-agent/config';
 import { DEFAULT_AGENT_VERSION } from '../../local-agent/constants';
-import {
-  LocalReadStrategy,
-  normalizeExcelTable,
-  validateExcelTable,
-  validateGroupName,
-  type ExcelTableConfig,
-  type LocalGroupConfig,
-} from '../../local-agent/excel/local-config';
+import { LocalReadStrategy, validateGroupName } from '../../local-agent/excel/local-config';
 import {
   LocalExcelSource,
   type ExcelVersionStore,
   type UnchangedFile,
 } from '../../local-agent/excel/local-excel-source';
+import {
+  importInputFromLegacyTable,
+  planAutoTableImports,
+  resolveSingleFileSheetName,
+  toExcelTableConfig,
+} from './legacy-table-import';
+import {
+  ReferencedTableSource,
+  resolveTableRef,
+  type CloudTableStorePort,
+  type StoredTableRef,
+} from './referenced-source';
 import {
   EXCEL_SYNC_STREAM_OPTIONS,
   ExcelSourceHandlers,
@@ -54,7 +59,7 @@ import type { LocalAgentLogger } from '../../local-agent/logger';
 import type { LocalAgentConfig } from '../../local-agent/types';
 
 export const DEFAULT_SOURCE_NAME = '九思助理本地文件';
-export const CLOUD_CONNECTION_SCHEMA_VERSION = 2;
+export const CLOUD_CONNECTION_SCHEMA_VERSION = 3;
 const MAX_ACTIVITIES = 50;
 
 export interface StoredCloudConfig {
@@ -63,8 +68,42 @@ export interface StoredCloudConfig {
   importedAt: number;
 }
 
-export interface StoredGroup extends LocalGroupConfig {
+export interface StoredGroup {
   id: string;
+  sourceName: string;
+  tables: StoredTableRef[];
+  /** schema v2 遗留：迁移完成后删除。 */
+  directoryPath?: string;
+  strategy?: number;
+  legacyTables?: LegacyCloudConnectionTableConfig[];
+  files?: string[];
+}
+
+export function isLegacyTableConfig(value: unknown): value is LegacyCloudConnectionTableConfig {
+  return Boolean(
+    value && typeof value === 'object' && 'relativeFilePath' in value && !('tableId' in value)
+  );
+}
+
+export function normalizeStoredGroup(raw: StoredGroup): StoredGroup {
+  const tables = Array.isArray(raw.tables) ? raw.tables : [];
+  if (tables.some(isLegacyTableConfig)) {
+    return {
+      ...raw,
+      tables: [],
+      legacyTables: [
+        ...(raw.legacyTables ?? []),
+        ...(tables.filter(isLegacyTableConfig) as unknown as LegacyCloudConnectionTableConfig[]),
+      ],
+    };
+  }
+  return {
+    ...raw,
+    tables: tables.filter(
+      (item): item is StoredTableRef =>
+        !isLegacyTableConfig(item) && Boolean((item as StoredTableRef).tableId)
+    ),
+  };
 }
 
 export interface CloudConnectionPersisted {
@@ -111,7 +150,7 @@ export class MemoryCloudConnectionStore implements CloudConnectionStorePort {
 export function migrateCloudConnectionData(
   data: CloudConnectionPersisted
 ): Partial<CloudConnectionPersisted> | null {
-  if (data.schemaVersion >= CLOUD_CONNECTION_SCHEMA_VERSION) return null;
+  if (data.schemaVersion >= 2) return null;
   const legacyFiles = Array.isArray(data.files) ? data.files : [];
   const sourceName = (data.sourceName || DEFAULT_SOURCE_NAME).trim() || DEFAULT_SOURCE_NAME;
   const groups: StoredGroup[] = Array.isArray(data.groups) ? [...data.groups] : [];
@@ -130,7 +169,7 @@ export function migrateCloudConnectionData(
   const versions = isFlat
     ? { [sourceName]: rawVersions as Record<string, UnchangedFile[]> }
     : (rawVersions as Record<string, Record<string, UnchangedFile[]>>);
-  return { groups, versions, schemaVersion: CLOUD_CONNECTION_SCHEMA_VERSION };
+  return { groups, versions, schemaVersion: 2 };
 }
 
 export type AgentFactory = (config: LocalAgentConfig, options: LocalAgentOptions) => LocalAgent;
@@ -142,6 +181,7 @@ export interface CloudConnectionServiceDeps {
   createAgent?: AgentFactory;
   /** 透传给 LocalAgent（测试注入 ioFactory / fetchImpl）。 */
   agentOptions?: Partial<LocalAgentOptions>;
+  tableStore?: CloudTableStorePort;
 }
 
 export function maskAgentId(agentId: string): string {
@@ -191,11 +231,10 @@ const GROUP_ERRORS: Record<string, string> = {
 const TABLE_ERRORS: Record<string, string> = {
   nameRequired: '请输入表名',
   nameDuplicate: '表名请勿重复',
-  pathRequired: '请选择文件路径',
 };
 
 interface GroupRuntime {
-  source: LocalExcelSource;
+  source: ReferencedTableSource;
   entries: CloudConnectionTableEntry[];
   status: 'pending' | 'ready' | 'error';
   error?: string;
@@ -221,26 +260,31 @@ export class CloudConnectionService {
         );
       }
     }
-    for (const group of this.groups()) this.ensureRuntime(group);
+    const groups = (this.deps.store.read().groups ?? []).map(normalizeStoredGroup);
+    if (JSON.stringify(groups) !== JSON.stringify(this.deps.store.read().groups ?? [])) {
+      this.deps.store.write({ groups });
+    }
+    for (const group of groups) this.ensureRuntime(group);
   }
 
   private groups(): StoredGroup[] {
-    return this.deps.store.read().groups ?? [];
+    return (this.deps.store.read().groups ?? []).map(normalizeStoredGroup);
   }
 
   private ensureRuntime(group: StoredGroup): GroupRuntime {
     let runtime = this.runtimes.get(group.id);
     if (!runtime) {
-      const source: LocalExcelSource = new LocalExcelSource({
-        sourceName: group.sourceName,
-        directoryPath: group.directoryPath,
-        strategy: group.strategy,
-        tables: group.tables,
-        files: group.files ?? [],
-        versionStore: new StoreVersionAdapter(this.deps.store, (): string => source.sourceName),
-      });
+      const source = new ReferencedTableSource(
+        group.sourceName,
+        group.tables,
+        this.deps.tableStore,
+        new StoreVersionAdapter(this.deps.store, (): string => source.sourceName)
+      );
       runtime = { source, entries: [], status: 'pending' };
       this.runtimes.set(group.id, runtime);
+    } else {
+      runtime.source.setRefs(group.tables);
+      runtime.source.sourceName = group.sourceName;
     }
     return runtime;
   }
@@ -255,7 +299,7 @@ export class CloudConnectionService {
     this.deps.store.write({ groups });
   }
 
-  private sources(): LocalExcelSource[] {
+  private sources(): ReferencedTableSource[] {
     return this.groups().map((g) => this.ensureRuntime(g).source);
   }
 
@@ -281,10 +325,12 @@ export class CloudConnectionService {
     return {
       id: group.id,
       sourceName: group.sourceName,
-      directoryPath: group.directoryPath,
-      strategy: group.strategy,
-      tables: group.tables.map((t) => toTableConfig(t)),
-      files: [...(group.files ?? [])],
+      tables: runtime.entries.length
+        ? this.tablesFromEntries(group.tables, runtime.entries)
+        : group.tables.map((ref) => ({
+            ...ref,
+            status: 'pending' as const,
+          })),
       entries: [...runtime.entries],
       entriesStatus: runtime.status,
       entriesError: runtime.error,
@@ -438,7 +484,9 @@ export class CloudConnectionService {
         this.emit();
       }
     }
-    void this.refreshTables();
+    void this.migrateLegacyGroups().finally(() => {
+      void this.refreshTables();
+    });
   }
 
   stop(): void {
@@ -460,7 +508,7 @@ export class CloudConnectionService {
 
   // ---------------------------------------------------------------- groups
 
-  /** 重新扫描各分组的表（手动表 + 自动表），更新状态。 */
+  /** 解析引用状态，更新右侧列表。 */
   async refreshTables(groupId?: string): Promise<void> {
     const groups = groupId ? [this.findGroup(groupId)] : this.groups();
     for (const group of groups) {
@@ -469,16 +517,26 @@ export class CloudConnectionService {
       this.emit();
       try {
         const errors = new Map<string, string>();
-        const tables = await runtime.source.listTables(errors);
-        runtime.entries = tables.map((t) => ({
-          id: t.id,
-          manual: t.manual,
-          fileName: t.fileName,
-          sheetName: t.sheetName,
-        }));
+        const entries: CloudConnectionTableEntry[] = [];
+        for (const ref of group.tables) {
+          const resolved = this.deps.tableStore
+            ? await resolveTableRef(this.deps.tableStore, ref)
+            : { ...ref, status: 'pending' as const, statusReason: '数据仓库尚未就绪' };
+          entries.push({
+            id: resolved.reportName,
+            kind: resolved.kind,
+            tableId: resolved.tableId,
+            displayName: resolved.displayName,
+            status: resolved.status,
+          });
+          if (resolved.status !== 'ok' && resolved.statusReason) {
+            errors.set(resolved.reportName, resolved.statusReason);
+          }
+        }
+        runtime.entries = entries;
         runtime.status = 'ready';
         runtime.error = errors.size
-          ? [...errors].map(([f, m]) => `${path.basename(f)}: ${m}`).join('；')
+          ? [...errors].map(([name, message]) => `${name}: ${message}`).join('；')
           : undefined;
       } catch (error) {
         runtime.status = 'error';
@@ -488,21 +546,22 @@ export class CloudConnectionService {
     }
   }
 
-  private async tableIds(group: StoredGroup): Promise<string[]> {
-    const tables = await this.ensureRuntime(group).source.listTables();
-    return tables.map((t) => t.id).sort();
+  private tablesFromEntries(
+    refs: StoredTableRef[],
+    entries: CloudConnectionTableEntry[]
+  ): CloudConnectionTableRef[] {
+    return refs.map((ref) => {
+      const entry = entries.find((item) => item.id === ref.reportName);
+      return {
+        ...ref,
+        displayName: entry?.displayName,
+        status: entry?.status ?? 'pending',
+      };
+    });
   }
 
-  private async checkDirectory(directoryPath: string): Promise<string> {
-    const resolved = path.resolve(directoryPath);
-    let isDir = false;
-    try {
-      isDir = (await stat(resolved)).isDirectory();
-    } catch {
-      isDir = false;
-    }
-    if (!isDir) throw new Error(`目录不存在：${directoryPath}`);
-    return resolved;
+  private async tableIds(group: StoredGroup): Promise<string[]> {
+    return group.tables.map((table) => table.reportName).sort();
   }
 
   async addGroup(input: CloudConnectionGroupInput): Promise<string> {
@@ -512,18 +571,14 @@ export class CloudConnectionService {
       groups.map((g) => g.sourceName)
     );
     if (error) throw new Error(GROUP_ERRORS[error]);
-    const directoryPath = await this.checkDirectory(input.directoryPath);
     const group: StoredGroup = {
       id: randomUUID(),
       sourceName: input.sourceName.trim(),
-      directoryPath,
-      strategy: input.strategy,
       tables: [],
     };
     this.writeGroups([...groups, group]);
     const runtime = this.ensureRuntime(group);
     await this.refreshTables(group.id);
-    // Java ConfigStorage：新增数据源 → initialize + fetchSingleTables(SOURCE_ADD)
     await this.report(() => {
       this.handlers!.registerProvider(runtime.source);
       return this.handlers!.reportSingleSource(runtime.source, FetchType.ADD_SOURCE);
@@ -532,36 +587,11 @@ export class CloudConnectionService {
   }
 
   async updateGroup(id: string, input: CloudConnectionGroupInput): Promise<void> {
-    const groups = this.groups();
     const current = this.findGroup(id);
     const name = input.sourceName.trim();
-    // Java 界面：分组名仅创建时可配置；服务端靠 sourceName 识别数据源，禁止改名。
     if (name !== current.sourceName) {
       throw new Error(GROUP_ERRORS.immutable);
     }
-    const directoryPath =
-      input.directoryPath || !current.directoryPath
-        ? input.directoryPath
-          ? await this.checkDirectory(input.directoryPath)
-          : ''
-        : current.directoryPath;
-    const next: StoredGroup = {
-      ...current,
-      sourceName: current.sourceName,
-      directoryPath,
-      strategy: input.strategy,
-    };
-    const recreate = directoryPath !== current.directoryPath || input.strategy !== current.strategy;
-    if (!recreate) return;
-    this.writeGroups(groups.map((g) => (g.id === id ? next : g)));
-    const runtime = this.ensureRuntime(current);
-    runtime.source.configure({ directoryPath, strategy: input.strategy });
-    await this.refreshTables(id);
-    // RECREATE → fetchSingleTables(UPDATE_SINGLE)
-    await this.report(
-      () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
-      'report source update'
-    );
   }
 
   async deleteGroup(id: string): Promise<void> {
@@ -572,7 +602,6 @@ export class CloudConnectionService {
     delete versions[group.sourceName];
     this.deps.store.write({ versions });
     this.emit();
-    // DatasourceInitializer.deleteSource：source/single sourceDelete + 空表列表
     await this.report(() => {
       this.handlers!.unregisterProvider(group.sourceName);
       return this.handlers!.reportSingleSource(
@@ -582,28 +611,93 @@ export class CloudConnectionService {
     }, 'report source delete');
   }
 
-  // ---------------------------------------------------------------- manual tables
-
-  private toStoredTable(
-    input: CloudConnectionTableInput,
-    previous: ExcelTableConfig | undefined
-  ): ExcelTableConfig {
-    const { password, ...rest } = input;
-    const table = normalizeExcelTable(rest);
-    const nextPassword = password === undefined ? previous?.password : password || undefined;
-    if (nextPassword) table.password = nextPassword;
-    return table;
+  private defaultReportName(displayName: string, used: Set<string>): string {
+    const base = displayName.trim() || '未命名表';
+    if (!used.has(base)) return base;
+    let i = 2;
+    while (used.has(`${base} (${i})`)) i += 1;
+    return `${base} (${i})`;
   }
 
-  private async applyTables(group: StoredGroup, tables: ExcelTableConfig[]): Promise<void> {
+  async addTableRefs(groupId: string, inputs: CloudConnectionTableRefInput[]): Promise<void> {
+    const group = this.findGroup(groupId);
+    if (!this.deps.tableStore) throw new Error('数据仓库尚未就绪');
+    const used = new Set(group.tables.map((table) => table.reportName));
+    const next = [...group.tables];
+    for (const input of inputs) {
+      if (next.some((table) => table.kind === input.kind && table.tableId === input.tableId)) {
+        continue;
+      }
+      const resolved = await resolveTableRef(this.deps.tableStore, {
+        reportName: input.reportName?.trim() || 'pending',
+        kind: input.kind,
+        tableId: input.tableId,
+      });
+      if (resolved.status === 'missing') {
+        throw new Error(resolved.statusReason || '表不存在');
+      }
+      const reportName =
+        input.reportName?.trim() ||
+        this.defaultReportName(resolved.displayName || '未命名表', used);
+      if (used.has(reportName)) throw new Error(TABLE_ERRORS.nameDuplicate);
+      used.add(reportName);
+      next.push({ reportName, kind: input.kind, tableId: input.tableId });
+    }
+    await this.applyRefs(group, next);
+  }
+
+  async updateTableRef(
+    groupId: string,
+    reportName: string,
+    input: { reportName: string }
+  ): Promise<void> {
+    const group = this.findGroup(groupId);
+    const current = group.tables.find((table) => table.reportName === reportName);
+    if (!current) throw new Error('表不存在');
+    const nextName = input.reportName.trim();
+    if (!nextName) throw new Error(TABLE_ERRORS.nameRequired);
+    if (nextName !== reportName && group.tables.some((table) => table.reportName === nextName)) {
+      throw new Error(TABLE_ERRORS.nameDuplicate);
+    }
+    const runtime = this.ensureRuntime(group);
+    if (nextName !== reportName) runtime.source.versionStore.delete(reportName);
+    await this.applyRefs(
+      group,
+      group.tables.map((table) =>
+        table.reportName === reportName ? { ...table, reportName: nextName } : table
+      )
+    );
+  }
+
+  async deleteTable(groupId: string, reportName: string): Promise<void> {
+    const group = this.findGroup(groupId);
+    if (!group.tables.some((table) => table.reportName === reportName)) throw new Error('表不存在');
+    this.ensureRuntime(group).source.versionStore.delete(reportName);
+    await this.applyRefs(
+      group,
+      group.tables.filter((table) => table.reportName !== reportName)
+    );
+  }
+
+  private async applyRefs(group: StoredGroup, tables: StoredTableRef[]): Promise<void> {
     const runtime = this.ensureRuntime(group);
     const before = await this.tableIds(group).catch(() => [] as string[]);
-    const next: StoredGroup = { ...group, tables };
-    this.writeGroups(this.groups().map((g) => (g.id === group.id ? next : g)));
-    runtime.source.configure({ tables });
+    const next: StoredGroup = {
+      ...group,
+      tables,
+      directoryPath: undefined,
+      strategy: undefined,
+      legacyTables: undefined,
+      files: undefined,
+    };
+    delete next.directoryPath;
+    delete next.strategy;
+    delete next.legacyTables;
+    delete next.files;
+    this.writeGroups(this.groups().map((item) => (item.id === group.id ? next : item)));
+    runtime.source.setRefs(tables);
     await this.refreshTables(group.id);
     const after = await this.tableIds(next).catch(() => [] as string[]);
-    // LocalClientProxy.updateTables：表 id 集合变化才 fetchSingleTables(UPDATE_SINGLE)
     if (before.join('\u0000') !== after.join('\u0000')) {
       await this.report(
         () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
@@ -612,109 +706,103 @@ export class CloudConnectionService {
     }
   }
 
-  async saveTable(
-    groupId: string,
-    originalName: string | null,
-    input: CloudConnectionTableInput
-  ): Promise<void> {
+  async previewTable(groupId: string, reportName: string): Promise<CloudConnectionTablePreview> {
     const group = this.findGroup(groupId);
-    if (!group.directoryPath) throw new Error('请先为分组设置目录');
-    const previous = originalName
-      ? group.tables.find((t) => t.tableName === originalName)
-      : undefined;
-    if (originalName && !previous) throw new Error('表不存在');
-    const table = this.toStoredTable(input, previous);
-    const others = group.tables.filter((t) => t.tableName !== originalName);
-    const error = validateExcelTable(
-      table,
-      others.map((t) => t.tableName)
-    );
-    if (error) throw new Error(TABLE_ERRORS[error]);
-    const versions = this.ensureRuntime(group).source.versionStore;
-    if (previous) {
-      // 改名 = 删除旧表；文件来源变化（策略 / 路径）时删除版本记录
-      const watchChanged =
-        previous.strategy !== table.strategy ||
-        previous.relativeFilePath !== table.relativeFilePath;
-      if (previous.tableName !== table.tableName || watchChanged)
-        versions.delete(previous.tableName);
+    const source = this.ensureRuntime(group).source;
+    const table = await source.getTable(reportName);
+    if (!table) throw new Error(`can not found table ${reportName}`);
+    return { tableName: reportName, ...(await source.previewTable(table)) };
+  }
+
+  private migrating = false;
+
+  /** 把 v2 目录/手动表/自动表物化为原始表并改为引用。幂等。 */
+  async migrateLegacyGroups(): Promise<void> {
+    if (this.migrating) return;
+    this.migrating = true;
+    try {
+      if (!this.deps.tableStore) return;
+      const groups = this.groups();
+      let changed = false;
+      const nextGroups: StoredGroup[] = [];
+      for (const group of groups) {
+        const migrated = await this.migrateOneGroup(group);
+        nextGroups.push(migrated);
+        if (migrated !== group) changed = true;
+      }
+      if (changed) {
+        this.deps.store.write({
+          groups: nextGroups,
+          schemaVersion: CLOUD_CONNECTION_SCHEMA_VERSION,
+        });
+        for (const group of nextGroups) this.ensureRuntime(group);
+        await this.refreshTables();
+      } else if ((this.deps.store.read().schemaVersion ?? 0) < CLOUD_CONNECTION_SCHEMA_VERSION) {
+        this.deps.store.write({ schemaVersion: CLOUD_CONNECTION_SCHEMA_VERSION });
+      }
+    } catch (error) {
+      this.deps.logger.warn(`cloud connection v3 migration failed: ${messageOf(error)}`);
+    } finally {
+      this.migrating = false;
     }
-    const tables = previous
-      ? group.tables.map((t) => (t.tableName === originalName ? table : t))
-      : [...group.tables, table];
-    await this.applyTables(group, tables);
   }
 
-  async deleteTable(groupId: string, tableName: string): Promise<void> {
-    const group = this.findGroup(groupId);
-    if (!group.tables.some((t) => t.tableName === tableName)) throw new Error('表不存在');
-    this.ensureRuntime(group).source.versionStore.delete(tableName);
-    await this.applyTables(
-      group,
-      group.tables.filter((t) => t.tableName !== tableName)
-    );
-  }
-
-  /** 移除早期逐个添加的文件。 */
-  async removeLegacyFile(groupId: string, filePath: string): Promise<void> {
-    const group = this.findGroup(groupId);
-    const files = (group.files ?? []).filter((f) => f !== filePath);
-    const runtime = this.ensureRuntime(group);
-    const before = await this.tableIds(group).catch(() => [] as string[]);
-    const next: StoredGroup = { ...group, files };
-    if (files.length === 0) delete next.files;
-    this.writeGroups(this.groups().map((g) => (g.id === groupId ? next : g)));
-    runtime.source.setFiles(files);
-    await this.refreshTables(groupId);
-    const after = await this.tableIds(next).catch(() => [] as string[]);
-    if (before.join('\u0000') !== after.join('\u0000')) {
-      await this.report(
-        () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
-        'report source update'
+  private async migrateOneGroup(group: StoredGroup): Promise<StoredGroup> {
+    const store = this.deps.tableStore;
+    if (!store) return group;
+    const hasLegacy =
+      Boolean(group.legacyTables?.length) ||
+      Boolean(group.files?.length) ||
+      Boolean(group.directoryPath && group.strategy && group.strategy !== LocalReadStrategy.NONE);
+    if (!hasLegacy) return group;
+    const tables = [...group.tables];
+    const used = new Set(tables.map((item) => item.reportName));
+    const errors: string[] = [];
+    for (const legacy of group.legacyTables ?? []) {
+      if (tables.some((item) => item.reportName === legacy.tableName)) continue;
+      try {
+        let input = importInputFromLegacyTable(group.directoryPath || '', legacy);
+        if (input.sourceKind === 'excel' && input.config && input.config.sourceKind === 'excel') {
+          const excel = toExcelTableConfig(legacy);
+          if (!input.config.sheetName) {
+            const sheet = resolveSingleFileSheetName(input.filePath, excel);
+            if (sheet) input = { ...input, config: { ...input.config, sheetName: sheet } };
+          }
+        }
+        const created = await store.importRawTable(input);
+        const reportName = legacy.tableName;
+        used.add(reportName);
+        tables.push({ reportName, kind: 'raw', tableId: created.id });
+      } catch (error) {
+        errors.push(`${legacy.tableName}: ${messageOf(error)}`);
+      }
+    }
+    try {
+      const autos = await planAutoTableImports({
+        directoryPath: group.directoryPath || '',
+        strategy: group.strategy ?? LocalReadStrategy.NONE,
+        manualTables: group.legacyTables ?? [],
+        files: group.files,
+      });
+      for (const auto of autos) {
+        if (used.has(auto.reportName)) continue;
+        try {
+          const created = await store.importRawTable(auto.input);
+          used.add(auto.reportName);
+          tables.push({ reportName: auto.reportName, kind: 'raw', tableId: created.id });
+        } catch (error) {
+          errors.push(`${auto.reportName}: ${messageOf(error)}`);
+        }
+      }
+    } catch (error) {
+      errors.push(messageOf(error));
+    }
+    const next: StoredGroup = { id: group.id, sourceName: group.sourceName, tables };
+    if (errors.length) {
+      this.deps.logger.warn(
+        `cloud connection group ${group.sourceName} migrated with errors: ${errors.join('；')}`
       );
     }
+    return next;
   }
-
-  // ---------------------------------------------------------------- preview
-
-  async previewTable(groupId: string, tableId: string): Promise<CloudConnectionTablePreview> {
-    const group = this.findGroup(groupId);
-    const source = this.ensureRuntime(group).source;
-    const table = await source.getTable(tableId);
-    if (!table) throw new Error(`can not found table ${tableId}`);
-    return { tableName: tableId, ...(await source.previewTable(table)) };
-  }
-
-  /** 预览表单里尚未保存的手动表配置（对应 agent-ui 的表名旁「预览」按钮）。 */
-  async previewDraft(
-    groupId: string,
-    originalName: string | null,
-    input: CloudConnectionTableInput
-  ): Promise<CloudConnectionTablePreview> {
-    const group = this.findGroup(groupId);
-    if (!group.directoryPath) throw new Error('请先为分组设置目录');
-    const previous = originalName
-      ? group.tables.find((t) => t.tableName === originalName)
-      : undefined;
-    const table = this.toStoredTable(input, previous);
-    const source = this.ensureRuntime(group).source;
-    const draft = source.draftTable(table);
-    return { tableName: table.tableName, ...(await source.previewTable(draft)) };
-  }
-
-  /** 把用户选择的绝对路径转成分组内的相对路径（`/` 开头，Unix 分隔符）。 */
-  relativePathInGroup(groupId: string, absolutePath: string): string {
-    const group = this.findGroup(groupId);
-    if (!group.directoryPath) throw new Error('请先为分组设置目录');
-    const rel = path.relative(path.resolve(group.directoryPath), path.resolve(absolutePath));
-    if (rel.startsWith('..') || path.isAbsolute(rel)) {
-      throw new Error('请选择分组目录下的文件或文件夹');
-    }
-    return `/${rel.split(path.sep).join('/')}`;
-  }
-}
-
-function toTableConfig(table: ExcelTableConfig): CloudConnectionTableConfig {
-  const { password, ...rest } = table;
-  return { ...rest, hasPassword: Boolean(password) };
 }

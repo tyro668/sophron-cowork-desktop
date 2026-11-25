@@ -352,6 +352,8 @@ export class RawSourceService {
             ...(member.headerRow
               ? { headerMode: 'manual' as const, headerRow: member.headerRow }
               : {}),
+            ...(input.password ? { password: input.password } : {}),
+            ...(input.fieldStrategy === 'all_text' ? { fieldStrategy: 'all_text' as const } : {}),
           },
           memberKey: member.key,
         };
@@ -367,7 +369,13 @@ export class RawSourceService {
           filePath: sourcePath,
           name: input.tableName?.trim() || `${fileStem}（合并）`,
           sourceKind: 'excel',
-          config: { ...defaultExcelConfig(sourcePath), sheetName: sheets[0], mergeSheets: sheets },
+          config: {
+            ...defaultExcelConfig(sourcePath),
+            sheetName: sheets[0],
+            mergeSheets: sheets,
+            ...(input.password ? { password: input.password } : {}),
+            ...(input.fieldStrategy === 'all_text' ? { fieldStrategy: 'all_text' as const } : {}),
+          },
           memberKey: null,
         },
       ];
@@ -385,6 +393,16 @@ export class RawSourceService {
               ? { sheetSelector: normalizeSheetSelector(input.sheetSelector) }
               : {}),
             ...(input.excludedFiles?.length ? { excludedFiles: input.excludedFiles } : {}),
+            recursive: input.recursive !== false,
+            ...(input.sortBy ? { sortBy: input.sortBy } : {}),
+            ...(input.schemaStrategy ? { schemaStrategy: input.schemaStrategy } : {}),
+            ...(input.sheetStrategy ? { sheetStrategy: input.sheetStrategy } : {}),
+            ...(input.headerMode === 'manual'
+              ? { headerMode: 'manual' as const, headerRow: input.headerRow ?? 1 }
+              : {}),
+            ...(input.fieldStrategy === 'all_text' ? { fieldStrategy: 'all_text' as const } : {}),
+            ...(input.systemFields ? { systemFields: input.systemFields } : {}),
+            ...(input.password ? { password: input.password } : {}),
           },
           memberKey: null,
         },

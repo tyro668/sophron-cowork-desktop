@@ -6,6 +6,8 @@ import { readFile } from 'node:fs/promises';
 import type { CloudConnectionState } from '../../../shared/contracts';
 import { appContext } from '../../app/context';
 import { createAppLocalAgentLogger } from '../../local-agent/app-logger';
+import { requireDataPipelineStore } from '../data/service';
+import { createCloudTableStoreAdapter } from './referenced-source';
 import { CloudConnectionService } from './service';
 import { ElectronCloudConnectionStore } from './store';
 
@@ -22,6 +24,7 @@ export function getCloudConnectionService(): CloudConnectionService {
       store: new ElectronCloudConnectionStore(),
       logger: createAppLocalAgentLogger(),
       notify: broadcast,
+      tableStore: createCloudTableStoreAdapter(() => requireDataPipelineStore()),
     });
   }
   return service;

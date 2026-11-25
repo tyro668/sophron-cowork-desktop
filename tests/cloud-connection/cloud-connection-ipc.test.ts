@@ -68,20 +68,14 @@ describe('cloudConnection IPC', () => {
   it('validates arguments', async () => {
     await expect(invoke('cloudConnection.setAutoConnect', 'yes')).rejects.toThrow();
     await expect(invoke('cloudConnection.previewTable', 'g', 42)).rejects.toThrow();
+    await expect(invoke('cloudConnection.addGroup', { sourceName: 1 })).rejects.toThrow();
     await expect(
-      invoke('cloudConnection.addGroup', { sourceName: 'x', directoryPath: '/', strategy: 7 })
+      invoke('cloudConnection.addTableRefs', 'g', [{ kind: 'nope', tableId: 'x' }])
     ).rejects.toThrow();
-    await expect(
-      invoke('cloudConnection.saveTable', 'g', null, { tableName: 't', strategy: 9 })
-    ).rejects.toThrow();
-    await expect(invoke('cloudConnection.pickTablePath', 'g', 'other')).rejects.toThrow();
-    expect(
-      await invoke('cloudConnection.addGroup', {
-        sourceName: 'a&b',
-        directoryPath: '/',
-        strategy: 1,
-      })
-    ).toMatchObject({ success: false, error: '分组名称不能出现&' });
+    expect(await invoke('cloudConnection.addGroup', { sourceName: 'a&b' })).toMatchObject({
+      success: false,
+      error: '分组名称不能出现&',
+    });
     expect(await invoke('cloudConnection.setAutoConnect', true)).toMatchObject({
       success: true,
       state: { autoConnect: true },

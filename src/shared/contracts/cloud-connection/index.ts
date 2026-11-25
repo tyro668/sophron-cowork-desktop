@@ -20,52 +20,62 @@ export interface CloudConnectionConfigSummary {
 }
 
 /**
- * 手动表配置（对应 Java `ExcelTableBean`）。文件密码只保存在主进程，渲染进程只知道是否设置。
- * 各数值字段的取值见 `src/main/local-agent/excel/local-config.ts` 的策略常量。
+ * 云连接中的一张表：只能引用已有原始表或结果表，自身不再保存目录或文件读取配置。
+ * `reportName` 是上报给云端的 tableName，绑定时冻结。
  */
-export interface CloudConnectionTableConfig {
+export type CloudConnectionRefKind = 'raw' | 'result';
+
+export type CloudConnectionRefStatus = 'ok' | 'missing' | 'unmaterialized' | 'abnormal' | 'pending';
+
+export interface CloudConnectionTableRefInput {
+  reportName?: string;
+  kind: CloudConnectionRefKind;
+  tableId: string;
+}
+
+export interface CloudConnectionTableRef {
+  reportName: string;
+  kind: CloudConnectionRefKind;
+  tableId: string;
+  /** 被引用表当前显示名；删除后为空。 */
+  displayName?: string;
+  status: CloudConnectionRefStatus;
+  /** 状态说明（缺失、尚未物化、数据异常原因）。 */
+  statusReason?: string;
+  rowCount?: number;
+  columnCount?: number;
+}
+
+/** @deprecated 仅用于读取 schema v2 及以前的落盘数据并迁移。 */
+export interface LegacyCloudConnectionTableConfig {
   tableName: string;
-  /** `TableSourceStrategy`：0 = 单文件，1-5 = 合并表排序方式。 */
   strategy: number;
-  /** `TableFieldTypeStrategy`：0 = 自动判断列类型，1 = 所有列作为文本。 */
   fieldStrategy: number;
-  /** `TableReadStrategy`：0 = 仅读取当前目录，1 = 递归读取所有子目录。 */
   readStrategy: number;
-  /** `TableAppendStrategy`：0 = 按字段顺序合并，1 = 按字段名称合并。 */
   appendStrategy: number;
-  /** 相对分组目录的路径，Unix 分隔符、以 `/` 开头。 */
   relativeFilePath: string;
   headerRowNumber: number;
-  /** `SheetSelectStrategy`：0 = 按序号，1 = 按名字，2 = 所有 sheet 合并。 */
   sheetStrategy: number;
   sheetNumber: number;
   sheetName: string;
-  hasPassword: boolean;
+  password?: string;
+  hasPassword?: boolean;
 }
 
-/** 保存手动表时的输入：`password` 为 undefined 表示保持原密码，null / 空串表示清除。 */
-export interface CloudConnectionTableInput extends Omit<CloudConnectionTableConfig, 'hasPassword'> {
-  password?: string | null;
-}
-
-/** 分组里的一张表（手动表或自动扫描出的表）。 */
+/** 分组里展示用的一行（id = reportName）。 */
 export interface CloudConnectionTableEntry {
   id: string;
-  manual: boolean;
-  fileName?: string;
-  sheetName?: string;
+  kind: CloudConnectionRefKind;
+  tableId: string;
+  displayName?: string;
+  status: CloudConnectionRefStatus;
 }
 
-/** 分组（对应 Java `LocalDatasourceBean`，分组名即 sourceName）。 */
+/** 分组：纯逻辑分组，分组名即上报用的 sourceName。 */
 export interface CloudConnectionGroup {
   id: string;
   sourceName: string;
-  directoryPath: string;
-  /** `LocalReadStrategy`：0 = 不自动读取，1 = 仅读取当前目录，2 = 递归读取所有子目录。 */
-  strategy: number;
-  tables: CloudConnectionTableConfig[];
-  /** 早期版本逐个添加的文件（迁移保留，按自动表规则生成表）。 */
-  files: string[];
+  tables: CloudConnectionTableRef[];
   entries: CloudConnectionTableEntry[];
   entriesStatus: 'pending' | 'ready' | 'error';
   entriesError?: string;
@@ -73,8 +83,6 @@ export interface CloudConnectionGroup {
 
 export interface CloudConnectionGroupInput {
   sourceName: string;
-  directoryPath: string;
-  strategy: number;
 }
 
 export interface CloudConnectionTablePreview {

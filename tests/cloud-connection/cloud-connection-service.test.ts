@@ -35,6 +35,115 @@ function until(check: () => boolean, ms = 4000): Promise<void> {
   });
 }
 
+function memoryTables(
+  records: Array<{ id: string; name: string; kind?: 'raw' | 'result'; materialized?: boolean }>
+) {
+  const raws = new Map(records.filter((r) => r.kind !== 'result').map((r) => [r.id, r]));
+  const results = new Map(records.filter((r) => r.kind === 'result').map((r) => [r.id, r]));
+  const describe = async (kind: 'raw' | 'result', id: string) => {
+    const rec = kind === 'result' ? results.get(id) : raws.get(id);
+    if (!rec) throw new Error('missing');
+    const materialized = rec.materialized !== false;
+    return {
+      materialized,
+      name: rec.name,
+      tableName: `tbl_${id}`,
+      updatedAt: 1,
+      columns: materialized ? ['a'] : [],
+      columnTypes: materialized
+        ? [{ name: 'a', type: 'text' as const, storageType: 'VARCHAR' }]
+        : [],
+      rowCount: materialized ? 1 : 0,
+    };
+  };
+  return {
+    _raws: raws,
+    importRawTable: async (input: { name?: string; filePath: string }) => {
+      const id = `imp-${input.filePath}`;
+      const rec = { id, name: input.name || id };
+      raws.set(id, rec);
+      return {
+        id,
+        name: rec.name,
+        groupId: null,
+        sourcePath: input.filePath,
+        sourceKind: 'excel' as const,
+        inputConfig: {
+          sourceKind: 'excel' as const,
+          sheetName: 'Sheet1',
+          sheetNames: ['Sheet1'],
+          headerMode: 'auto' as const,
+          headerRow: 1,
+        },
+        fileCount: 1,
+        relatedPipelineNames: [],
+        tableName: `tbl_${id}`,
+        rowCount: 1,
+        columnCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+    },
+    getRawTableRecord: async (id: string) => {
+      const rec = raws.get(id);
+      if (!rec) return null;
+      return {
+        id: rec.id,
+        name: rec.name,
+        groupId: null,
+        sourcePath: '/x',
+        sourceKind: 'excel' as const,
+        inputConfig: {
+          sourceKind: 'excel' as const,
+          sheetName: 'Sheet1',
+          sheetNames: ['Sheet1'],
+          headerMode: 'auto' as const,
+          headerRow: 1,
+        },
+        fileCount: 1,
+        relatedPipelineNames: [],
+        tableName: `tbl_${id}`,
+        rowCount: 1,
+        columnCount: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+    },
+    getResultTableRecord: async (id: string) => {
+      const rec = results.get(id);
+      if (!rec) return null;
+      return {
+        id: rec.id,
+        name: rec.name,
+        groupId: null,
+        sourceRawTableId: null,
+        tableName: `tbl_${id}`,
+        rowCount: rec.materialized === false ? 0 : 1,
+        columnCount: rec.materialized === false ? 0 : 1,
+        relatedPipelineNames: [],
+        relatedPipelineIds: [],
+        createdAt: 1,
+        updatedAt: 1,
+      };
+    },
+    describeBoundTable: describe,
+    previewBoundTable: async (kind: 'raw' | 'result', id: string) => {
+      const snap = await describe(kind, id);
+      return { ...snap, rows: snap.materialized ? [{ a: '1' }] : [] };
+    },
+    iterateBoundTableRows: async (
+      kind: 'raw' | 'result',
+      id: string,
+      writeRow: (row: (string | null)[]) => Promise<void>
+    ) => {
+      const snap = await describe(kind, id);
+      if (snap.materialized) await writeRow(['1']);
+      return { columns: snap.columns, rowCount: snap.rowCount, materialized: snap.materialized };
+    },
+    refreshRawTableIfSourceChanged: async () => undefined,
+  };
+}
+
 function yaml(port: number, token = TOKEN): string {
   return [
     'server:',
@@ -136,12 +245,10 @@ describe('CloudConnectionService', () => {
     } as never);
     service = new CloudConnectionService({ store, logger });
     const data = store.read();
-    expect(data.schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
+    expect(data.schemaVersion).toBe(2);
     expect(data.groups).toEqual([
       expect.objectContaining({
         sourceName: '我的本地文件',
-        directoryPath: '',
-        strategy: 0,
         tables: [],
         files: [xlsxPath, csvPath],
       }),
@@ -150,99 +257,111 @@ describe('CloudConnectionService', () => {
     // 旧字段保留，便于回退
     expect(data.files).toEqual([xlsxPath, csvPath]);
     await service.refreshTables();
-    const [group] = service.getState().groups;
-    expect(group.entries.map((e) => [e.id, e.manual])).toEqual([
-      ['report.xlsx_Data', false],
-      ['list.csv', false],
-    ]);
-    // 再次构造不重复迁移
+    expect(service.getState().groups[0].tables).toEqual([]);
     const again = new CloudConnectionService({ store, logger });
     expect(again.getState().groups).toHaveLength(1);
-    await service.removeLegacyFile(group.id, csvPath);
-    expect(store.read().groups[0].files).toEqual([xlsxPath]);
   });
 
   it('migration of an empty v1 store creates no group', () => {
     const store = new MemoryCloudConnectionStore({ sourceName: 'x', files: [] } as never);
     service = new CloudConnectionService({ store, logger });
     expect(store.read().groups).toEqual([]);
-    expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
+    expect(store.read().schemaVersion).toBe(2);
   });
 
-  it('manages groups and manual tables with Java validation rules; passwords stay in main', async () => {
+  it('manages logical groups and table references', async () => {
+    const tableStore = memoryTables([
+      { id: 'raw-1', name: '销售' },
+      { id: 'raw-2', name: '订单' },
+      { id: 'out-1', name: '汇总', kind: 'result', materialized: false },
+    ]);
     const store = new MemoryCloudConnectionStore();
-    service = new CloudConnectionService({ store, logger });
-    await expect(
-      service.addGroup({ sourceName: 'a&b', directoryPath: dir, strategy: 1 })
-    ).rejects.toThrow('分组名称不能出现&');
-    await expect(
-      service.addGroup({ sourceName: ' ', directoryPath: dir, strategy: 1 })
-    ).rejects.toThrow('分组名不能为空');
-    await expect(
-      service.addGroup({ sourceName: 'g', directoryPath: path.join(dir, 'nope'), strategy: 1 })
-    ).rejects.toThrow('目录不存在');
-    const id = await service.addGroup({ sourceName: '本地', directoryPath: dir, strategy: 1 });
-    await expect(
-      service.addGroup({ sourceName: '本地', directoryPath: dir, strategy: 1 })
-    ).rejects.toThrow('分组名称请勿重复');
-    await expect(
-      service.updateGroup(id, { sourceName: '别的名字', directoryPath: dir, strategy: 1 })
-    ).rejects.toThrow('分组名称仅创建时可配置，保存后无法修改');
-    expect(service.getState().groups[0].sourceName).toBe('本地');
-    let group = service.getState().groups[0];
-    expect(group.entries.map((e) => e.id)).toEqual(['list.csv', 'report.xlsx_Data']);
-
-    const table = {
-      tableName: '合并表',
-      strategy: 5,
-      fieldStrategy: 0,
-      readStrategy: 0,
-      appendStrategy: 0,
-      relativeFilePath: '/m',
-      headerRowNumber: 1,
-      sheetStrategy: 0,
-      sheetNumber: 1,
-      sheetName: 'Sheet1',
-      password: 'pw',
-    };
-    await expect(service.saveTable(id, null, { ...table, tableName: '' })).rejects.toThrow(
-      '请输入表名'
+    service = new CloudConnectionService({ store, logger, tableStore });
+    await expect(service.addGroup({ sourceName: 'a&b' })).rejects.toThrow('分组名称不能出现&');
+    await expect(service.addGroup({ sourceName: ' ' })).rejects.toThrow('分组名不能为空');
+    const id = await service.addGroup({ sourceName: '本地' });
+    await expect(service.addGroup({ sourceName: '本地' })).rejects.toThrow('分组名称请勿重复');
+    await expect(service.updateGroup(id, { sourceName: '别的名字' })).rejects.toThrow(
+      '分组名称仅创建时可配置，保存后无法修改'
     );
-    await expect(
-      service.saveTable(id, null, { ...table, strategy: 0, relativeFilePath: '' })
-    ).rejects.toThrow('请选择文件路径');
-    await service.saveTable(id, null, table);
-    await expect(service.saveTable(id, null, table)).rejects.toThrow('表名请勿重复');
-    group = service.getState().groups[0];
+    expect(service.getState().groups[0].sourceName).toBe('本地');
+
+    await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-1' }]);
+    let group = service.getState().groups[0];
     expect(group.tables).toEqual([
-      expect.objectContaining({ tableName: '合并表', relativeFilePath: '/m', hasPassword: true }),
+      expect.objectContaining({
+        reportName: '销售',
+        kind: 'raw',
+        tableId: 'raw-1',
+        status: 'ok',
+      }),
     ]);
-    expect(JSON.stringify(service.getState())).not.toContain('"pw"');
-    expect(store.read().groups[0].tables[0].password).toBe('pw');
-    // 手动表在前，m 目录不再出现在自动表里
-    expect(group.entries.map((e) => [e.id, e.manual])).toEqual([
-      ['合并表', true],
-      ['list.csv', false],
-      ['report.xlsx_Data', false],
+    await expect(
+      service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-2', reportName: '销售' }])
+    ).rejects.toThrow('表名请勿重复');
+    await service.addTableRefs(id, [{ kind: 'result', tableId: 'out-1' }]);
+    group = service.getState().groups[0];
+    expect(group.tables.map((tb) => [tb.reportName, tb.status])).toEqual([
+      ['销售', 'ok'],
+      ['汇总', 'unmaterialized'],
     ]);
-    // password undefined = 保持；null = 清除
-    await service.saveTable(id, '合并表', { ...table, password: undefined, headerRowNumber: 2 });
-    expect(store.read().groups[0].tables[0]).toMatchObject({ password: 'pw', headerRowNumber: 2 });
-    await service.saveTable(id, '合并表', { ...table, password: null });
-    expect(store.read().groups[0].tables[0].password).toBeUndefined();
 
-    const preview = await service.previewDraft(id, null, { ...table, tableName: '草稿' });
-    expect(preview.tableName).toBe('草稿');
-    expect(preview.rowCount).toBe(3);
-    expect(preview.columns.slice(0, 2)).toEqual(['k', 'v']);
+    await service.updateTableRef(id, '销售', { reportName: '销售上报' });
+    expect(service.getState().groups[0].tables[0].reportName).toBe('销售上报');
+    const stored = (tableStore as { _raws: Map<string, { name: string }> })._raws.get('raw-1');
+    if (stored) stored.name = '销售改名';
+    await service.refreshTables(id);
+    expect(service.getState().groups[0].tables[0]).toMatchObject({
+      reportName: '销售上报',
+      displayName: '销售改名',
+    });
 
-    expect(service.relativePathInGroup(id, path.join(dir, 'm', 'a.csv'))).toBe('/m/a.csv');
-    expect(() => service!.relativePathInGroup(id, tmpdir())).toThrow();
+    const preview = await service.previewTable(id, '销售上报');
+    expect(preview.tableName).toBe('销售上报');
+    expect(preview.columns).toEqual(['a']);
+    expect(preview.rowCount).toBe(1);
 
-    await service.deleteTable(id, '合并表');
-    expect(service.getState().groups[0].tables).toEqual([]);
+    await service.deleteTable(id, '销售上报');
+    expect(service.getState().groups[0].tables.map((tb) => tb.reportName)).toEqual(['汇总']);
     await service.deleteGroup(id);
     expect(service.getState().groups).toEqual([]);
+  });
+
+  it('migrates a legacy manual table into a raw-table reference and keeps the report name', async () => {
+    const tableStore = memoryTables([]);
+    const store = new MemoryCloudConnectionStore({
+      schemaVersion: 2,
+      groups: [
+        {
+          id: 'g1',
+          sourceName: '本地',
+          directoryPath: dir,
+          strategy: 0,
+          tables: [
+            {
+              tableName: '合并表',
+              strategy: 5,
+              fieldStrategy: 0,
+              readStrategy: 0,
+              appendStrategy: 1,
+              relativeFilePath: '/m',
+              headerRowNumber: 1,
+              sheetStrategy: 0,
+              sheetNumber: 1,
+              sheetName: 'Sheet1',
+            },
+          ],
+        },
+      ],
+    } as never);
+    service = new CloudConnectionService({ store, logger, tableStore });
+    await service.migrateLegacyGroups();
+    const group = service.getState().groups[0];
+    expect(group.tables).toEqual([
+      expect.objectContaining({ reportName: '合并表', kind: 'raw', status: 'ok' }),
+    ]);
+    expect(store.read().groups[0].legacyTables).toBeUndefined();
+    expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
   });
 
   describe('connected', () => {
@@ -273,17 +392,19 @@ describe('CloudConnectionService', () => {
     });
 
     it('connects and reports group / table changes like Java ConfigStorage', async () => {
+      const tableStore = memoryTables([
+        { id: 'raw-1', name: '销售' },
+        { id: 'raw-2', name: '订单' },
+      ]);
       service = new CloudConnectionService({
         store: new MemoryCloudConnectionStore(),
         logger,
         agentOptions: { aliveLogIntervalMs: 0 },
+        tableStore,
       });
       service.importConfigText(yaml(port));
-      const id = await service.addGroup({
-        sourceName: '我的本地文件',
-        directoryPath: dir,
-        strategy: 1,
-      });
+      const id = await service.addGroup({ sourceName: '我的本地文件' });
+      await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-1' }]);
       service.connect();
       await until(() => sync.webhookCalls(HttpEvent.SOURCE_ALL).length > 0);
       await until(() => service!.getState().status === 'connected');
@@ -294,23 +415,10 @@ describe('CloudConnectionService', () => {
       expect(body.changeType).toBe('systemStarted');
       expect(
         (body.agentBasicTableList as Array<{ tableName: string }>).map((t) => t.tableName)
-      ).toEqual(['list.csv', 'report.xlsx_Data']);
+      ).toEqual(['销售']);
 
       const singles = () => sync.webhookCalls(HttpEvent.SOURCE_SINGLE).map((c) => c.body!);
-      const table = {
-        tableName: '合并表',
-        strategy: 5,
-        fieldStrategy: 0,
-        readStrategy: 0,
-        appendStrategy: 0,
-        relativeFilePath: '/m',
-        headerRowNumber: 1,
-        sheetStrategy: 0,
-        sheetNumber: 1,
-        sheetName: 'Sheet1',
-      };
-      // 新增手动表：表 id 集合变化 → updateSingle
-      await service.saveTable(id, null, table);
+      await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-2' }]);
       expect(singles()).toHaveLength(1);
       expect(singles()[0]).toMatchObject({
         changeType: 'updateSingle',
@@ -318,28 +426,19 @@ describe('CloudConnectionService', () => {
       });
       expect(
         (singles()[0].agentBasicTableList as Array<{ tableName: string }>).map((t) => t.tableName)
-      ).toEqual(['合并表', 'list.csv', 'report.xlsx_Data']);
-      // 只改表头行：id 集合不变 → 不上报（LocalClientProxy.updateTables 返回 false）
-      await service.saveTable(id, '合并表', { ...table, headerRowNumber: 2 });
+      ).toEqual(['销售', '订单']);
+      await service.refreshTables(id);
       expect(singles()).toHaveLength(1);
 
-      // 新增分组 → addSource
-      const sub = path.join(dir, 'm');
-      const id2 = await service.addGroup({ sourceName: '子目录', directoryPath: sub, strategy: 1 });
+      const id2 = await service.addGroup({ sourceName: '子目录' });
       expect(singles()[1]).toMatchObject({ changeType: 'addSource', sourceName: '子目录' });
-      expect((singles()[1].agentBasicTableList as unknown[]).length).toBe(2);
-      // 策略变化 → updateSingle
-      await service.updateGroup(id2, { sourceName: '子目录', directoryPath: sub, strategy: 0 });
-      expect(singles()[2]).toMatchObject({ changeType: 'updateSingle', sourceName: '子目录' });
-      expect(singles()[2].agentBasicTableList).toEqual([]);
-      // 改名被拒绝：不改存储、不上报 sourceDelete/addSource（服务端靠名字识别）
+      expect((singles()[1].agentBasicTableList as unknown[]).length).toBe(0);
       const reported = singles().length;
-      await expect(
-        service.updateGroup(id2, { sourceName: '改名', directoryPath: sub, strategy: 0 })
-      ).rejects.toThrow('分组名称仅创建时可配置，保存后无法修改');
+      await expect(service.updateGroup(id2, { sourceName: '改名' })).rejects.toThrow(
+        '分组名称仅创建时可配置，保存后无法修改'
+      );
       expect(service.getState().groups.find((g) => g.id === id2)?.sourceName).toBe('子目录');
       expect(singles()).toHaveLength(reported);
-      // 删除分组 → sourceDelete，空表列表
       await service.deleteGroup(id2);
       expect(singles()[reported]).toMatchObject({
         changeType: 'sourceDelete',

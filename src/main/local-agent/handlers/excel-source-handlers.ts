@@ -18,6 +18,22 @@ import type { SocketTaskContext } from '../transport/event-dispatcher';
 import { isPreviewFetch, WriteType, type FetchBean } from '../types';
 import { createS3SourceData, parseFetchBean } from './table-content-s3-dispatch';
 import { toSourceTableJson, type LocalExcelSource } from '../excel/local-excel-source';
+
+/** 云端取数只依赖这些方法；云连接引用源与 LocalExcelSource 都满足。 */
+export type CloudReportSource = Pick<
+  LocalExcelSource,
+  | 'sourceName'
+  | 'listTables'
+  | 'getTable'
+  | 'rowCount'
+  | 'queryStructure'
+  | 'queryMeta'
+  | 'topRows'
+  | 'previewTable'
+  | 'writeFullData'
+  | 'isUnchanged'
+  | 'versionStore'
+>;
 import type { ExcelMetaPayload } from '../excel/analyzer';
 import { javaTrim } from '../excel/field-type';
 
@@ -35,8 +51,8 @@ export const FetchType = {
 export const AGENT_CMD_CDC_TABLES = 'cdcTables';
 
 export interface LocalSourceRegistry {
-  get(sourceName: string): LocalExcelSource | undefined;
-  all(): LocalExcelSource[];
+  get(sourceName: string): CloudReportSource | undefined;
+  all(): CloudReportSource[];
 }
 
 export interface AgentBasicTable {
@@ -83,7 +99,7 @@ export interface ExcelSourceHandlerOptions {
 
 export async function buildAllSourcesRequest(
   agent: Pick<LocalAgent, 'config' | 'version' | 'apiLevel'>,
-  sources: LocalExcelSource[],
+  sources: CloudReportSource[],
   changeType: string,
   logger?: LocalAgentLogger
 ): Promise<AllSourcesRequest> {
@@ -154,7 +170,7 @@ export class ExcelSourceHandlers {
     });
   }
 
-  registerProvider(source: LocalExcelSource): void {
+  registerProvider(source: CloudReportSource): void {
     if (this.options.enableSync === false) return;
     this.agent.registerTableContentProvider(
       source.sourceName,
@@ -207,7 +223,7 @@ export class ExcelSourceHandlers {
     });
   }
 
-  private sources(): LocalExcelSource[] {
+  private sources(): CloudReportSource[] {
     return this.options.registry.all().filter((s) => this.allowed(s.sourceName));
   }
 
@@ -245,7 +261,7 @@ export class ExcelSourceHandlers {
    * `fetchSingleTables` → POST source/single（数据源配置变化时，Java 用 updateSingle /
    * addSource / sourceDelete）。
    */
-  async reportSingleSource(source: LocalExcelSource, changeType: string): Promise<string> {
+  async reportSingleSource(source: CloudReportSource, changeType: string): Promise<string> {
     const all = await buildAllSourcesRequest(this.agent, [source], changeType, this.logger);
     const request = {
       agentId: all.agentId,
@@ -320,7 +336,7 @@ export class ExcelSourceHandlers {
     bean: FetchBean,
     messageId: string,
     event: string
-  ): LocalExcelSource | undefined {
+  ): CloudReportSource | undefined {
     const allowed = this.allowed(bean.sourceName);
     if (!allowed && this.options.ignoreDisallowedSources) {
       this.logger.info(`ignore request for source ${bean.sourceName}, messageId: ${messageId}`);

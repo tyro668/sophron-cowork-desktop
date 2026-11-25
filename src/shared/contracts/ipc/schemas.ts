@@ -289,21 +289,11 @@ const wecomChannelConfig = z.looseObject({
 
 const cloudConnectionGroupInput = z.object({
   sourceName: z.string().max(100),
-  directoryPath: z.string().max(4096),
-  strategy: z.number().int().min(0).max(2),
 });
-const cloudConnectionTableInput = z.object({
-  tableName: z.string().max(200),
-  strategy: z.number().int().min(0).max(5),
-  fieldStrategy: z.number().int().min(0).max(1),
-  readStrategy: z.number().int().min(0).max(1),
-  appendStrategy: z.number().int().min(0).max(1),
-  relativeFilePath: z.string().max(4096),
-  headerRowNumber: z.number().int(),
-  sheetStrategy: z.number().int().min(0).max(2),
-  sheetNumber: z.number().int(),
-  sheetName: z.string().max(200),
-  password: z.string().max(500).nullable().optional(),
+const cloudConnectionTableRefInput = z.object({
+  reportName: z.string().max(200).optional(),
+  kind: z.enum(['raw', 'result']),
+  tableId: z.string().min(1).max(200),
 });
 const memoryEntryUpdate = z.looseObject({
   key: strOpt,
@@ -700,22 +690,15 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'cloudConnection.addGroup': [cloudConnectionGroupInput],
   'cloudConnection.updateGroup': [z.string().min(1), cloudConnectionGroupInput],
   'cloudConnection.deleteGroup': [z.string().min(1)],
-  'cloudConnection.saveTable': [
+  'cloudConnection.addTableRefs': [z.string().min(1), z.array(cloudConnectionTableRefInput).min(1)],
+  'cloudConnection.updateTableRef': [
     z.string().min(1),
-    z.string().nullable(),
-    cloudConnectionTableInput,
+    z.string().min(1),
+    z.object({ reportName: z.string().min(1).max(200) }),
   ],
   'cloudConnection.deleteTable': [z.string().min(1), z.string().min(1)],
-  'cloudConnection.removeLegacyFile': [z.string().min(1), z.string().min(1)],
   'cloudConnection.refreshTables': [z.string().min(1).optional()],
   'cloudConnection.previewTable': [z.string().min(1), z.string().min(1)],
-  'cloudConnection.previewDraft': [
-    z.string().min(1),
-    z.string().nullable(),
-    cloudConnectionTableInput,
-  ],
-  'cloudConnection.pickDirectory': [],
-  'cloudConnection.pickTablePath': [z.string().min(1), z.enum(['file', 'directory'])],
   // memory
   'memory.getOverview': [strOpt],
   'memory.search': [

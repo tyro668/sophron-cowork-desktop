@@ -121,6 +121,25 @@ export function RawSourceWizard({
   const [selectorName, setSelectorName] = useState('');
   const [selectorIndex, setSelectorIndex] = useState(1);
   const [fileRange, setFileRange] = useState<FileRange>('excel_csv');
+  const [recursive, setRecursive] = useState(rebuild?.source.config.recursive !== false);
+  const [sortBy, setSortBy] = useState<'locale' | 'name' | 'natural' | 'mtime' | 'ctime'>(
+    rebuild?.source.config.sortBy ?? 'locale'
+  );
+  const [schemaStrategy, setSchemaStrategy] = useState(
+    rebuild?.source.config.schemaStrategy ?? 'align_by_name'
+  );
+  const [sheetAll, setSheetAll] = useState(rebuild?.source.config.sheetStrategy === 'all');
+  const [fieldAllText, setFieldAllText] = useState(
+    rebuild?.source.config.fieldStrategy === 'all_text'
+  );
+  const [systemFields, setSystemFields] = useState(
+    rebuild?.source.config.systemFields ?? 'source_file'
+  );
+  const [folderHeaderMode, setFolderHeaderMode] = useState<'auto' | 'manual'>(
+    rebuild?.source.config.headerMode === 'manual' ? 'manual' : 'auto'
+  );
+  const [folderHeaderRow, setFolderHeaderRow] = useState(rebuild?.source.config.headerRow ?? 1);
+  const [password, setPassword] = useState('');
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [unchecked, setUnchecked] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
@@ -285,6 +304,8 @@ export function RawSourceWizard({
                   headerRow: headerRows[singleSheet],
                 },
               ],
+              fieldStrategy: fieldAllText ? 'all_text' : 'auto',
+              ...(password ? { password } : {}),
             }
           : null;
       case 'excel_per_sheet':
@@ -297,10 +318,18 @@ export function RawSourceWizard({
                 name: names[key] || `${fileStem} / ${key}`,
                 headerRow: headerRows[key],
               })),
+              fieldStrategy: fieldAllText ? 'all_text' : 'auto',
+              ...(password ? { password } : {}),
             }
           : null;
       case 'excel_merge_sheets':
-        return { ...base, sheets: checkedSheets, tableName: mergedName };
+        return {
+          ...base,
+          sheets: checkedSheets,
+          tableName: mergedName,
+          fieldStrategy: fieldAllText ? 'all_text' : 'auto',
+          ...(password ? { password } : {}),
+        };
       case 'folder_merge':
         return {
           ...base,
@@ -308,6 +337,15 @@ export function RawSourceWizard({
           fileRange,
           tableName: mergedName,
           excludedFiles: unchecked,
+          recursive,
+          sortBy,
+          schemaStrategy,
+          sheetStrategy: sheetAll ? 'all' : 'selector',
+          headerMode: folderHeaderMode,
+          headerRow: folderHeaderRow,
+          fieldStrategy: fieldAllText ? 'all_text' : 'auto',
+          systemFields,
+          ...(password ? { password } : {}),
         };
       case 'folder_per_file':
         return perFileFiles.length
@@ -426,6 +464,30 @@ export function RawSourceWizard({
             setAutoInclude={setAutoInclude}
           />
         )}
+        {scan.kind === 'excel' && (
+          <ImportOptionsPanel
+            tr={tr}
+            kind="excel"
+            recursive={recursive}
+            setRecursive={setRecursive}
+            sortBy={sortBy}
+            setSortBy={setSortBy}
+            schemaStrategy={schemaStrategy}
+            setSchemaStrategy={setSchemaStrategy}
+            sheetAll={sheetAll}
+            setSheetAll={setSheetAll}
+            fieldAllText={fieldAllText}
+            setFieldAllText={setFieldAllText}
+            systemFields={systemFields}
+            setSystemFields={setSystemFields}
+            folderHeaderMode={folderHeaderMode}
+            setFolderHeaderMode={setFolderHeaderMode}
+            folderHeaderRow={folderHeaderRow}
+            setFolderHeaderRow={setFolderHeaderRow}
+            password={password}
+            setPassword={setPassword}
+          />
+        )}
         {scan.kind === 'folder' && (
           <section className={groupClass}>
             <div className="ui-group-title">{tr('config.importGroup')}</div>
@@ -468,12 +530,36 @@ export function RawSourceWizard({
             </div>
             <div className="flex flex-col gap-3 border-t border-border-subtle p-2">
               {effectiveMode === 'folder_merge' ? (
-                <FolderMergeTable
-                  tr={tr}
-                  scan={scan}
-                  mergedName={mergedName}
-                  setMergedName={setMergedName}
-                />
+                <>
+                  <FolderMergeTable
+                    tr={tr}
+                    scan={scan}
+                    mergedName={mergedName}
+                    setMergedName={setMergedName}
+                  />
+                  <ImportOptionsPanel
+                    tr={tr}
+                    kind="folder"
+                    recursive={recursive}
+                    setRecursive={setRecursive}
+                    sortBy={sortBy}
+                    setSortBy={setSortBy}
+                    schemaStrategy={schemaStrategy}
+                    setSchemaStrategy={setSchemaStrategy}
+                    sheetAll={sheetAll}
+                    setSheetAll={setSheetAll}
+                    fieldAllText={fieldAllText}
+                    setFieldAllText={setFieldAllText}
+                    systemFields={systemFields}
+                    setSystemFields={setSystemFields}
+                    folderHeaderMode={folderHeaderMode}
+                    setFolderHeaderMode={setFolderHeaderMode}
+                    folderHeaderRow={folderHeaderRow}
+                    setFolderHeaderRow={setFolderHeaderRow}
+                    password={password}
+                    setPassword={setPassword}
+                  />
+                </>
               ) : (
                 <FolderPerFileTable
                   tr={tr}
@@ -1734,5 +1820,178 @@ function DoneStep({
         </div>
       </div>
     </div>
+  );
+}
+
+function ImportOptionsPanel(props: {
+  tr: Tr;
+  kind: 'folder' | 'excel';
+  recursive: boolean;
+  setRecursive: (value: boolean) => void;
+  sortBy: 'locale' | 'name' | 'natural' | 'mtime' | 'ctime';
+  setSortBy: (value: 'locale' | 'name' | 'natural' | 'mtime' | 'ctime') => void;
+  schemaStrategy: string;
+  setSchemaStrategy: (value: 'align_by_name' | 'align_by_index') => void;
+  sheetAll: boolean;
+  setSheetAll: (value: boolean) => void;
+  fieldAllText: boolean;
+  setFieldAllText: (value: boolean) => void;
+  systemFields: string;
+  setSystemFields: (value: 'none' | 'source_file' | 'local_agent') => void;
+  folderHeaderMode: 'auto' | 'manual';
+  setFolderHeaderMode: (value: 'auto' | 'manual') => void;
+  folderHeaderRow: number;
+  setFolderHeaderRow: (value: number) => void;
+  password: string;
+  setPassword: (value: string) => void;
+}) {
+  const { tr } = props;
+  return (
+    <section className={groupClass} data-testid="raw-source-import-options">
+      <div className="ui-group-title">{tr('importOptions.title')}</div>
+      {props.kind === 'folder' && (
+        <>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.recursive')}</div>
+            <div className="ui-form-value">
+              <div className="flex flex-1 items-center px-2.5">
+                <Toggle
+                  on={props.recursive}
+                  onChange={props.setRecursive}
+                  label={
+                    props.recursive
+                      ? tr('importOptions.recursiveOn')
+                      : tr('importOptions.recursiveOff')
+                  }
+                  testId="raw-source-recursive"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.sortBy')}</div>
+            <div className="ui-form-value">
+              <select
+                value={props.sortBy}
+                onChange={(event) => props.setSortBy(event.target.value as typeof props.sortBy)}
+                className={cellSelectClass}
+                data-testid="raw-source-sort-by"
+              >
+                {(['locale', 'name', 'natural', 'mtime', 'ctime'] as const).map((value) => (
+                  <option key={value} value={value}>
+                    {tr(`importOptions.sort.${value}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.schema')}</div>
+            <div className="ui-form-value">
+              <select
+                value={props.schemaStrategy}
+                onChange={(event) =>
+                  props.setSchemaStrategy(event.target.value as 'align_by_name' | 'align_by_index')
+                }
+                className={cellSelectClass}
+                data-testid="raw-source-schema-strategy"
+              >
+                <option value="align_by_name">{tr('importOptions.schemaName')}</option>
+                <option value="align_by_index">{tr('importOptions.schemaIndex')}</option>
+              </select>
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.sheetAll')}</div>
+            <div className="ui-form-value">
+              <div className="flex flex-1 items-center px-2.5">
+                <Toggle
+                  on={props.sheetAll}
+                  onChange={props.setSheetAll}
+                  label={props.sheetAll ? tr('config.on') : tr('config.off')}
+                  testId="raw-source-sheet-all-files"
+                />
+              </div>
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.header')}</div>
+            <div className="ui-form-value !flex-row items-stretch">
+              <select
+                value={props.folderHeaderMode}
+                onChange={(event) =>
+                  props.setFolderHeaderMode(event.target.value as 'auto' | 'manual')
+                }
+                className={cellSelectClass}
+                data-testid="raw-source-folder-header-mode"
+              >
+                <option value="auto">{tr('importOptions.headerAuto')}</option>
+                <option value="manual">{tr('importOptions.headerManual')}</option>
+              </select>
+              {props.folderHeaderMode === 'manual' && (
+                <div className="w-20 flex-shrink-0 border-l border-border-subtle">
+                  <input
+                    type="number"
+                    min={1}
+                    value={props.folderHeaderRow}
+                    onChange={(event) =>
+                      props.setFolderHeaderRow(Math.max(1, Number(event.target.value) || 1))
+                    }
+                    className="h-full w-full bg-transparent px-2 text-[13px] outline-none"
+                    data-testid="raw-source-folder-header-row"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <div className="ui-form-label items-center">{tr('importOptions.systemFields')}</div>
+            <div className="ui-form-value">
+              <select
+                value={props.systemFields}
+                onChange={(event) =>
+                  props.setSystemFields(
+                    event.target.value as 'none' | 'source_file' | 'local_agent'
+                  )
+                }
+                className={cellSelectClass}
+                data-testid="raw-source-system-fields"
+              >
+                <option value="source_file">{tr('importOptions.systemSourceFile')}</option>
+                <option value="local_agent">{tr('importOptions.systemLocalAgent')}</option>
+                <option value="none">{tr('importOptions.systemNone')}</option>
+              </select>
+            </div>
+          </div>
+        </>
+      )}
+      <div className="ui-form-row">
+        <div className="ui-form-label items-center">{tr('importOptions.allText')}</div>
+        <div className="ui-form-value">
+          <div className="flex flex-1 items-center px-2.5">
+            <Toggle
+              on={props.fieldAllText}
+              onChange={props.setFieldAllText}
+              label={props.fieldAllText ? tr('config.on') : tr('config.off')}
+              testId="raw-source-all-text"
+            />
+          </div>
+        </div>
+      </div>
+      <div className="ui-form-row">
+        <div className="ui-form-label items-center">{tr('importOptions.password')}</div>
+        <div className="ui-form-value">
+          <input
+            type="password"
+            value={props.password}
+            onChange={(event) => props.setPassword(event.target.value)}
+            placeholder={tr('importOptions.passwordPlaceholder')}
+            className={cellInputClass}
+            data-testid="raw-source-password"
+            autoComplete="off"
+          />
+        </div>
+      </div>
+    </section>
   );
 }

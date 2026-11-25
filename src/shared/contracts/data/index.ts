@@ -377,6 +377,10 @@ export interface DataRawTableExcelConfig {
   mergeSheets?: string[];
   /** Merged sheets that were missing at the last refresh (the table keeps the last import). */
   missingMergeSheets?: string[];
+  /** Workbook password; never returned to the renderer (see hasPassword). */
+  password?: string;
+  hasPassword?: boolean;
+  fieldStrategy?: DataRawFieldStrategy;
 }
 
 export interface DataRawTableCsvConfig {
@@ -415,15 +419,31 @@ export interface DataRawTableCloudConfig {
   dataProcessing?: DataRawTableProcessingConfig;
 }
 
+/** How folder-merge files are ordered. `locale` is the historic localeCompare behavior. */
+export type DataRawFolderSortBy = 'locale' | 'name' | 'natural' | 'mtime' | 'ctime';
+
+/** Name-align (UNION BY NAME) or Java IndexMerge (columns by position). */
+export type DataRawFolderSchemaStrategy = 'align_by_name' | 'align_by_index';
+
+/** Folder Excel sheets: one selected sheet, or every sheet stacked. */
+export type DataRawSheetMergeStrategy = 'selector' | 'all';
+
+export type DataRawFieldStrategy = 'auto' | 'all_text';
+
+/** System columns added during merge. `local_agent` uses 本地宝 column names. */
+export type DataRawSystemFields = 'none' | 'source_file' | 'local_agent';
+
 export interface DataRawTableFolderConfig {
   sourceKind: 'folder';
   mergeMode: 'append_same_schema';
-  schemaStrategy: 'align_by_name';
+  schemaStrategy: DataRawFolderSchemaStrategy;
   fileRange: 'excel_csv' | 'excel' | 'csv';
   skipEmptyFiles: boolean;
   keepSourceFileName: boolean;
   /** Which sheet of a multi-sheet Excel file is read; files without it are excluded. */
   sheetSelector?: DataRawSheetSelector;
+  /** When `all`, every sheet of each Excel file is stacked (sheetSelector is ignored). */
+  sheetStrategy?: DataRawSheetMergeStrategy;
   /** Relative paths the user (or the compatibility check) left out of the merge. */
   excludedFiles?: string[];
   /** Result of the last merge: what was filled with nulls and what was left out. */
@@ -431,6 +451,17 @@ export interface DataRawTableFolderConfig {
   /** Per-column target types applied to every imported file. */
   columnTypeOverrides?: DataRawTableColumnTypeOverride[];
   dataProcessing?: DataRawTableProcessingConfig;
+  /** When false, only the top-level folder is scanned. Default true (historic behavior). */
+  recursive?: boolean;
+  /** File order before append. Default `locale` (historic localeCompare). */
+  sortBy?: DataRawFolderSortBy;
+  headerMode?: 'auto' | 'manual';
+  headerRow?: number;
+  fieldStrategy?: DataRawFieldStrategy;
+  systemFields?: DataRawSystemFields;
+  /** Workbook password applied to encrypted Excel files in the folder. */
+  password?: string;
+  hasPassword?: boolean;
 }
 
 export type DataRawTableConfig =
@@ -478,6 +509,14 @@ export interface DataRawSourceConfig {
   fileSheetOverrides?: Record<string, string>;
   excludedFiles?: string[];
   fileRange?: DataRawTableFolderConfig['fileRange'];
+  recursive?: boolean;
+  sortBy?: DataRawFolderSortBy;
+  schemaStrategy?: DataRawFolderSchemaStrategy;
+  sheetStrategy?: DataRawSheetMergeStrategy;
+  headerMode?: 'auto' | 'manual';
+  headerRow?: number;
+  fieldStrategy?: DataRawFieldStrategy;
+  systemFields?: DataRawSystemFields;
   /** New sheets / files found on refresh become tables automatically. */
   autoInclude: boolean;
   /** Excel per-sheet / merge: the sheets the user picked. */
@@ -572,6 +611,15 @@ export interface DataCreateRawSourceInput {
   excludedFiles?: string[];
   fileRange?: DataRawTableFolderConfig['fileRange'];
   autoInclude?: boolean;
+  recursive?: boolean;
+  sortBy?: DataRawFolderSortBy;
+  schemaStrategy?: DataRawFolderSchemaStrategy;
+  sheetStrategy?: DataRawSheetMergeStrategy;
+  headerMode?: 'auto' | 'manual';
+  headerRow?: number;
+  fieldStrategy?: DataRawFieldStrategy;
+  systemFields?: DataRawSystemFields;
+  password?: string;
 }
 
 export interface DataRawSourceCreateResult {

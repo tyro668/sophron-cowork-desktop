@@ -22,27 +22,19 @@ const t = (key: string) => i18n.t(key);
 const group: CloudConnectionGroup = {
   id: 'g1',
   sourceName: '本地文件',
-  directoryPath: '/data',
-  strategy: 1,
   tables: [
     {
-      tableName: '销售合并',
-      strategy: 5,
-      fieldStrategy: 0,
-      readStrategy: 0,
-      appendStrategy: 0,
-      relativeFilePath: '/sales',
-      headerRowNumber: 1,
-      sheetStrategy: 0,
-      sheetNumber: 1,
-      sheetName: 'Sheet1',
-      hasPassword: true,
+      reportName: '销售合并',
+      kind: 'raw',
+      tableId: 'raw-1',
+      displayName: '销售原始表',
+      status: 'ok',
+      rowCount: 10,
+      columnCount: 3,
     },
   ],
-  files: [],
   entries: [
-    { id: '销售合并', manual: true },
-    { id: 'a.csv', manual: false, fileName: 'a.csv' },
+    { id: '销售合并', kind: 'raw', tableId: 'raw-1', displayName: '销售原始表', status: 'ok' },
   ],
   entriesStatus: 'ready',
 };
@@ -82,14 +74,11 @@ const api = {
   addGroup: vi.fn(ok),
   updateGroup: vi.fn(ok),
   deleteGroup: vi.fn(ok),
-  saveTable: vi.fn(ok),
+  addTableRefs: vi.fn(ok),
+  updateTableRef: vi.fn(ok),
   deleteTable: vi.fn(ok),
-  removeLegacyFile: vi.fn(ok),
   refreshTables: vi.fn(ok),
   previewTable: vi.fn(),
-  previewDraft: vi.fn(),
-  pickDirectory: vi.fn(() => Promise.resolve('/picked')),
-  pickTablePath: vi.fn(() => Promise.resolve('/sales/2024')),
 };
 
 beforeEach(() => {
@@ -146,57 +135,36 @@ describe('数据 → 云连接', () => {
     expect(useAppStore.getState().showSettings).toBe(true);
   });
 
-  it('edits a manual table and keeps the saved password unless changed', async () => {
+  it('shows a referenced table and can rename the frozen cloud report name', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
     fireEvent.click(await screen.findByText('销售合并'));
     const form = await screen.findByTestId('cloud-connection-table-form');
-    expect(form.textContent).toContain(t('cloudConnection.ds.mergeStrategy'));
-    expect(form.textContent).toContain(t('cloudConnection.ds.sheetStrategy'));
-    expect((screen.getByTestId('cloud-connection-table-name') as HTMLInputElement).disabled).toBe(
-      true
-    );
-    fireEvent.click(screen.getByTestId('cloud-connection-table-edit'));
-    fireEvent.change(screen.getByTestId('cloud-connection-table-name'), {
-      target: { value: '销售2024' },
-    });
-    fireEvent.click(screen.getByTestId('cloud-connection-table-save'));
-    await waitFor(() => expect(api.saveTable).toHaveBeenCalled());
-    const [groupId, original, input] = api.saveTable.mock.calls[0] as unknown as [
-      string,
-      string,
-      Record<string, unknown>,
-    ];
-    expect(groupId).toBe('g1');
-    expect(original).toBe('销售合并');
-    expect(input).toMatchObject({
-      tableName: '销售2024',
-      strategy: 5,
-      relativeFilePath: '/sales',
-      password: undefined,
-    });
-    expect(input).not.toHaveProperty('hasPassword');
+    expect(form.textContent).toContain(t('cloudConnection.ds.refKindRaw'));
+    expect(form.textContent).toContain(t('cloudConnection.ds.reportNameHint'));
+    const name = screen.getByTestId('cloud-connection-report-name') as HTMLInputElement;
+    expect(name.value).toBe('销售合并');
+    fireEvent.change(name, { target: { value: '销售2024' } });
+    fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
+    await waitFor(() => expect(api.updateTableRef).toHaveBeenCalled());
+    expect(api.updateTableRef.mock.calls[0]).toEqual([
+      'g1',
+      '销售合并',
+      { reportName: '销售2024' },
+    ]);
   });
 
-  it('creates a group through 添加目录', async () => {
+  it('creates a group through 添加分组', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByTestId('cloud-connection-add-group'));
     fireEvent.change(screen.getByTestId('cloud-connection-group-name'), {
       target: { value: '新分组' },
     });
-    fireEvent.click(screen.getByLabelText(t('cloudConnection.ds.browse')));
-    await waitFor(() => expect(api.pickDirectory).toHaveBeenCalled());
     fireEvent.click(screen.getByTestId('cloud-connection-group-save'));
-    await waitFor(() =>
-      expect(api.addGroup).toHaveBeenCalledWith({
-        sourceName: '新分组',
-        directoryPath: '/picked',
-        strategy: 1,
-      })
-    );
+    await waitFor(() => expect(api.addGroup).toHaveBeenCalledWith({ sourceName: '新分组' }));
   });
 
-  it('keeps an existing group name read-only, including while editing', async () => {
+  it('keeps an existing group name read-only and enables 添加表 after the group is selected', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
     expect(screen.getByTestId('cloud-connection-add-table').textContent).toContain(
@@ -208,22 +176,33 @@ describe('数据 → 云连接', () => {
     const name = (await screen.findByTestId('cloud-connection-group-name')) as HTMLInputElement;
     expect(name.disabled).toBe(true);
     expect(name.value).toBe('本地文件');
-    fireEvent.click(screen.getByTestId('cloud-connection-group-edit'));
-    expect((screen.getByTestId('cloud-connection-group-name') as HTMLInputElement).disabled).toBe(
-      true
-    );
     expect(screen.getByTitle(t('cloudConnection.ds.groupNameLocked'))).toBeTruthy();
   });
 
-  it('disables 添加表 when the selected group has no directory', async () => {
-    state = makeState({
-      groups: [{ ...group, directoryPath: '', tables: [], entries: [], entriesStatus: 'ready' }],
-    });
+  it('opens a raw/result table picker from 添加表', async () => {
+    const dataApi = {
+      getDashboard: vi.fn(() =>
+        Promise.resolve({
+          rawTables: [{ id: 'raw-2', name: '订单' }],
+          resultTables: [{ id: 'out-1', name: '汇总' }],
+        })
+      ),
+    };
+    (
+      window as unknown as { electronAPI: { cloudConnection: typeof api; data: typeof dataApi } }
+    ).electronAPI = { cloudConnection: api, data: dataApi };
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
-    expect(
-      ((await screen.findByTestId('cloud-connection-add-table')) as HTMLButtonElement).disabled
-    ).toBe(true);
+    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
+    await screen.findByTestId('cloud-connection-table-picker');
+    await screen.findByTestId('cloud-connection-picker-list');
+    expect(screen.getByText('订单')).toBeTruthy();
+    expect(screen.getByText('汇总')).toBeTruthy();
+    fireEvent.click(screen.getByText('订单'));
+    fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
+    await waitFor(() =>
+      expect(api.addTableRefs).toHaveBeenCalledWith('g1', [{ kind: 'raw', tableId: 'raw-2' }])
+    );
   });
 });
 

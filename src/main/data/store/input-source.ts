@@ -12,6 +12,10 @@ import type {
   DataRawTableExcelConfig,
   DataRawTableExcelMergedCellSummary,
   DataRawTableFolderConfig,
+  DataRawFieldStrategy,
+  DataRawFolderSchemaStrategy,
+  DataRawFolderSortBy,
+  DataRawSheetMergeStrategy,
   DataRawSheetSelector,
   DataRawTableHeaderCandidate,
   DataRawTableSourceFileSummary,
@@ -20,7 +24,16 @@ import type {
   DataSaveRawTableNormalizerDraftInput,
 } from '../../../shared/contracts';
 import { isDataFieldType, type DataFieldType } from '../../../shared/data-field-types';
+import { decryptOfficeFile } from '../../local-agent/excel/office-crypto';
+import { javaCompare, naturalOrderCompare } from '../../local-agent/excel/natural-order';
 import { isRecord, quoteIdentifier, stringArray } from '../operators';
+
+/** 本地宝兼容系统列，与 `SYSTEM_FIELD_NAMES.zh` 一致。 */
+export const LOCAL_AGENT_SYSTEM_FIELDS = [
+  '文件夹名(系统字段)',
+  '表名(系统字段)',
+  'sheet名(系统字段)',
+] as const;
 
 export interface ParsedWorkbookRows {
   columns: string[];
@@ -306,6 +319,7 @@ export function normalizeRawTableConfig(
       columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
       ...normalizeMergeSheets(config.mergeSheets, fallback.sheetNames),
+      ...normalizeSecretAndField(config),
     };
   }
 
@@ -316,18 +330,98 @@ export function normalizeRawTableConfig(
     return {
       sourceKind: 'folder',
       mergeMode: 'append_same_schema',
-      schemaStrategy: 'align_by_name',
+      schemaStrategy: normalizeSchemaStrategy(config.schemaStrategy),
       fileRange:
         config.fileRange === 'excel' || config.fileRange === 'csv' ? config.fileRange : 'excel_csv',
       skipEmptyFiles: config.skipEmptyFiles !== false,
       keepSourceFileName: config.keepSourceFileName !== false,
       columnTypeOverrides: normalizeColumnTypeOverrides(config.columnTypeOverrides),
       dataProcessing: normalizeRawTableDataProcessing(config.dataProcessing),
+      recursive: config.recursive !== false,
+      sortBy: normalizeSortBy(config.sortBy),
+      sheetStrategy: normalizeSheetMergeStrategy(config.sheetStrategy),
+      ...normalizeFolderHeader(config),
       ...normalizeFolderSelection(config),
+      ...normalizeSecretAndField(config),
+      ...normalizeSystemFields(config),
     };
   }
 
   return defaultCsvConfig(config);
+}
+
+export function normalizeSchemaStrategy(value: unknown): DataRawFolderSchemaStrategy {
+  return value === 'align_by_index' ? 'align_by_index' : 'align_by_name';
+}
+
+export function normalizeSortBy(value: unknown): DataRawFolderSortBy {
+  if (value === 'name' || value === 'natural' || value === 'mtime' || value === 'ctime') {
+    return value;
+  }
+  return 'locale';
+}
+
+export function normalizeSheetMergeStrategy(value: unknown): DataRawSheetMergeStrategy {
+  return value === 'all' ? 'all' : 'selector';
+}
+
+export function normalizeFieldStrategy(value: unknown): DataRawFieldStrategy {
+  return value === 'all_text' ? 'all_text' : 'auto';
+}
+
+function normalizeSecretAndField(config: {
+  password?: string;
+  fieldStrategy?: DataRawFieldStrategy;
+}): { password?: string; hasPassword?: boolean; fieldStrategy?: DataRawFieldStrategy } {
+  const out: { password?: string; hasPassword?: boolean; fieldStrategy?: DataRawFieldStrategy } =
+    {};
+  if (typeof config.password === 'string' && config.password) {
+    out.password = config.password;
+    out.hasPassword = true;
+  }
+  const field = normalizeFieldStrategy(config.fieldStrategy);
+  if (field === 'all_text') out.fieldStrategy = field;
+  return out;
+}
+
+function normalizeFolderHeader(
+  config: DataRawTableFolderConfig
+): Pick<DataRawTableFolderConfig, 'headerMode' | 'headerRow'> {
+  if (config.headerMode === 'manual') {
+    return {
+      headerMode: 'manual',
+      headerRow: Math.max(1, Math.floor(Number(config.headerRow) || 1)),
+    };
+  }
+  return {};
+}
+
+function normalizeSystemFields(
+  config: DataRawTableFolderConfig
+): Pick<DataRawTableFolderConfig, 'systemFields'> {
+  if (config.systemFields === 'none' || config.systemFields === 'local_agent') {
+    return { systemFields: config.systemFields };
+  }
+  if (config.systemFields === 'source_file' || config.keepSourceFileName !== false) {
+    return { systemFields: 'source_file' };
+  }
+  return { systemFields: 'none' };
+}
+
+export function sanitizeRawTableConfigForIpc(config: DataRawTableConfig): DataRawTableConfig {
+  if (config.sourceKind !== 'excel' && config.sourceKind !== 'folder') return config;
+  const { password: _password, ...rest } = config;
+  return {
+    ...rest,
+    hasPassword: Boolean(_password) || Boolean(config.hasPassword),
+  } as DataRawTableConfig;
+}
+
+export function sanitizeRawTableForIpc<T extends { inputConfig?: DataRawTableConfig }>(
+  table: T
+): T {
+  if (!table.inputConfig) return table;
+  return { ...table, inputConfig: sanitizeRawTableConfigForIpc(table.inputConfig) };
 }
 
 export function normalizeSheetSelector(value: unknown): DataRawSheetSelector | undefined {
@@ -524,8 +618,8 @@ export function normalizeRawTableDataProcessing(
   return defaultRawTableDataProcessing();
 }
 
-export function getWorkbookSheetNames(filePath: string): string[] {
-  const workbook = readWorkbookFile(filePath);
+export function getWorkbookSheetNames(filePath: string, password?: string): string[] {
+  const workbook = readWorkbookFile(filePath, {}, password);
   return workbook.SheetNames.length > 0 ? workbook.SheetNames : ['Sheet1'];
 }
 
@@ -540,7 +634,10 @@ export function getImportSourceFiles(
   }
 
   const folderConfig = config.sourceKind === 'folder' ? config : defaultFolderConfig();
-  const files = listImportableFiles(sourcePath, folderConfig.fileRange);
+  const files = listImportableFiles(sourcePath, folderConfig.fileRange, {
+    recursive: folderConfig.recursive !== false,
+    sortBy: normalizeSortBy(folderConfig.sortBy),
+  });
   if (files.length === 0) {
     throw new Error(
       sourceKind === 'folder'
@@ -782,8 +879,11 @@ export function escapeCsvCell(value: string): string {
 
 export function listImportableFiles(
   folderPath: string,
-  fileRange: DataRawTableFolderConfig['fileRange'] = 'excel_csv'
+  fileRange: DataRawTableFolderConfig['fileRange'] = 'excel_csv',
+  options: { recursive?: boolean; sortBy?: DataRawFolderSortBy } = {}
 ): string[] {
+  const recursive = options.recursive !== false;
+  const sortBy = normalizeSortBy(options.sortBy);
   const files: string[] = [];
   const visit = (directory: string) => {
     const entries = fs
@@ -793,7 +893,7 @@ export function listImportableFiles(
     for (const entry of entries) {
       const entryPath = join(directory, entry.name);
       if (entry.isDirectory()) {
-        visit(entryPath);
+        if (recursive) visit(entryPath);
         continue;
       }
       if (entry.isFile() && isFolderRangeFile(entryPath, fileRange)) {
@@ -802,7 +902,33 @@ export function listImportableFiles(
     }
   };
   visit(folderPath);
-  return files;
+  return sortImportableFiles(files, sortBy);
+}
+
+export function sortImportableFiles(files: string[], sortBy: DataRawFolderSortBy): string[] {
+  const decorated = files.map((filePath) => {
+    const name = basename(filePath);
+    let mtime = 0;
+    let ctime = 0;
+    if (sortBy === 'mtime' || sortBy === 'ctime') {
+      try {
+        const st = fs.statSync(filePath);
+        mtime = Math.trunc(st.mtimeMs);
+        ctime = Math.trunc(st.birthtimeMs || st.ctimeMs);
+      } catch {
+        /* keep 0 */
+      }
+    }
+    return { filePath, name, mtime, ctime };
+  });
+  decorated.sort((a, b) => {
+    if (sortBy === 'natural') return naturalOrderCompare(a.filePath, b.filePath);
+    if (sortBy === 'name') return javaCompare(a.filePath, b.filePath);
+    if (sortBy === 'mtime') return a.mtime - b.mtime || javaCompare(a.filePath, b.filePath);
+    if (sortBy === 'ctime') return a.ctime - b.ctime || javaCompare(a.filePath, b.filePath);
+    return a.name.localeCompare(b.name) || a.filePath.localeCompare(b.filePath);
+  });
+  return decorated.map((item) => item.filePath);
 }
 
 export function readRelationForPath(filePath: string, parameterName: string): string {
@@ -852,10 +978,42 @@ export function readImportRelationForPath(
 }
 
 export function buildUnionSqlFromTempTables(tempTables: string[]): string {
+  return buildUnionSqlFromTempTablesWithStrategy(tempTables, 'align_by_name');
+}
+
+export function buildUnionSqlFromTempTablesWithStrategy(
+  tempTables: string[],
+  strategy: DataRawFolderSchemaStrategy,
+  columnNames?: string[][]
+): string {
+  if (strategy !== 'align_by_index' || !columnNames || columnNames.length !== tempTables.length) {
+    return tempTables
+      .map((tempTable, index) => {
+        const selectSql = `SELECT * FROM ${quoteIdentifier(tempTable)}`;
+        return index === 0 ? selectSql : `UNION ALL BY NAME ${selectSql}`;
+      })
+      .join('\n');
+  }
+  const width = Math.max(0, ...columnNames.map((cols) => cols.length));
+  const headers: string[] = [];
+  for (let i = 0; i < width; i++) {
+    const fromFirst = columnNames.find((cols) => cols[i])?.[i];
+    headers.push(fromFirst && fromFirst.length > 0 ? fromFirst : `column_${i + 1}`);
+  }
   return tempTables
     .map((tempTable, index) => {
-      const selectSql = `SELECT * FROM ${quoteIdentifier(tempTable)}`;
-      return index === 0 ? selectSql : `UNION ALL BY NAME ${selectSql}`;
+      const cols = columnNames[index] ?? [];
+      const projection = headers
+        .map((name, i) => {
+          const source = cols[i];
+          if (source) {
+            return `${quoteIdentifier(source)} AS ${quoteIdentifier(name)}`;
+          }
+          return `NULL AS ${quoteIdentifier(name)}`;
+        })
+        .join(', ');
+      const selectSql = `SELECT ${projection || '*'} FROM ${quoteIdentifier(tempTable)}`;
+      return index === 0 ? selectSql : `UNION ALL ${selectSql}`;
     })
     .join('\n');
 }
@@ -951,7 +1109,7 @@ export function parseWorkbookRows(
   filePath: string,
   config: DataRawTableExcelConfig
 ): ParsedWorkbookRows {
-  const workbook = readWorkbookFile(filePath);
+  const workbook = readWorkbookFile(filePath, {}, config.password);
   const sheetNames = workbook.SheetNames;
   const sheetName =
     config.sheetName && sheetNames.includes(config.sheetName) ? config.sheetName : sheetNames[0];
@@ -1090,9 +1248,11 @@ export function summarizeWorkbookMergedCells(
 
 export function readWorkbookFile(
   filePath: string,
-  options: XLSX.ParsingOptions = {}
+  options: XLSX.ParsingOptions = {},
+  password?: string
 ): XLSX.WorkBook {
-  return XLSX.read(fs.readFileSync(filePath), {
+  const decrypted = decryptOfficeFile(fs.readFileSync(filePath), password);
+  return XLSX.read(decrypted, {
     cellDates: false,
     raw: false,
     type: 'buffer',

@@ -2372,6 +2372,34 @@
       },
       "modeChange": {
         "hint": "Build mode will change from \"{{from}}\" to \"{{to}}\". Saving deletes the current tables and rebuilds them; cancel keeps everything as is."
+      },
+      "importOptions": {
+        "title": "Read and merge options",
+        "recursive": "Include subfolders",
+        "recursiveOn": "Recursive",
+        "recursiveOff": "This folder only",
+        "sortBy": "File order",
+        "sort": {
+          "locale": "Name (locale)",
+          "name": "Name (Java order)",
+          "natural": "Natural order (file2 before file10)",
+          "mtime": "Modified time",
+          "ctime": "Created time"
+        },
+        "schema": "Column alignment",
+        "schemaName": "By column name",
+        "schemaIndex": "By column order",
+        "sheetAll": "Merge every sheet in each file",
+        "header": "Header row",
+        "headerAuto": "Detect automatically",
+        "headerManual": "Use row number",
+        "systemFields": "System columns",
+        "systemSourceFile": "Source file (_来源文件)",
+        "systemLocalAgent": "Local-agent compatible names",
+        "systemNone": "None",
+        "allText": "Read every column as text",
+        "password": "Workbook password",
+        "passwordPlaceholder": "Required if the workbook is encrypted"
       }
     }
   },
@@ -4779,7 +4807,7 @@
     "emptyConfigDesc": "Import config.yaml to manage local groups and tables, and sync them when the cloud asks.",
     "ds": {
       "title": "Data sources",
-      "addGroup": "Add directory",
+      "addGroup": "Add group",
       "addTable": "Add table",
       "newGroup": "New group",
       "newTable": "New table",
@@ -4787,10 +4815,10 @@
       "browse": "Browse",
       "manual": "Manual",
       "emptyGroups": "No data source groups yet",
-      "emptyTables": "No tables",
+      "emptyTables": "No referenced tables yet. Use Add table to pick a raw or result table.",
       "selectHint": "Select a group or table to configure",
       "selectTitle": "Select a group or table to view its settings",
-      "selectDesc": "Choose a group or table on the left.",
+      "selectDesc": "Select a group on the left, then add a reference from a raw or result table.",
       "tableCount": "{{count}} tables",
       "groupName": "Group name",
       "groupNameLocked": "The group name can only be set when creating and cannot be changed later",
@@ -4842,7 +4870,29 @@
         "1": "By sheet name",
         "2": "Merge all sheets of all files"
       },
-      "headerRow": "Header row"
+      "headerRow": "Header row",
+      "pickerTitle": "Choose tables to reference",
+      "pickerSearch": "Search tables",
+      "pickerRaw": "Raw tables",
+      "pickerResult": "Result tables",
+      "pickerEmpty": "No tables to reference. Import a raw table or generate a result table first.",
+      "pickerAdd": "Add references",
+      "pickerSelected": "{count} selected",
+      "refKind": "Reference type",
+      "refKindRaw": "Raw table",
+      "refKindResult": "Result table",
+      "reportName": "Cloud table name",
+      "reportNameHint": "The cloud identifies this table by this name. Changing it may create a new table in the cloud.",
+      "displayName": "Current table name",
+      "refStatus": "Status",
+      "statusOk": "Ready",
+      "statusMissing": "Missing",
+      "statusUnmaterialized": "Not materialized",
+      "statusAbnormal": "Abnormal",
+      "statusPending": "Resolving",
+      "openSource": "Open source table",
+      "deleteRef": "Remove reference",
+      "deleteRefConfirm": "This only removes the cloud-connection reference. The raw or result table is not deleted."
     }
   }
 }

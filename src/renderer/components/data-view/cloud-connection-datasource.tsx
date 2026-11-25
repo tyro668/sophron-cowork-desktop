@@ -1,18 +1,15 @@
 /**
- * 数据 → 云连接的数据源管理，布局对齐「云空间」：左侧分组树 + 右侧配置表单。
- * 字段语义与 Java `LocalDatasourceBean` / `ExcelTableBean` 一致。
+ * 数据 → 云连接：左侧逻辑分组 + 右侧引用原始表 / 结果表。
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
   Eye,
-  FileSpreadsheet,
   Folder,
-  FolderOpen,
   FolderPlus,
   Loader2,
-  Pencil,
+  MoreVertical,
   Plus,
   PlugZap,
   RefreshCw,
@@ -21,20 +18,22 @@ import {
   Table2,
   Trash2,
   Unplug,
-  MoreVertical,
 } from 'lucide-react';
 
 import type {
   CloudConnectionActionResult,
   CloudConnectionGroup,
   CloudConnectionGroupInput,
+  CloudConnectionRefStatus,
   CloudConnectionState,
-  CloudConnectionTableConfig,
-  CloudConnectionTableInput,
   CloudConnectionTablePreview,
+  CloudConnectionTableRef,
+  DataRawTable,
   DataRawTablePreview,
+  DataResultTable,
 } from '../../../shared/contracts';
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
+import { dataClient } from '../../features/data/api/data-client';
 import {
   errorText,
   isLiveStatus,
@@ -45,87 +44,26 @@ import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { CloudConnectionPreviewDialog, toDataRawTablePreview } from './cloud-connection-preview';
 import { EmptyState, fixedTabGroupWidth } from './shared';
 import { Badge, cn } from '../ui';
-import { cellSelectClass, groupClass, titleCellClass } from './raw-source-wizard';
+import { groupClass, titleCellClass } from './raw-source-wizard';
 
 type Selection =
   | { kind: 'none' }
   | { kind: 'newGroup' }
   | { kind: 'group'; groupId: string }
   | { kind: 'newTable'; groupId: string }
-  | { kind: 'table'; groupId: string; tableName: string }
-  | { kind: 'entry'; groupId: string; entryId: string };
+  | { kind: 'table'; groupId: string; reportName: string };
 
 type Run = (key: string, action: () => Promise<CloudConnectionActionResult>) => Promise<boolean>;
-
-/** 与 Java `ExcelTableBean` 默认值一致。 */
-export const DEFAULT_TABLE_FORM: CloudConnectionTableInput = {
-  tableName: '',
-  strategy: 5,
-  fieldStrategy: 0,
-  readStrategy: 0,
-  appendStrategy: 0,
-  relativeFilePath: '',
-  headerRowNumber: 1,
-  sheetStrategy: 0,
-  sheetNumber: 1,
-  sheetName: 'Sheet1',
-  password: undefined,
-};
-
-const EMPTY_GROUP_FORM: CloudConnectionGroupInput = {
-  sourceName: '',
-  directoryPath: '',
-  strategy: 1,
-};
 
 const flushInputClass =
   'min-w-0 flex-1 outline-none hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-default disabled:opacity-60';
 
-function Row({ label, children, split }: { label: string; children: ReactNode; split?: boolean }) {
+function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ui-form-row">
       <span className="ui-form-label items-center">{label}</span>
-      <div className={cn('ui-form-value', split && '!flex-row items-stretch')}>{children}</div>
+      <div className="ui-form-value">{children}</div>
     </div>
-  );
-}
-
-function FlushSelect({
-  value,
-  options,
-  disabled,
-  onChange,
-  className,
-  testId,
-}: {
-  value: number | string;
-  options: Array<{ value: number | string; label: string }>;
-  disabled?: boolean;
-  onChange: (value: string) => void;
-  className?: string;
-  testId?: string;
-}) {
-  const label = options.find((o) => String(o.value) === String(value))?.label ?? String(value);
-  if (disabled) {
-    return (
-      <span className={cn('ui-flush-text min-w-0 flex-1', className)} data-testid={testId}>
-        {label}
-      </span>
-    );
-  }
-  return (
-    <select
-      value={String(value)}
-      data-testid={testId}
-      onChange={(e) => onChange(e.target.value)}
-      className={cn(cellSelectClass, 'min-w-0 flex-1', className)}
-    >
-      {options.map((o) => (
-        <option key={String(o.value)} value={String(o.value)}>
-          {o.label}
-        </option>
-      ))}
-    </select>
   );
 }
 
@@ -157,6 +95,21 @@ function HeaderAction({
   );
 }
 
+function statusLabel(t: (key: string) => string, status: CloudConnectionRefStatus) {
+  if (status === 'ok') return t('cloudConnection.ds.statusOk');
+  if (status === 'missing') return t('cloudConnection.ds.statusMissing');
+  if (status === 'unmaterialized') return t('cloudConnection.ds.statusUnmaterialized');
+  if (status === 'abnormal') return t('cloudConnection.ds.statusAbnormal');
+  return t('cloudConnection.ds.statusPending');
+}
+
+function statusTone(status: CloudConnectionRefStatus): 'success' | 'error' | 'warning' | 'default' {
+  if (status === 'ok') return 'success';
+  if (status === 'missing' || status === 'abnormal') return 'error';
+  if (status === 'unmaterialized') return 'warning';
+  return 'default';
+}
+
 export function DatasourceManager({
   state,
   busy,
@@ -186,16 +139,16 @@ export function DatasourceManager({
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
-  // 选中的分组 / 表被删除后回退
   useEffect(() => {
     if (selection.kind === 'none' || selection.kind === 'newGroup') return;
     const group = state.groups.find((g) => g.id === selection.groupId);
     if (!group) setSelection({ kind: 'none' });
     else if (
       selection.kind === 'table' &&
-      !group.tables.some((tb) => tb.tableName === selection.tableName)
-    )
+      !group.tables.some((tb) => tb.reportName === selection.reportName)
+    ) {
       setSelection({ kind: 'group', groupId: group.id });
+    }
   }, [state.groups, selection]);
 
   const confirm = async (message: string) =>
@@ -332,7 +285,6 @@ export function DatasourceManager({
               <div className="space-y-3">
                 {state.groups.map((group) => {
                   const open = !collapsed.has(group.id);
-                  const autoEntries = group.entries.filter((e) => !e.manual);
                   const groupActive = selection.kind === 'group' && selection.groupId === group.id;
                   return (
                     <section key={group.id} className="space-y-1">
@@ -362,10 +314,7 @@ export function DatasourceManager({
                           }}
                         />
                         <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
-                        <span
-                          className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary"
-                          title={group.directoryPath}
-                        >
+                        <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary">
                           {group.sourceName}
                         </span>
                         {group.entriesStatus === 'pending' ? (
@@ -382,11 +331,11 @@ export function DatasourceManager({
                             const active =
                               selection.kind === 'table' &&
                               selection.groupId === group.id &&
-                              selection.tableName === table.tableName;
+                              selection.reportName === table.reportName;
                             return (
                               <button
                                 type="button"
-                                key={`m-${table.tableName}`}
+                                key={`m-${table.reportName}`}
                                 className={cn(
                                   'flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors',
                                   active
@@ -397,52 +346,20 @@ export function DatasourceManager({
                                   setSelection({
                                     kind: 'table',
                                     groupId: group.id,
-                                    tableName: table.tableName,
+                                    reportName: table.reportName,
                                   })
                                 }
                               >
                                 <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
-                                <span className="min-w-0 flex-1 truncate">{table.tableName}</span>
-                                <Badge tone="accent">{t('cloudConnection.ds.manual')}</Badge>
+                                <span className="min-w-0 flex-1 truncate">{table.reportName}</span>
+                                <Badge tone={statusTone(table.status)}>
+                                  {table.kind === 'result'
+                                    ? t('cloudConnection.ds.refKindResult')
+                                    : t('cloudConnection.ds.refKindRaw')}
+                                </Badge>
                               </button>
                             );
                           })}
-                          {autoEntries.map((entry) => {
-                            const active =
-                              selection.kind === 'entry' &&
-                              selection.groupId === group.id &&
-                              selection.entryId === entry.id;
-                            return (
-                              <button
-                                type="button"
-                                key={`a-${entry.id}`}
-                                title={entry.id}
-                                className={cn(
-                                  'flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors',
-                                  active
-                                    ? 'bg-accent-muted text-accent-text ring-1 ring-inset ring-accent/15'
-                                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                                )}
-                                onClick={() =>
-                                  setSelection({
-                                    kind: 'entry',
-                                    groupId: group.id,
-                                    entryId: entry.id,
-                                  })
-                                }
-                              >
-                                <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
-                                <span className="min-w-0 flex-1 truncate">{entry.id}</span>
-                              </button>
-                            );
-                          })}
-                          {group.tables.length === 0 && autoEntries.length === 0 && (
-                            <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
-                              {group.entriesStatus === 'pending'
-                                ? t('cloudConnection.fileStatus.parsing')
-                                : t('cloudConnection.ds.emptyTables')}
-                            </div>
-                          )}
                         </div>
                       )}
                     </section>
@@ -452,119 +369,84 @@ export function DatasourceManager({
             )}
           </div>
         </aside>
-
         <section className="flex min-w-0 flex-1 flex-col">
-          {selection.kind === 'none' ? (
-            <>
-              <div className="flex h-12 flex-shrink-0 items-center border-b border-border-subtle px-3" />
-              <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto">
-                <EmptyState
-                  label={t('cloudConnection.ds.selectTitle')}
-                  description={t('cloudConnection.ds.selectDesc')}
-                />
-              </div>
-            </>
-          ) : (
-            <div className="flex min-h-0 flex-1 flex-col">
-              {selection.kind === 'newGroup' && (
-                <GroupForm
-                  key="new-group"
-                  busy={busy}
-                  onCancel={() =>
-                    setSelection(
-                      state.groups[0]
-                        ? { kind: 'group', groupId: state.groups[0].id }
-                        : { kind: 'none' }
-                    )
-                  }
-                  onSave={async (input) => {
-                    const before = new Set(state.groups.map((g) => g.id));
-                    let created: string | undefined;
-                    const ok = await run('group', async () => {
-                      const result = await cloudConnectionClient.addGroup(input);
-                      created = result.state.groups.find((g) => !before.has(g.id))?.id;
-                      return result;
-                    });
-                    if (ok && created) setSelection({ kind: 'group', groupId: created });
-                    return ok;
-                  }}
-                />
-              )}
-              {selection.kind === 'group' && selectedGroup && (
-                <GroupForm
-                  key={`group-${selectedGroup.id}`}
-                  group={selectedGroup}
-                  busy={busy}
-                  onAddTable={() => setSelection({ kind: 'newTable', groupId: selectedGroup.id })}
-                  onSave={(input) =>
-                    run('group', () => cloudConnectionClient.updateGroup(selectedGroup.id, input))
-                  }
-                  onDelete={async () => {
-                    if (await confirm(t('cloudConnection.ds.deleteGroupConfirm')))
-                      await run('group', () => cloudConnectionClient.deleteGroup(selectedGroup.id));
-                  }}
-                  onRemoveLegacy={async (filePath) => {
-                    if (await confirm(t('cloudConnection.removeConfirm')))
-                      await run('legacy', () =>
-                        cloudConnectionClient.removeLegacyFile(selectedGroup.id, filePath)
-                      );
-                  }}
-                />
-              )}
-              {(selection.kind === 'newTable' || selection.kind === 'table') && selectedGroup && (
-                <TableForm
-                  key={
-                    selection.kind === 'table'
-                      ? `table-${selectedGroup.id}-${selection.tableName}`
-                      : `new-table-${selectedGroup.id}`
-                  }
-                  group={selectedGroup}
-                  table={
-                    selection.kind === 'table'
-                      ? selectedGroup.tables.find((tb) => tb.tableName === selection.tableName)
-                      : undefined
-                  }
-                  busy={busy}
-                  previewing={previewing}
-                  onPreview={(original, input) =>
-                    void showPreview(() =>
-                      cloudConnectionClient.previewDraft(selectedGroup.id, original, input)
-                    )
-                  }
-                  onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
-                  onSave={async (original, input) => {
-                    const ok = await run('table', () =>
-                      cloudConnectionClient.saveTable(selectedGroup.id, original, input)
-                    );
-                    if (ok)
-                      setSelection({
-                        kind: 'table',
-                        groupId: selectedGroup.id,
-                        tableName: input.tableName.trim(),
-                      });
-                    return ok;
-                  }}
-                  onDelete={async (tableName) => {
-                    if (await confirm(t('cloudConnection.ds.deleteTableConfirm')))
-                      await run('table', () =>
-                        cloudConnectionClient.deleteTable(selectedGroup.id, tableName)
-                      );
-                  }}
-                />
-              )}
-              {selection.kind === 'entry' && selectedGroup && (
-                <EntryDetail
-                  group={selectedGroup}
-                  entryId={selection.entryId}
-                  previewing={previewing}
-                  onPreview={() =>
-                    void showPreview(() =>
-                      cloudConnectionClient.previewTable(selectedGroup.id, selection.entryId)
-                    )
-                  }
-                />
-              )}
+          {selection.kind === 'none' && (
+            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+              <EmptyState
+                label={t('cloudConnection.ds.selectTitle')}
+                description={t('cloudConnection.ds.selectDesc')}
+              />
             </div>
+          )}
+          {selection.kind === 'newGroup' && (
+            <GroupForm
+              busy={busy}
+              onSave={async (input) => {
+                const ok = await run('add-group', () => cloudConnectionClient.addGroup(input));
+                if (ok) setSelection({ kind: 'none' });
+                return ok;
+              }}
+              onCancel={() => setSelection({ kind: 'none' })}
+            />
+          )}
+          {selection.kind === 'group' && selectedGroup && (
+            <GroupForm
+              group={selectedGroup}
+              busy={busy}
+              onSave={async (input) =>
+                run('update-group', () =>
+                  cloudConnectionClient.updateGroup(selectedGroup.id, input)
+                )
+              }
+              onDelete={async () => {
+                if (!(await confirm(t('cloudConnection.ds.deleteGroupConfirm')))) return;
+                const ok = await run('delete-group', () =>
+                  cloudConnectionClient.deleteGroup(selectedGroup.id)
+                );
+                if (ok) setSelection({ kind: 'none' });
+              }}
+              onAddTable={() => setSelection({ kind: 'newTable', groupId: selectedGroup.id })}
+            />
+          )}
+          {selection.kind === 'newTable' && selectedGroup && (
+            <TablePicker
+              group={selectedGroup}
+              busy={busy}
+              onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
+              onSave={async (refs) => {
+                const ok = await run('add-refs', () =>
+                  cloudConnectionClient.addTableRefs(selectedGroup.id, refs)
+                );
+                if (ok) setSelection({ kind: 'group', groupId: selectedGroup.id });
+                return ok;
+              }}
+            />
+          )}
+          {selection.kind === 'table' && selectedGroup && (
+            <TableRefForm
+              group={selectedGroup}
+              table={selectedGroup.tables.find((tb) => tb.reportName === selection.reportName)}
+              busy={busy}
+              onPreview={() =>
+                void showPreview(() =>
+                  cloudConnectionClient.previewTable(selectedGroup.id, selection.reportName)
+                )
+              }
+              onSaveName={async (reportName) =>
+                run('rename-ref', () =>
+                  cloudConnectionClient.updateTableRef(selectedGroup.id, selection.reportName, {
+                    reportName,
+                  })
+                )
+              }
+              onDelete={async () => {
+                if (!(await confirm(t('cloudConnection.ds.deleteRefConfirm')))) return;
+                const ok = await run('delete-table', () =>
+                  cloudConnectionClient.deleteTable(selectedGroup.id, selection.reportName)
+                );
+                if (ok) setSelection({ kind: 'group', groupId: selectedGroup.id });
+              }}
+            />
           )}
         </section>
       </div>
@@ -605,7 +487,6 @@ function GroupForm({
   onCancel,
   onDelete,
   onAddTable,
-  onRemoveLegacy,
 }: {
   group?: CloudConnectionGroup;
   busy: string | null;
@@ -613,465 +494,319 @@ function GroupForm({
   onCancel?: () => void;
   onDelete?: () => void;
   onAddTable?: () => void;
-  onRemoveLegacy?: (filePath: string) => void;
 }) {
   const { t } = useTranslation();
-  const initial = useMemo<CloudConnectionGroupInput>(
-    () =>
-      group
-        ? {
-            sourceName: group.sourceName,
-            directoryPath: group.directoryPath,
-            strategy: group.strategy,
-          }
-        : EMPTY_GROUP_FORM,
-    [group]
-  );
-  const [form, setForm] = useState(initial);
-  const [editing, setEditing] = useState(!group);
-  useEffect(() => {
-    if (!editing) setForm(initial);
-  }, [initial, editing]);
-
-  const strategyOptions = [
-    { value: '0', label: t('cloudConnection.ds.groupStrategy.0') },
-    { value: '1', label: t('cloudConnection.ds.groupStrategy.1') },
-    { value: '2', label: t('cloudConnection.ds.groupStrategy.2') },
-  ];
+  const [sourceName, setSourceName] = useState(group?.sourceName ?? '');
+  const locked = Boolean(group);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-group-form">
       <PaneHeader title={group ? group.sourceName : t('cloudConnection.ds.newGroup')}>
-        {group && !editing && (
+        {group ? (
           <>
             <HeaderAction
               testId="cloud-connection-add-table"
-              disabled={!group.directoryPath}
+              disabled={!onAddTable}
               onClick={onAddTable}
             >
               <Plus className="h-3.5 w-3.5" />
               {t('cloudConnection.ds.addTable')}
             </HeaderAction>
-            <HeaderAction testId="cloud-connection-group-edit" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />
-              {t('cloudConnection.ds.edit')}
-            </HeaderAction>
-            <HeaderAction danger onClick={onDelete}>
+            <HeaderAction
+              danger
+              testId="cloud-connection-delete-group"
+              onClick={() => void onDelete?.()}
+            >
               <Trash2 className="h-3.5 w-3.5" />
+              {t('data.actions.delete')}
             </HeaderAction>
           </>
-        )}
-        {editing && (
+        ) : (
           <>
-            <HeaderAction
-              onClick={() => {
-                if (group) {
-                  setForm(initial);
-                  setEditing(false);
-                } else onCancel?.();
-              }}
-            >
+            <HeaderAction testId="cloud-connection-group-cancel" onClick={onCancel}>
               {t('common.cancel')}
             </HeaderAction>
             <HeaderAction
               testId="cloud-connection-group-save"
-              disabled={busy !== null}
-              loading={busy === 'group'}
-              onClick={() => {
-                void onSave(form).then((ok) => {
-                  if (ok) setEditing(false);
-                });
-              }}
+              loading={busy === 'add-group'}
+              onClick={() => void onSave({ sourceName })}
             >
               {t('common.save')}
             </HeaderAction>
           </>
         )}
       </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
         <section className={groupClass}>
+          <div className="ui-group-title">{t('cloudConnection.ds.groupName')}</div>
           <Row label={t('cloudConnection.ds.groupName')}>
             <input
-              value={form.sourceName}
-              disabled={!editing || Boolean(group)}
-              maxLength={100}
-              placeholder={t('cloudConnection.ds.groupNameLocked')}
-              title={group ? t('cloudConnection.ds.groupNameLocked') : undefined}
-              onChange={(e) => setForm({ ...form, sourceName: e.target.value })}
+              value={sourceName}
+              disabled={locked}
+              onChange={(e) => setSourceName(e.target.value)}
+              className={cn('ui-flush-text', flushInputClass)}
               data-testid="cloud-connection-group-name"
-              className={flushInputClass}
             />
           </Row>
-          <Row label={t('cloudConnection.ds.directory')} split>
-            <input
-              value={form.directoryPath}
-              disabled={!editing}
-              onChange={(e) => setForm({ ...form, directoryPath: e.target.value })}
-              className={`${flushInputClass} font-mono text-[12px]`}
-            />
-            {editing && (
-              <button
-                type="button"
-                aria-label={t('cloudConnection.ds.browse')}
-                title={t('cloudConnection.ds.browse')}
-                className="ui-accent-cell w-[88px] flex-shrink-0 border-l border-border-subtle"
-                onClick={async () => {
-                  const dir = await cloudConnectionClient.pickDirectory();
-                  if (dir) setForm((f) => ({ ...f, directoryPath: dir }));
-                }}
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-                {t('cloudConnection.ds.browse')}
-              </button>
-            )}
-          </Row>
-          <Row label={t('cloudConnection.ds.strategy')}>
-            <FlushSelect
-              value={form.strategy}
-              disabled={!editing}
-              options={strategyOptions}
-              onChange={(v) => setForm({ ...form, strategy: Number(v) })}
-            />
-          </Row>
+          {locked && (
+            <div
+              className="px-3 py-2 text-[12px] text-text-muted"
+              title={t('cloudConnection.ds.groupNameLocked')}
+            >
+              {t('cloudConnection.ds.groupNameLocked')}
+            </div>
+          )}
         </section>
-        {group && group.files.length > 0 && (
-          <section className={groupClass}>
-            <div className="ui-group-title">{t('cloudConnection.ds.legacyFiles')}</div>
-            {group.files.map((file) => (
-              <div key={file} className="ui-form-row">
-                <span className="ui-form-label items-center">
-                  {t('cloudConnection.ds.filePath')}
-                </span>
-                <div className="ui-form-value !flex-row items-stretch">
-                  <span className="ui-flush-text min-w-0 flex-1 truncate font-mono" title={file}>
-                    {file}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    className="inline-flex w-[88px] flex-shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-50"
-                    onClick={() => onRemoveLegacy?.(file)}
-                  >
-                    {t('cloudConnection.actions.remove')}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </section>
-        )}
-        {group?.entriesError && (
-          <div className="px-1 py-2 text-[12px] text-error">{group.entriesError}</div>
+        {group && group.tables.length === 0 && (
+          <p className="mt-3 px-1 text-[13px] text-text-muted">
+            {t('cloudConnection.ds.emptyTables')}
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-function toInput(table: CloudConnectionTableConfig | undefined): CloudConnectionTableInput {
-  if (!table) return { ...DEFAULT_TABLE_FORM };
-  const { hasPassword: _hasPassword, ...rest } = table;
-  return { ...rest, password: undefined };
+function TablePicker({
+  group,
+  busy,
+  onCancel,
+  onSave,
+}: {
+  group: CloudConnectionGroup;
+  busy: string | null;
+  onCancel: () => void;
+  onSave: (refs: Array<{ kind: 'raw' | 'result'; tableId: string }>) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState('');
+  const [rawTables, setRawTables] = useState<DataRawTable[]>([]);
+  const [resultTables, setResultTables] = useState<DataResultTable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    dataClient
+      .getDashboard({
+        includeSummary: false,
+        includePipelines: false,
+        includeRawTables: true,
+        includeResultTables: true,
+        rawTableLimit: 1000,
+        outputLimit: 1000,
+      })
+      .then((dashboard) => {
+        if (cancelled) return;
+        setRawTables(dashboard.rawTables ?? []);
+        setResultTables(dashboard.resultTables ?? []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorText(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const used = useMemo(
+    () => new Set(group.tables.map((table) => `${table.kind}:${table.tableId}`)),
+    [group.tables]
+  );
+  const match = (name: string) => name.toLowerCase().includes(query.trim().toLowerCase());
+  const raws = rawTables.filter((table) => !query.trim() || match(table.name));
+  const results = resultTables.filter((table) => !query.trim() || match(table.name));
+
+  const toggle = (key: string) => {
+    if (used.has(key)) return;
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-picker">
+      <PaneHeader title={t('cloudConnection.ds.pickerTitle')}>
+        <HeaderAction onClick={onCancel}>{t('common.cancel')}</HeaderAction>
+        <HeaderAction
+          testId="cloud-connection-save-table"
+          disabled={picked.size === 0}
+          loading={busy === 'add-refs'}
+          onClick={() =>
+            void onSave(
+              [...picked].map((key) => {
+                const [kind, tableId] = key.split(':') as ['raw' | 'result', string];
+                return { kind, tableId };
+              })
+            )
+          }
+        >
+          {t('cloudConnection.ds.pickerAdd')}
+        </HeaderAction>
+      </PaneHeader>
+      <div className="min-h-0 flex-1 overflow-auto p-3">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t('cloudConnection.ds.pickerSearch')}
+          className="mb-3 h-9 w-full border border-border-subtle bg-transparent px-2.5 text-[13px] outline-none"
+          data-testid="cloud-connection-picker-search"
+        />
+        {loading ? (
+          <div className="flex items-center gap-2 text-[13px] text-text-muted">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          </div>
+        ) : error ? (
+          <p className="text-[13px] text-error">{error}</p>
+        ) : raws.length === 0 && results.length === 0 ? (
+          <p className="text-[13px] text-text-muted">{t('cloudConnection.ds.pickerEmpty')}</p>
+        ) : (
+          <div className="space-y-4" data-testid="cloud-connection-picker-list">
+            <PickerSection
+              title={t('cloudConnection.ds.pickerRaw')}
+              items={raws.map((table) => ({
+                key: `raw:${table.id}`,
+                name: table.name,
+                disabled: used.has(`raw:${table.id}`),
+              }))}
+              picked={picked}
+              onToggle={toggle}
+            />
+            <PickerSection
+              title={t('cloudConnection.ds.pickerResult')}
+              items={results.map((table) => ({
+                key: `result:${table.id}`,
+                name: table.name,
+                disabled: used.has(`result:${table.id}`),
+              }))}
+              picked={picked}
+              onToggle={toggle}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function TableForm({
-  group,
+function PickerSection({
+  title,
+  items,
+  picked,
+  onToggle,
+}: {
+  title: string;
+  items: Array<{ key: string; name: string; disabled: boolean }>;
+  picked: Set<string>;
+  onToggle: (key: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section className={groupClass}>
+      <div className="ui-group-title">{title}</div>
+      {items.map((item) => (
+        <label
+          key={item.key}
+          className={cn(
+            'flex h-9 items-center gap-2 border-t border-border-subtle px-3 text-[13px]',
+            item.disabled
+              ? 'cursor-not-allowed opacity-50'
+              : 'cursor-pointer hover:bg-surface-hover'
+          )}
+        >
+          <input
+            type="checkbox"
+            checked={picked.has(item.key) || item.disabled}
+            disabled={item.disabled}
+            onChange={() => onToggle(item.key)}
+            className="accent-[var(--color-accent)]"
+          />
+          <span className="min-w-0 truncate">{item.name}</span>
+        </label>
+      ))}
+    </section>
+  );
+}
+
+function TableRefForm({
+  group: _group,
   table,
   busy,
-  previewing,
   onPreview,
-  onSave,
-  onCancel,
+  onSaveName,
   onDelete,
 }: {
   group: CloudConnectionGroup;
-  table?: CloudConnectionTableConfig;
+  table?: CloudConnectionTableRef;
   busy: string | null;
-  previewing: boolean;
-  onPreview: (originalName: string | null, input: CloudConnectionTableInput) => void;
-  onSave: (originalName: string | null, input: CloudConnectionTableInput) => Promise<boolean>;
-  onCancel: () => void;
-  onDelete: (tableName: string) => void;
+  onPreview: () => void;
+  onSaveName: (reportName: string) => Promise<boolean>;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
-  const initial = useMemo(() => toInput(table), [table]);
-  const [form, setForm] = useState<CloudConnectionTableInput>(initial);
-  const [editing, setEditing] = useState(!table);
+  const [reportName, setReportName] = useState(table?.reportName ?? '');
   useEffect(() => {
-    if (!editing) setForm(initial);
-  }, [initial, editing]);
-  const set = (patch: Partial<CloudConnectionTableInput>) => setForm((f) => ({ ...f, ...patch }));
-  const single = form.strategy === 0;
-  const disabled = !editing;
-  const original = table?.tableName ?? null;
-  const opt = (prefix: string, values: number[]) =>
-    values.map((v) => ({ value: v, label: t(`cloudConnection.ds.${prefix}.${v}`) }));
-  const appendOptions = opt('appendStrategy', [0, 1]);
+    setReportName(table?.reportName ?? '');
+  }, [table?.reportName]);
+  if (!table) return null;
+  const dirty = reportName.trim() !== table.reportName;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-form">
-      <PaneHeader title={table ? table.tableName : t('cloudConnection.ds.newTable')}>
-        {table && !editing && (
-          <>
-            <HeaderAction testId="cloud-connection-table-edit" onClick={() => setEditing(true)}>
-              <Pencil className="h-3.5 w-3.5" />
-              {t('cloudConnection.ds.edit')}
-            </HeaderAction>
-            <HeaderAction danger onClick={() => onDelete(table.tableName)}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </HeaderAction>
-          </>
-        )}
-        {editing && (
-          <>
-            <HeaderAction
-              onClick={() => {
-                if (table) {
-                  setForm(initial);
-                  setEditing(false);
-                } else onCancel();
-              }}
-            >
-              {t('common.cancel')}
-            </HeaderAction>
-            <HeaderAction
-              testId="cloud-connection-table-save"
-              disabled={busy !== null}
-              loading={busy === 'table'}
-              onClick={() => {
-                void onSave(original, form).then((ok) => {
-                  if (ok) setEditing(false);
-                });
-              }}
-            >
-              {t('common.save')}
-            </HeaderAction>
-          </>
-        )}
-      </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        <section className={groupClass}>
-          <Row label={t('cloudConnection.ds.tableName')} split>
-            <input
-              value={form.tableName}
-              disabled={disabled}
-              maxLength={200}
-              onChange={(e) => set({ tableName: e.target.value })}
-              data-testid="cloud-connection-table-name"
-              className={flushInputClass}
-            />
-            <button
-              type="button"
-              aria-label={t('cloudConnection.actions.preview')}
-              title={t('cloudConnection.actions.preview')}
-              disabled={previewing || !form.relativeFilePath}
-              className="ui-accent-cell w-[88px] flex-shrink-0 border-l border-border-subtle disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => onPreview(original, form)}
-            >
-              {previewing ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Eye className="h-3.5 w-3.5" />
-              )}
-              {t('cloudConnection.actions.preview')}
-            </button>
-          </Row>
-          <Row label={t('cloudConnection.ds.sourceStrategy')}>
-            <FlushSelect
-              value={single ? 'single' : 'merge'}
-              disabled={disabled}
-              options={[
-                { value: 'merge', label: t('cloudConnection.ds.source.merge') },
-                { value: 'single', label: t('cloudConnection.ds.source.single') },
-              ]}
-              onChange={(v) =>
-                set({
-                  strategy: v === 'single' ? 0 : 5,
-                  relativeFilePath: '',
-                })
-              }
-            />
-          </Row>
-          {!single && (
-            <Row label={t('cloudConnection.ds.mergeStrategy')} split>
-              <FlushSelect
-                value={form.appendStrategy}
-                disabled={disabled}
-                options={appendOptions}
-                onChange={(v) => set({ appendStrategy: Number(v) })}
-              />
-              <FlushSelect
-                value={form.strategy}
-                disabled={disabled}
-                options={opt('sortStrategy', [5, 1, 2, 3, 4])}
-                onChange={(v) => set({ strategy: Number(v) })}
-                testId="cloud-connection-sort-strategy"
-                className="border-l border-border-subtle"
-              />
-              <FlushSelect
-                value={form.readStrategy}
-                disabled={disabled}
-                options={opt('readStrategy', [0, 1])}
-                onChange={(v) => set({ readStrategy: Number(v) })}
-                className="border-l border-border-subtle"
-              />
-            </Row>
-          )}
-          <Row label={t('cloudConnection.ds.fieldStrategy')}>
-            <FlushSelect
-              value={form.fieldStrategy}
-              disabled={disabled}
-              options={opt('fieldType', [0, 1])}
-              onChange={(v) => set({ fieldStrategy: Number(v) })}
-            />
-          </Row>
-          <Row label={t('cloudConnection.ds.filePath')} split>
-            <input
-              value={form.relativeFilePath}
-              disabled={disabled}
-              placeholder={single ? '/data.xlsx' : '/'}
-              onChange={(e) => set({ relativeFilePath: e.target.value })}
-              className={`${flushInputClass} font-mono text-[12px]`}
-              title={group.directoryPath}
-            />
-            <button
-              type="button"
-              disabled={disabled}
-              aria-label={t('cloudConnection.ds.browse')}
-              title={t('cloudConnection.ds.browse')}
-              className="ui-accent-cell w-[88px] flex-shrink-0 border-l border-border-subtle disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={async () => {
-                try {
-                  const rel = await cloudConnectionClient.pickTablePath(
-                    group.id,
-                    single ? 'file' : 'directory'
-                  );
-                  if (rel) set({ relativeFilePath: rel });
-                } catch (error) {
-                  showToast('error', errorText(error));
-                }
-              }}
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              {t('cloudConnection.ds.browse')}
-            </button>
-          </Row>
-          <Row label={t('cloudConnection.ds.password')} split>
-            <input
-              type="password"
-              autoComplete="new-password"
-              value={form.password ?? ''}
-              disabled={disabled}
-              placeholder={
-                table?.hasPassword && form.password === undefined
-                  ? t('cloudConnection.ds.passwordSaved')
-                  : t('cloudConnection.ds.passwordPlaceholder')
-              }
-              onChange={(e) => set({ password: e.target.value })}
-              className={flushInputClass}
-            />
-            {editing && table?.hasPassword && form.password !== null && (
-              <button
-                type="button"
-                className="ui-accent-cell w-[88px] flex-shrink-0 border-l border-border-subtle"
-                onClick={() => set({ password: null })}
-              >
-                {t('cloudConnection.ds.clearPassword')}
-              </button>
-            )}
-          </Row>
-          <Row label={t('cloudConnection.ds.sheetStrategy')} split>
-            <FlushSelect
-              value={form.sheetStrategy}
-              disabled={disabled}
-              options={opt('sheet', [0, 1, 2])}
-              onChange={(v) => set({ sheetStrategy: Number(v) })}
-            />
-            {form.sheetStrategy === 0 && (
-              <div className="flex w-[88px] flex-shrink-0 items-stretch border-l border-border-subtle">
-                <input
-                  type="number"
-                  min={1}
-                  value={form.sheetNumber}
-                  disabled={disabled}
-                  onChange={(e) => set({ sheetNumber: Number(e.target.value) || 1 })}
-                  className={flushInputClass}
-                />
-              </div>
-            )}
-            {form.sheetStrategy === 1 && (
-              <div className="flex w-[140px] flex-shrink-0 items-stretch border-l border-border-subtle">
-                <input
-                  value={form.sheetName}
-                  disabled={disabled}
-                  onChange={(e) => set({ sheetName: e.target.value })}
-                  className={flushInputClass}
-                />
-              </div>
-            )}
-            {form.sheetStrategy === 2 && single && (
-              <FlushSelect
-                value={form.appendStrategy}
-                disabled={disabled}
-                options={appendOptions}
-                onChange={(v) => set({ appendStrategy: Number(v) })}
-                className="border-l border-border-subtle"
-              />
-            )}
-          </Row>
-          <Row label={t('cloudConnection.ds.headerRow')}>
-            <input
-              type="number"
-              min={1}
-              value={form.headerRowNumber}
-              disabled={disabled}
-              onChange={(e) => set({ headerRowNumber: Math.max(1, Number(e.target.value) || 1) })}
-              className={flushInputClass}
-            />
-          </Row>
-        </section>
-      </div>
-    </div>
-  );
-}
-
-function EntryDetail({
-  group,
-  entryId,
-  previewing,
-  onPreview,
-}: {
-  group: CloudConnectionGroup;
-  entryId: string;
-  previewing: boolean;
-  onPreview: () => void;
-}) {
-  const { t } = useTranslation();
-  const entry = group.entries.find((e) => e.id === entryId);
-  return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PaneHeader title={entryId}>
-        <HeaderAction disabled={previewing} onClick={onPreview}>
-          {previewing ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Eye className="h-3.5 w-3.5" />
-          )}
+      <PaneHeader title={table.reportName}>
+        <HeaderAction testId="cloud-connection-preview-table" onClick={onPreview}>
+          <Eye className="h-3.5 w-3.5" />
           {t('cloudConnection.actions.preview')}
         </HeaderAction>
+        {dirty && (
+          <HeaderAction
+            testId="cloud-connection-save-table"
+            loading={busy === 'rename-ref'}
+            onClick={() => void onSaveName(reportName)}
+          >
+            {t('common.save')}
+          </HeaderAction>
+        )}
+        <HeaderAction danger testId="cloud-connection-delete-table" onClick={() => void onDelete()}>
+          <Trash2 className="h-3.5 w-3.5" />
+          {t('cloudConnection.ds.deleteRef')}
+        </HeaderAction>
       </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-auto p-3">
         <section className={groupClass}>
-          <Row label={t('cloudConnection.ds.groupName')}>
-            <span className="ui-flush-text truncate">{group.sourceName}</span>
-          </Row>
-          <Row label={t('cloudConnection.ds.filePath')}>
-            <span className="ui-flush-text truncate font-mono text-[12px]">
-              {entry?.fileName ?? entryId}
+          <div className="ui-group-title">{table.reportName}</div>
+          <Row label={t('cloudConnection.ds.refKind')}>
+            <span className="ui-flush-text">
+              {table.kind === 'result'
+                ? t('cloudConnection.ds.refKindResult')
+                : t('cloudConnection.ds.refKindRaw')}
             </span>
           </Row>
-          <Row label="Sheet">
-            <span className="ui-flush-text">{entry?.sheetName ?? '-'}</span>
+          <Row label={t('cloudConnection.ds.displayName')}>
+            <span className="ui-flush-text">{table.displayName || '—'}</span>
           </Row>
+          <Row label={t('cloudConnection.ds.refStatus')}>
+            <Badge tone={statusTone(table.status)}>{statusLabel(t, table.status)}</Badge>
+          </Row>
+          <Row label={t('cloudConnection.ds.reportName')}>
+            <input
+              value={reportName}
+              onChange={(e) => setReportName(e.target.value)}
+              className={cn('ui-flush-text', flushInputClass)}
+              data-testid="cloud-connection-report-name"
+            />
+          </Row>
+          <div className="px-3 py-2 text-[12px] text-text-muted">
+            {t('cloudConnection.ds.reportNameHint')}
+          </div>
         </section>
       </div>
     </div>

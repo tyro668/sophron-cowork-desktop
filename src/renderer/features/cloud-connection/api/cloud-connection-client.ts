@@ -4,7 +4,7 @@
  */
 import type {
   CloudConnectionGroupInput,
-  CloudConnectionTableInput,
+  CloudConnectionTableRefInput,
 } from '../../../../shared/contracts';
 import type { ElectronApi } from '../../../../shared/contracts/electron-api';
 
@@ -29,18 +29,13 @@ export const cloudConnectionClient = {
   addGroup: (input: CloudConnectionGroupInput) => api().addGroup(input),
   updateGroup: (id: string, input: CloudConnectionGroupInput) => api().updateGroup(id, input),
   deleteGroup: (id: string) => api().deleteGroup(id),
-  saveTable: (groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
-    api().saveTable(groupId, originalName, input),
-  deleteTable: (groupId: string, tableName: string) => api().deleteTable(groupId, tableName),
-  removeLegacyFile: (groupId: string, filePath: string) =>
-    api().removeLegacyFile(groupId, filePath),
+  addTableRefs: (groupId: string, refs: CloudConnectionTableRefInput[]) =>
+    api().addTableRefs(groupId, refs),
+  updateTableRef: (groupId: string, reportName: string, input: { reportName: string }) =>
+    api().updateTableRef(groupId, reportName, input),
+  deleteTable: (groupId: string, reportName: string) => api().deleteTable(groupId, reportName),
   refreshTables: (groupId?: string) => api().refreshTables(groupId),
-  previewTable: (groupId: string, tableId: string) => api().previewTable(groupId, tableId),
-  previewDraft: (groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
-    api().previewDraft(groupId, originalName, input),
-  pickDirectory: () => api().pickDirectory(),
-  pickTablePath: (groupId: string, kind: 'file' | 'directory') =>
-    api().pickTablePath(groupId, kind),
+  previewTable: (groupId: string, reportName: string) => api().previewTable(groupId, reportName),
   onState: (callback: Parameters<CloudConnectionApi['onState']>[0]) =>
     window.electronAPI?.cloudConnection?.onState(callback) ?? (() => undefined),
 };

@@ -168,7 +168,7 @@ import type {
   CloudConnectionActionResult,
   CloudConnectionGroupInput,
   CloudConnectionState,
-  CloudConnectionTableInput,
+  CloudConnectionTableRefInput,
   CloudConnectionTablePreview,
 } from './cloud-connection';
 
@@ -681,22 +681,18 @@ export interface ElectronApi {
       input: CloudConnectionGroupInput
     ) => Promise<CloudConnectionActionResult>;
     deleteGroup: (id: string) => Promise<CloudConnectionActionResult>;
-    saveTable: (
+    addTableRefs: (
       groupId: string,
-      originalName: string | null,
-      input: CloudConnectionTableInput
+      refs: CloudConnectionTableRefInput[]
     ) => Promise<CloudConnectionActionResult>;
-    deleteTable: (groupId: string, tableName: string) => Promise<CloudConnectionActionResult>;
-    removeLegacyFile: (groupId: string, filePath: string) => Promise<CloudConnectionActionResult>;
-    refreshTables: (groupId?: string) => Promise<CloudConnectionActionResult>;
-    previewTable: (groupId: string, tableId: string) => Promise<CloudConnectionTablePreview>;
-    previewDraft: (
+    updateTableRef: (
       groupId: string,
-      originalName: string | null,
-      input: CloudConnectionTableInput
-    ) => Promise<CloudConnectionTablePreview>;
-    pickDirectory: () => Promise<string | null>;
-    pickTablePath: (groupId: string, kind: 'file' | 'directory') => Promise<string | null>;
+      reportName: string,
+      input: { reportName: string }
+    ) => Promise<CloudConnectionActionResult>;
+    deleteTable: (groupId: string, reportName: string) => Promise<CloudConnectionActionResult>;
+    refreshTables: (groupId?: string) => Promise<CloudConnectionActionResult>;
+    previewTable: (groupId: string, reportName: string) => Promise<CloudConnectionTablePreview>;
     onState: (callback: (state: CloudConnectionState) => void) => () => void;
   };
 }

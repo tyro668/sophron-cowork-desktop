@@ -23,6 +23,7 @@ import type {
 import { appContext } from '../../app/context';
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
+import { sanitizeRawTableForIpc } from '../store/input-source';
 
 /** Running normalizer generation / fix agents by progressId, for 取消. */
 
@@ -34,7 +35,8 @@ export function registerRawTablesIpc({
 }: DataIpcContext): void {
   handleIpc('data.importRawTable', async (_event, payload: DataImportRawTableInput) => {
     try {
-      return await requireDataPipelineStore().importRawTable(payload);
+      const table = await requireDataPipelineStore().importRawTable(payload);
+      return sanitizeRawTableForIpc(table);
     } catch (error) {
       logError('[Data] Error importing rawTable:', error);
       throw error;
@@ -63,7 +65,13 @@ export function registerRawTablesIpc({
   sourceChannel(
     'data.createRawSource',
     'creating raw source',
-    (payload: DataCreateRawSourceInput) => requireDataPipelineStore().createRawSource(payload)
+    (payload: DataCreateRawSourceInput) =>
+      requireDataPipelineStore()
+        .createRawSource(payload)
+        .then((result) => ({
+          ...result,
+          tables: result.tables.map((table) => sanitizeRawTableForIpc(table)),
+        }))
   );
   sourceChannel(
     'data.resolveRawSourceRenames',
@@ -86,7 +94,13 @@ export function registerRawTablesIpc({
   sourceChannel(
     'data.rebuildRawSource',
     'rebuilding raw source',
-    (payload: DataRebuildRawSourceInput) => requireDataPipelineStore().rebuildRawSource(payload)
+    (payload: DataRebuildRawSourceInput) =>
+      requireDataPipelineStore()
+        .rebuildRawSource(payload)
+        .then((result) => ({
+          ...result,
+          tables: result.tables.map((table) => sanitizeRawTableForIpc(table)),
+        }))
   );
   sourceChannel('data.deleteRawSource', 'deleting raw source', (id: string) =>
     requireDataPipelineStore().deleteRawSource(id)
@@ -94,7 +108,8 @@ export function registerRawTablesIpc({
 
   handleIpc('data.getRawTable', async (_event, id: string) => {
     try {
-      return await requireDataPipelineStore().getRawTableRecord(id);
+      const table = await requireDataPipelineStore().getRawTableRecord(id);
+      return table ? sanitizeRawTableForIpc(table) : table;
     } catch (error) {
       logError('[Data] Error getting input table:', error);
       throw error;
@@ -103,7 +118,8 @@ export function registerRawTablesIpc({
 
   handleIpc('data.updateRawTable', async (_event, payload: DataUpdateRawTableInput) => {
     try {
-      return await requireDataPipelineStore().updateRawTable(payload);
+      const table = await requireDataPipelineStore().updateRawTable(payload);
+      return sanitizeRawTableForIpc(table);
     } catch (error) {
       logError('[Data] Error updating rawTable:', error);
       throw error;

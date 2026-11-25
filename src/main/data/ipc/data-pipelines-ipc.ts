@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/contracts';
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
+import { sanitizeRawTableForIpc } from '../store/input-source';
 
 export function registerDataPipelinesIpc({
   requireDataPipelineStore,
@@ -17,7 +18,11 @@ export function registerDataPipelinesIpc({
 }: DataIpcContext): void {
   handleIpc('data.getDashboard', async (_event, payload?: DataDashboardQuery) => {
     try {
-      return await requireDataPipelineStore().getDashboard(payload ?? {});
+      const dashboard = await requireDataPipelineStore().getDashboard(payload ?? {});
+      return {
+        ...dashboard,
+        rawTables: dashboard.rawTables.map((table) => sanitizeRawTableForIpc(table)),
+      };
     } catch (error) {
       logError('[Data] Error getting dashboard:', error);
       throw error;

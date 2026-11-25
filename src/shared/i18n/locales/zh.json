@@ -2372,6 +2372,34 @@
       },
       "modeChange": {
         "hint": "组织方式将从「{{from}}」改为「{{to}}」。保存后会删除现有原始表并按新方式重建，取消则保持不变。"
+      },
+      "importOptions": {
+        "title": "读取与合并选项",
+        "recursive": "包含子目录",
+        "recursiveOn": "递归读取",
+        "recursiveOff": "仅当前目录",
+        "sortBy": "文件排序",
+        "sort": {
+          "locale": "名称（本地规则）",
+          "name": "名称（Java 字典序）",
+          "natural": "自然序（file2 在 file10 前）",
+          "mtime": "修改时间",
+          "ctime": "创建时间"
+        },
+        "schema": "合并对齐",
+        "schemaName": "按字段名称",
+        "schemaIndex": "按字段顺序",
+        "sheetAll": "合并每个文件的全部 Sheet",
+        "header": "表头行",
+        "headerAuto": "自动识别",
+        "headerManual": "指定行号",
+        "systemFields": "系统字段",
+        "systemSourceFile": "来源文件（_来源文件）",
+        "systemLocalAgent": "本地宝兼容列名",
+        "systemNone": "不添加",
+        "allText": "全部按文本读取",
+        "password": "工作簿密码",
+        "passwordPlaceholder": "如文件已加密请填写"
       }
     }
   },
@@ -4779,7 +4807,7 @@
     "emptyConfigDesc": "导入 config.yaml 后，即可管理本地分组和表，并根据云端请求同步数据。",
     "ds": {
       "title": "数据源",
-      "addGroup": "添加目录",
+      "addGroup": "添加分组",
       "addTable": "添加表",
       "newGroup": "新建分组",
       "newTable": "新建表",
@@ -4787,10 +4815,10 @@
       "browse": "浏览",
       "manual": "手动",
       "emptyGroups": "还没有数据源分组",
-      "emptyTables": "暂无表",
+      "emptyTables": "还没有引用表。点击「添加表」从原始表或结果表中选择。",
       "selectHint": "选择左侧分组或表进行配置",
       "selectTitle": "选择分组或表查看配置",
-      "selectDesc": "在左侧选择分组或表。",
+      "selectDesc": "在左侧选择一个分组，然后从原始表或结果表中添加引用。",
       "tableCount": "{{count}} 个表",
       "groupName": "分组名",
       "groupNameLocked": "分组名称仅创建时可配置，保存后无法修改",
@@ -4842,7 +4870,29 @@
         "1": "按Sheet名字",
         "2": "所有文件的所有Sheet合并为一张表"
       },
-      "headerRow": "表头行序号"
+      "headerRow": "表头行序号",
+      "pickerTitle": "选择要引用的表",
+      "pickerSearch": "搜索表名",
+      "pickerRaw": "原始表",
+      "pickerResult": "结果表",
+      "pickerEmpty": "没有可引用的表。请先在「数据」中导入原始表或生成结果表。",
+      "pickerAdd": "添加引用",
+      "pickerSelected": "已选 {count} 张",
+      "refKind": "引用类型",
+      "refKindRaw": "原始表",
+      "refKindResult": "结果表",
+      "reportName": "上报表名",
+      "reportNameHint": "云端用此名称识别该表。修改后云端可能视为一张新表。",
+      "displayName": "当前表名",
+      "refStatus": "状态",
+      "statusOk": "正常",
+      "statusMissing": "引用已失效",
+      "statusUnmaterialized": "尚未物化",
+      "statusAbnormal": "数据异常",
+      "statusPending": "解析中",
+      "openSource": "查看原表",
+      "deleteRef": "移除引用",
+      "deleteRefConfirm": "只从云连接中移除引用，不会删除原始表或结果表。"
     }
   }
 }
