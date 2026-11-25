@@ -6,11 +6,7 @@ import Store from 'electron-store';
 
 import { log, logWarn } from '../../utils/logger';
 import { createEncryptedStoreWithKeyRotation } from '../../utils/store-encryption';
-import {
-  DEFAULT_SOURCE_NAME,
-  type CloudConnectionPersisted,
-  type CloudConnectionStorePort,
-} from './service';
+import { type CloudConnectionPersisted, type CloudConnectionStorePort } from './service';
 
 type Record_ = CloudConnectionPersisted & Record<string, unknown>;
 
@@ -27,9 +23,10 @@ export class ElectronCloudConnectionStore implements CloudConnectionStorePort {
         defaults: {
           config: null,
           autoConnect: false,
-          sourceName: DEFAULT_SOURCE_NAME,
-          files: [],
+          groups: [],
           versions: {},
+          // 缺省 0：老用户（v1 无此字段）与新安装都会先走一次迁移，迁移后写入当前版本
+          schemaVersion: 0,
         },
       },
       logPrefix: '[CloudConnectionStore]',
@@ -42,9 +39,12 @@ export class ElectronCloudConnectionStore implements CloudConnectionStorePort {
     return {
       config: this.store.get('config') ?? null,
       autoConnect: this.store.get('autoConnect') ?? false,
-      sourceName: this.store.get('sourceName') || DEFAULT_SOURCE_NAME,
-      files: this.store.get('files') ?? [],
+      groups: this.store.get('groups') ?? [],
       versions: this.store.get('versions') ?? {},
+      schemaVersion: this.store.get('schemaVersion') ?? 0,
+      // v1 字段只读不删，便于回退
+      sourceName: this.store.get('sourceName') as string | undefined,
+      files: this.store.get('files') as string[] | undefined,
     };
   }
 

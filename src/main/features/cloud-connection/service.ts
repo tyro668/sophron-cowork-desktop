@@ -2,30 +2,46 @@
  * 云连接服务：把 `src/main/local-agent`（本地宝云端通道 + Excel 数据源）接到应用里。
  *
  * - 配置（config.yaml 解析结果，含 token）由 store 加密保存，token 不进入渲染进程、不写日志；
- * - 用户添加的本地 Excel / CSV 文件组成一个本地数据源（sourceName 可改），连接成功后按
- *   Java 本地宝的协议上报表、响应云端的结构 / 行数 / 预览 / 同步请求；
+ * - 数据源按 Java 本地宝的「分组」组织：每个分组 = 一个 `LocalDatasourceBean`（分组名 =
+ *   sourceName、目录、自动读表策略、手动表），连接成功后按 Java 协议上报表、响应云端请求；
+ * - 分组 / 手动表变化时按 Java `ConfigStorage.compareAndInit` 的规则上报：
+ *   新增分组 → source/single `addSource`；删除 → `sourceDelete`（空表列表）；目录或策略变化 →
+ *   `updateSingle`；只改手动表时仅当表 id 集合变化才 `updateSingle`（`LocalClientProxy.updateTables`）；
  * - 状态变化通过 `notify` 推给渲染进程。
  *
  * 本文件不依赖 electron，便于单测；electron 相关的存储与对话框在 store.ts / ipc.ts。
  */
+import { randomUUID } from 'node:crypto';
+import { stat } from 'node:fs/promises';
 import * as path from 'node:path';
 
 import type {
   CloudConnectionActivity,
   CloudConnectionConfigSummary,
-  CloudConnectionFile,
-  CloudConnectionFilePreview,
+  CloudConnectionGroup,
+  CloudConnectionGroupInput,
   CloudConnectionState,
   CloudConnectionStatus,
+  CloudConnectionTableConfig,
+  CloudConnectionTableEntry,
+  CloudConnectionTableInput,
+  CloudConnectionTablePreview,
 } from '../../../shared/contracts';
 import { parseLocalAgentConfig } from '../../local-agent/config';
 import { DEFAULT_AGENT_VERSION } from '../../local-agent/constants';
+import {
+  LocalReadStrategy,
+  normalizeExcelTable,
+  validateExcelTable,
+  validateGroupName,
+  type ExcelTableConfig,
+  type LocalGroupConfig,
+} from '../../local-agent/excel/local-config';
 import {
   LocalExcelSource,
   type ExcelVersionStore,
   type UnchangedFile,
 } from '../../local-agent/excel/local-excel-source';
-import { isSupportedTableFile } from '../../local-agent/excel/table-reader';
 import {
   EXCEL_SYNC_STREAM_OPTIONS,
   ExcelSourceHandlers,
@@ -36,6 +52,7 @@ import type { LocalAgentLogger } from '../../local-agent/logger';
 import type { LocalAgentConfig } from '../../local-agent/types';
 
 export const DEFAULT_SOURCE_NAME = '九思助理本地文件';
+export const CLOUD_CONNECTION_SCHEMA_VERSION = 2;
 const MAX_ACTIVITIES = 50;
 
 export interface StoredCloudConfig {
@@ -44,12 +61,20 @@ export interface StoredCloudConfig {
   importedAt: number;
 }
 
+export interface StoredGroup extends LocalGroupConfig {
+  id: string;
+}
+
 export interface CloudConnectionPersisted {
   config: StoredCloudConfig | null;
   autoConnect: boolean;
-  sourceName: string;
-  files: string[];
-  versions: Record<string, UnchangedFile[]>;
+  groups: StoredGroup[];
+  /** sourceName → tableId → 上次同步时的文件版本。 */
+  versions: Record<string, Record<string, UnchangedFile[]>>;
+  schemaVersion: number;
+  /** v1（逐个添加文件）字段：迁移后不再使用，保留以便回退。 */
+  sourceName?: string;
+  files?: string[];
 }
 
 export interface CloudConnectionStorePort {
@@ -59,15 +84,15 @@ export interface CloudConnectionStorePort {
 
 export class MemoryCloudConnectionStore implements CloudConnectionStorePort {
   private data: CloudConnectionPersisted;
-  constructor(initial?: Partial<CloudConnectionPersisted>) {
+  constructor(initial?: Partial<CloudConnectionPersisted> & Record<string, unknown>) {
     this.data = {
       config: null,
       autoConnect: false,
-      sourceName: DEFAULT_SOURCE_NAME,
-      files: [],
+      groups: [],
       versions: {},
+      schemaVersion: initial ? (initial.schemaVersion ?? 0) : CLOUD_CONNECTION_SCHEMA_VERSION,
       ...initial,
-    };
+    } as CloudConnectionPersisted;
   }
   read(): CloudConnectionPersisted {
     return this.data;
@@ -75,6 +100,35 @@ export class MemoryCloudConnectionStore implements CloudConnectionStorePort {
   write(patch: Partial<CloudConnectionPersisted>): void {
     this.data = { ...this.data, ...patch };
   }
+}
+
+/**
+ * v1 → v2：早期「逐个添加文件 + 一个 sourceName」变成一个分组（无目录、不自动读表，
+ * 文件保留在 `files` 里按原规则生成表），版本记录挂到该分组名下。表 id、上报内容不变。
+ */
+export function migrateCloudConnectionData(
+  data: CloudConnectionPersisted
+): Partial<CloudConnectionPersisted> | null {
+  if (data.schemaVersion >= CLOUD_CONNECTION_SCHEMA_VERSION) return null;
+  const legacyFiles = Array.isArray(data.files) ? data.files : [];
+  const sourceName = (data.sourceName || DEFAULT_SOURCE_NAME).trim() || DEFAULT_SOURCE_NAME;
+  const groups: StoredGroup[] = Array.isArray(data.groups) ? [...data.groups] : [];
+  if (legacyFiles.length > 0 && !groups.some((g) => g.sourceName === sourceName)) {
+    groups.push({
+      id: randomUUID(),
+      sourceName,
+      directoryPath: '',
+      strategy: LocalReadStrategy.NONE,
+      tables: [],
+      files: [...legacyFiles],
+    });
+  }
+  const rawVersions = (data.versions ?? {}) as Record<string, unknown>;
+  const isFlat = Object.values(rawVersions).some((v) => Array.isArray(v));
+  const versions = isFlat
+    ? { [sourceName]: rawVersions as Record<string, UnchangedFile[]> }
+    : (rawVersions as Record<string, Record<string, UnchangedFile[]>>);
+  return { groups, versions, schemaVersion: CLOUD_CONNECTION_SCHEMA_VERSION };
 }
 
 export type AgentFactory = (config: LocalAgentConfig, options: LocalAgentOptions) => LocalAgent;
@@ -99,18 +153,48 @@ function messageOf(error: unknown): string {
 }
 
 class StoreVersionAdapter implements ExcelVersionStore {
-  constructor(private readonly store: CloudConnectionStorePort) {}
+  constructor(
+    private readonly store: CloudConnectionStorePort,
+    private readonly sourceName: () => string
+  ) {}
+  private all() {
+    return this.store.read().versions ?? {};
+  }
   get(id: string) {
-    return this.store.read().versions[id];
+    return this.all()[this.sourceName()]?.[id];
   }
   put(id: string, files: UnchangedFile[]) {
-    this.store.write({ versions: { ...this.store.read().versions, [id]: files } });
+    const all = this.all();
+    const name = this.sourceName();
+    this.store.write({ versions: { ...all, [name]: { ...(all[name] ?? {}), [id]: files } } });
   }
   delete(id: string) {
-    const next = { ...this.store.read().versions };
+    const all = this.all();
+    const name = this.sourceName();
+    if (!all[name]?.[id]) return;
+    const next = { ...all[name] };
     delete next[id];
-    this.store.write({ versions: next });
+    this.store.write({ versions: { ...all, [name]: next } });
   }
+}
+
+const GROUP_ERRORS: Record<string, string> = {
+  required: '分组名不能为空',
+  ampersand: '分组名称不能出现&',
+  duplicate: '分组名称请勿重复',
+};
+
+const TABLE_ERRORS: Record<string, string> = {
+  nameRequired: '请输入表名',
+  nameDuplicate: '表名请勿重复',
+  pathRequired: '请选择文件路径',
+};
+
+interface GroupRuntime {
+  source: LocalExcelSource;
+  entries: CloudConnectionTableEntry[];
+  status: 'pending' | 'ready' | 'error';
+  error?: string;
 }
 
 export class CloudConnectionService {
@@ -121,21 +205,54 @@ export class CloudConnectionService {
   private remoteEnv: Record<string, unknown> | null = null;
   private lastError: string | null = null;
   private activities: CloudConnectionActivity[] = [];
-  private readonly fileStates = new Map<string, CloudConnectionFile>();
-  private readonly source: LocalExcelSource;
+  private readonly runtimes = new Map<string, GroupRuntime>();
 
   constructor(private readonly deps: CloudConnectionServiceDeps) {
-    const persisted = deps.store.read();
-    this.source = new LocalExcelSource({
-      sourceName: persisted.sourceName || DEFAULT_SOURCE_NAME,
-      files: persisted.files,
-      versionStore: new StoreVersionAdapter(deps.store),
-    });
-    for (const file of persisted.files) this.fileStates.set(file, this.pendingFile(file));
+    const migration = migrateCloudConnectionData(deps.store.read());
+    if (migration) {
+      deps.store.write(migration);
+      if ((migration.groups ?? []).length > 0) {
+        deps.logger.info(
+          `cloud connection data migrated to groups: ${(migration.groups ?? []).map((g) => g.sourceName).join(',')}`
+        );
+      }
+    }
+    for (const group of this.groups()) this.ensureRuntime(group);
   }
 
-  private pendingFile(filePath: string): CloudConnectionFile {
-    return { path: filePath, name: path.basename(filePath), status: 'pending' };
+  private groups(): StoredGroup[] {
+    return this.deps.store.read().groups ?? [];
+  }
+
+  private ensureRuntime(group: StoredGroup): GroupRuntime {
+    let runtime = this.runtimes.get(group.id);
+    if (!runtime) {
+      const source: LocalExcelSource = new LocalExcelSource({
+        sourceName: group.sourceName,
+        directoryPath: group.directoryPath,
+        strategy: group.strategy,
+        tables: group.tables,
+        files: group.files ?? [],
+        versionStore: new StoreVersionAdapter(this.deps.store, (): string => source.sourceName),
+      });
+      runtime = { source, entries: [], status: 'pending' };
+      this.runtimes.set(group.id, runtime);
+    }
+    return runtime;
+  }
+
+  private findGroup(id: string): StoredGroup {
+    const group = this.groups().find((g) => g.id === id);
+    if (!group) throw new Error('分组不存在');
+    return group;
+  }
+
+  private writeGroups(groups: StoredGroup[]): void {
+    this.deps.store.write({ groups });
+  }
+
+  private sources(): LocalExcelSource[] {
+    return this.groups().map((g) => this.ensureRuntime(g).source);
   }
 
   // ---------------------------------------------------------------- state
@@ -150,9 +267,23 @@ export class CloudConnectionService {
       remoteEnv: this.remoteEnv,
       lastError: this.lastError,
       autoConnect: persisted.autoConnect,
-      sourceName: this.source.sourceName,
-      files: persisted.files.map((f) => this.fileStates.get(f) ?? this.pendingFile(f)),
+      groups: this.groups().map((g) => this.groupState(g)),
       activities: [...this.activities],
+    };
+  }
+
+  private groupState(group: StoredGroup): CloudConnectionGroup {
+    const runtime = this.ensureRuntime(group);
+    return {
+      id: group.id,
+      sourceName: group.sourceName,
+      directoryPath: group.directoryPath,
+      strategy: group.strategy,
+      tables: group.tables.map((t) => toTableConfig(t)),
+      files: [...(group.files ?? [])],
+      entries: [...runtime.entries],
+      entriesStatus: runtime.status,
+      entriesError: runtime.error,
     };
   }
 
@@ -217,15 +348,6 @@ export class CloudConnectionService {
     this.emit();
   }
 
-  setSourceName(name: string): void {
-    const trimmed = name.trim();
-    if (!trimmed) throw new Error('数据源名称不能为空');
-    if (this.agent) throw new Error('请先断开连接再修改数据源名称');
-    this.source.sourceName = trimmed;
-    this.deps.store.write({ sourceName: trimmed });
-    this.emit();
-  }
-
   // ---------------------------------------------------------------- connection
 
   connect(): void {
@@ -242,8 +364,8 @@ export class CloudConnectionService {
       ? this.deps.createAgent(stored.config, options)
       : new LocalAgent(stored.config, options);
     const registry = {
-      get: (name: string) => (name === this.source.sourceName ? this.source : undefined),
-      all: () => [this.source],
+      get: (name: string) => this.sources().find((s) => s.sourceName === name),
+      all: () => this.sources(),
     };
     const handlers = new ExcelSourceHandlers(agent, {
       registry,
@@ -312,92 +434,313 @@ export class CloudConnectionService {
         this.emit();
       }
     }
-    void this.refreshFiles();
+    void this.refreshTables();
   }
 
   stop(): void {
     this.disconnect();
   }
 
-  // ---------------------------------------------------------------- files
-
-  async addFiles(paths: string[]): Promise<string[]> {
-    const persisted = this.deps.store.read();
-    const files = [...persisted.files];
-    const rejected: string[] = [];
-    for (const raw of paths) {
-      const filePath = path.resolve(raw);
-      if (!isSupportedTableFile(filePath)) {
-        rejected.push(`${path.basename(filePath)}：不支持的文件类型`);
-        continue;
-      }
-      if (files.includes(filePath)) continue;
-      const clash = files.find((f) => path.basename(f) === path.basename(filePath));
-      if (clash) {
-        rejected.push(`${path.basename(filePath)}：已存在同名文件（表 id 按文件名生成）`);
-        continue;
-      }
-      files.push(filePath);
-      this.fileStates.set(filePath, this.pendingFile(filePath));
-    }
-    await this.applyFiles(files);
-    return rejected;
+  private get online(): boolean {
+    return Boolean(this.handlers && this.status === 'connected');
   }
 
-  async removeFile(filePath: string): Promise<void> {
-    const files = this.deps.store.read().files.filter((f) => f !== filePath);
-    this.fileStates.delete(filePath);
-    await this.applyFiles(files);
-  }
-
-  private async applyFiles(files: string[]): Promise<void> {
-    const before = this.deps.store.read().files;
-    this.deps.store.write({ files });
-    this.source.setFiles(files);
-    this.emit();
-    await this.refreshFiles();
-    const changed = before.length !== files.length || before.some((f, i) => f !== files[i]);
-    if (changed && this.handlers && this.status === 'connected') {
-      try {
-        await this.handlers.reportSingleSource(this.source, FetchType.UPDATE_SINGLE);
-      } catch (error) {
-        this.deps.logger.warn(`report source update failed: ${messageOf(error)}`);
-      }
+  private async report(action: () => Promise<unknown> | undefined, what: string): Promise<void> {
+    if (!this.online) return;
+    try {
+      await action();
+    } catch (error) {
+      this.deps.logger.warn(`${what} failed: ${messageOf(error)}`);
     }
   }
 
-  /** 重新解析全部文件，更新解析状态。 */
-  async refreshFiles(): Promise<void> {
-    for (const filePath of this.deps.store.read().files) {
-      const current = this.fileStates.get(filePath) ?? this.pendingFile(filePath);
-      this.fileStates.set(filePath, { ...current, status: 'parsing', error: undefined });
+  // ---------------------------------------------------------------- groups
+
+  /** 重新扫描各分组的表（手动表 + 自动表），更新状态。 */
+  async refreshTables(groupId?: string): Promise<void> {
+    const groups = groupId ? [this.findGroup(groupId)] : this.groups();
+    for (const group of groups) {
+      const runtime = this.ensureRuntime(group);
+      runtime.status = 'pending';
       this.emit();
       try {
-        const summary = await this.source.summarize(filePath, 0);
-        this.fileStates.set(filePath, {
-          path: filePath,
-          name: summary.fileName,
-          status: 'ready',
-          size: summary.size,
-          modifyTime: summary.modifyTime,
-          sheets: summary.sheets.map(({ sampleRows: _s, ...rest }) => rest),
-        });
+        const errors = new Map<string, string>();
+        const tables = await runtime.source.listTables(errors);
+        runtime.entries = tables.map((t) => ({
+          id: t.id,
+          manual: t.manual,
+          fileName: t.fileName,
+          sheetName: t.sheetName,
+        }));
+        runtime.status = 'ready';
+        runtime.error = errors.size
+          ? [...errors].map(([f, m]) => `${path.basename(f)}: ${m}`).join('；')
+          : undefined;
       } catch (error) {
-        this.fileStates.set(filePath, { ...current, status: 'error', error: messageOf(error) });
+        runtime.status = 'error';
+        runtime.error = messageOf(error);
       }
       this.emit();
     }
   }
 
-  async previewFile(filePath: string, sampleSize = 50): Promise<CloudConnectionFilePreview> {
-    if (!this.deps.store.read().files.includes(filePath)) throw new Error('文件不在云连接列表中');
-    const summary = await this.source.summarize(filePath, sampleSize);
-    return {
-      path: filePath,
-      name: summary.fileName,
-      charset: summary.charset,
-      delimiter: summary.delimiter,
-      sheets: summary.sheets,
+  private async tableIds(group: StoredGroup): Promise<string[]> {
+    const tables = await this.ensureRuntime(group).source.listTables();
+    return tables.map((t) => t.id).sort();
+  }
+
+  private async checkDirectory(directoryPath: string): Promise<string> {
+    const resolved = path.resolve(directoryPath);
+    let isDir = false;
+    try {
+      isDir = (await stat(resolved)).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (!isDir) throw new Error(`目录不存在：${directoryPath}`);
+    return resolved;
+  }
+
+  async addGroup(input: CloudConnectionGroupInput): Promise<string> {
+    const groups = this.groups();
+    const error = validateGroupName(
+      input.sourceName,
+      groups.map((g) => g.sourceName)
+    );
+    if (error) throw new Error(GROUP_ERRORS[error]);
+    const directoryPath = await this.checkDirectory(input.directoryPath);
+    const group: StoredGroup = {
+      id: randomUUID(),
+      sourceName: input.sourceName.trim(),
+      directoryPath,
+      strategy: input.strategy,
+      tables: [],
     };
+    this.writeGroups([...groups, group]);
+    const runtime = this.ensureRuntime(group);
+    await this.refreshTables(group.id);
+    // Java ConfigStorage：新增数据源 → initialize + fetchSingleTables(SOURCE_ADD)
+    await this.report(() => {
+      this.handlers!.registerProvider(runtime.source);
+      return this.handlers!.reportSingleSource(runtime.source, FetchType.ADD_SOURCE);
+    }, 'report source add');
+    return group.id;
   }
+
+  async updateGroup(id: string, input: CloudConnectionGroupInput): Promise<void> {
+    const groups = this.groups();
+    const current = this.findGroup(id);
+    const name = input.sourceName.trim();
+    const renamed = name !== current.sourceName;
+    if (renamed) {
+      const error = validateGroupName(
+        name,
+        groups.filter((g) => g.id !== id).map((g) => g.sourceName)
+      );
+      if (error) throw new Error(GROUP_ERRORS[error]);
+    }
+    const directoryPath =
+      input.directoryPath || !current.directoryPath
+        ? input.directoryPath
+          ? await this.checkDirectory(input.directoryPath)
+          : ''
+        : current.directoryPath;
+    const next: StoredGroup = {
+      ...current,
+      sourceName: name,
+      directoryPath,
+      strategy: input.strategy,
+    };
+    const recreate = directoryPath !== current.directoryPath || input.strategy !== current.strategy;
+    if (!renamed && !recreate) return;
+    const runtime = this.ensureRuntime(current);
+    const oldName = current.sourceName;
+    if (renamed) {
+      const all = this.deps.store.read().versions ?? {};
+      const versions = { ...all };
+      if (versions[oldName]) {
+        versions[name] = versions[oldName];
+        delete versions[oldName];
+      }
+      this.deps.store.write({ versions });
+    }
+    this.writeGroups(groups.map((g) => (g.id === id ? next : g)));
+    runtime.source.sourceName = name;
+    runtime.source.configure({ directoryPath, strategy: input.strategy });
+    await this.refreshTables(id);
+    if (renamed) {
+      // 改名在 Java 配置里等价于删除旧数据源 + 新增数据源
+      await this.report(() => {
+        this.handlers!.unregisterProvider(oldName);
+        return this.handlers!.reportSingleSource(
+          new LocalExcelSource({ sourceName: oldName }),
+          FetchType.SOURCE_DELETE
+        );
+      }, 'report source delete');
+      await this.report(() => {
+        this.handlers!.registerProvider(runtime.source);
+        return this.handlers!.reportSingleSource(runtime.source, FetchType.ADD_SOURCE);
+      }, 'report source add');
+    } else {
+      // RECREATE → fetchSingleTables(UPDATE_SINGLE)
+      await this.report(
+        () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
+        'report source update'
+      );
+    }
+  }
+
+  async deleteGroup(id: string): Promise<void> {
+    const group = this.findGroup(id);
+    this.writeGroups(this.groups().filter((g) => g.id !== id));
+    this.runtimes.delete(id);
+    const versions = { ...(this.deps.store.read().versions ?? {}) };
+    delete versions[group.sourceName];
+    this.deps.store.write({ versions });
+    this.emit();
+    // DatasourceInitializer.deleteSource：source/single sourceDelete + 空表列表
+    await this.report(() => {
+      this.handlers!.unregisterProvider(group.sourceName);
+      return this.handlers!.reportSingleSource(
+        new LocalExcelSource({ sourceName: group.sourceName }),
+        FetchType.SOURCE_DELETE
+      );
+    }, 'report source delete');
+  }
+
+  // ---------------------------------------------------------------- manual tables
+
+  private toStoredTable(
+    input: CloudConnectionTableInput,
+    previous: ExcelTableConfig | undefined
+  ): ExcelTableConfig {
+    const { password, ...rest } = input;
+    const table = normalizeExcelTable(rest);
+    const nextPassword = password === undefined ? previous?.password : password || undefined;
+    if (nextPassword) table.password = nextPassword;
+    return table;
+  }
+
+  private async applyTables(group: StoredGroup, tables: ExcelTableConfig[]): Promise<void> {
+    const runtime = this.ensureRuntime(group);
+    const before = await this.tableIds(group).catch(() => [] as string[]);
+    const next: StoredGroup = { ...group, tables };
+    this.writeGroups(this.groups().map((g) => (g.id === group.id ? next : g)));
+    runtime.source.configure({ tables });
+    await this.refreshTables(group.id);
+    const after = await this.tableIds(next).catch(() => [] as string[]);
+    // LocalClientProxy.updateTables：表 id 集合变化才 fetchSingleTables(UPDATE_SINGLE)
+    if (before.join('\u0000') !== after.join('\u0000')) {
+      await this.report(
+        () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
+        'report tables update'
+      );
+    }
+  }
+
+  async saveTable(
+    groupId: string,
+    originalName: string | null,
+    input: CloudConnectionTableInput
+  ): Promise<void> {
+    const group = this.findGroup(groupId);
+    if (!group.directoryPath) throw new Error('请先为分组设置目录');
+    const previous = originalName
+      ? group.tables.find((t) => t.tableName === originalName)
+      : undefined;
+    if (originalName && !previous) throw new Error('表不存在');
+    const table = this.toStoredTable(input, previous);
+    const others = group.tables.filter((t) => t.tableName !== originalName);
+    const error = validateExcelTable(
+      table,
+      others.map((t) => t.tableName)
+    );
+    if (error) throw new Error(TABLE_ERRORS[error]);
+    const versions = this.ensureRuntime(group).source.versionStore;
+    if (previous) {
+      // 改名 = 删除旧表；文件来源变化（策略 / 路径）时删除版本记录
+      const watchChanged =
+        previous.strategy !== table.strategy ||
+        previous.relativeFilePath !== table.relativeFilePath;
+      if (previous.tableName !== table.tableName || watchChanged)
+        versions.delete(previous.tableName);
+    }
+    const tables = previous
+      ? group.tables.map((t) => (t.tableName === originalName ? table : t))
+      : [...group.tables, table];
+    await this.applyTables(group, tables);
+  }
+
+  async deleteTable(groupId: string, tableName: string): Promise<void> {
+    const group = this.findGroup(groupId);
+    if (!group.tables.some((t) => t.tableName === tableName)) throw new Error('表不存在');
+    this.ensureRuntime(group).source.versionStore.delete(tableName);
+    await this.applyTables(
+      group,
+      group.tables.filter((t) => t.tableName !== tableName)
+    );
+  }
+
+  /** 移除早期逐个添加的文件。 */
+  async removeLegacyFile(groupId: string, filePath: string): Promise<void> {
+    const group = this.findGroup(groupId);
+    const files = (group.files ?? []).filter((f) => f !== filePath);
+    const runtime = this.ensureRuntime(group);
+    const before = await this.tableIds(group).catch(() => [] as string[]);
+    const next: StoredGroup = { ...group, files };
+    if (files.length === 0) delete next.files;
+    this.writeGroups(this.groups().map((g) => (g.id === groupId ? next : g)));
+    runtime.source.setFiles(files);
+    await this.refreshTables(groupId);
+    const after = await this.tableIds(next).catch(() => [] as string[]);
+    if (before.join('\u0000') !== after.join('\u0000')) {
+      await this.report(
+        () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
+        'report source update'
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------- preview
+
+  async previewTable(groupId: string, tableId: string): Promise<CloudConnectionTablePreview> {
+    const group = this.findGroup(groupId);
+    const source = this.ensureRuntime(group).source;
+    const table = await source.getTable(tableId);
+    if (!table) throw new Error(`can not found table ${tableId}`);
+    return { tableName: tableId, ...(await source.previewTable(table)) };
+  }
+
+  /** 预览表单里尚未保存的手动表配置（对应 agent-ui 的表名旁「预览」按钮）。 */
+  async previewDraft(
+    groupId: string,
+    originalName: string | null,
+    input: CloudConnectionTableInput
+  ): Promise<CloudConnectionTablePreview> {
+    const group = this.findGroup(groupId);
+    if (!group.directoryPath) throw new Error('请先为分组设置目录');
+    const previous = originalName
+      ? group.tables.find((t) => t.tableName === originalName)
+      : undefined;
+    const table = this.toStoredTable(input, previous);
+    const source = this.ensureRuntime(group).source;
+    const draft = source.draftTable(table);
+    return { tableName: table.tableName, ...(await source.previewTable(draft)) };
+  }
+
+  /** 把用户选择的绝对路径转成分组内的相对路径（`/` 开头，Unix 分隔符）。 */
+  relativePathInGroup(groupId: string, absolutePath: string): string {
+    const group = this.findGroup(groupId);
+    if (!group.directoryPath) throw new Error('请先为分组设置目录');
+    const rel = path.relative(path.resolve(group.directoryPath), path.resolve(absolutePath));
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      throw new Error('请选择分组目录下的文件或文件夹');
+    }
+    return `/${rel.split(path.sep).join('/')}`;
+  }
+}
+
+function toTableConfig(table: ExcelTableConfig): CloudConnectionTableConfig {
+  const { password, ...rest } = table;
+  return { ...rest, hasPassword: Boolean(password) };
 }

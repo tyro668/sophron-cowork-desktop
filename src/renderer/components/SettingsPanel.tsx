@@ -10,6 +10,7 @@ import {
   Keyboard,
   BrainCircuit,
   Database,
+  Link2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useWindowSize } from '../hooks/useWindowSize';
@@ -22,6 +23,7 @@ import { SettingsGeneral } from './settings/SettingsGeneral';
 import { SettingsLogs } from './settings/SettingsLogs';
 import { SettingsMemory } from './settings/SettingsMemory';
 import { SettingsPersonalAnalysis } from './settings/SettingsPersonalAnalysis';
+import { SettingsCloudConnection } from './settings/SettingsCloudConnection';
 import { SettingsShortcuts } from './settings/SettingsShortcuts';
 
 interface SettingsPanelProps {
@@ -32,6 +34,7 @@ interface SettingsPanelProps {
     | 'connectors'
     | 'memory'
     | 'personal-analysis'
+    | 'cloud-connection'
     | 'remote'
     | 'logs'
     | 'general'
@@ -44,6 +47,7 @@ type TabId =
   | 'connectors'
   | 'memory'
   | 'personal-analysis'
+  | 'cloud-connection'
   | 'remote'
   | 'logs'
   | 'general'
@@ -55,6 +59,7 @@ const VALID_TABS = new Set<TabId>([
   'connectors',
   'memory',
   'personal-analysis',
+  'cloud-connection',
   'remote',
   'logs',
   'general',
@@ -119,6 +124,12 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       group: 'data',
       label: t('settings.personalAnalysis', 'Cloud Space'),
       icon: Database,
+    },
+    {
+      id: 'cloud-connection' as TabId,
+      group: 'data',
+      label: t('settings.cloudConnection', 'Cloud Connection'),
+      icon: Link2,
     },
     {
       id: 'remote' as TabId,
@@ -234,6 +245,9 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 </div>
                 <div className={activeTab === 'personal-analysis' ? '' : 'hidden'}>
                   {viewedTabs.has('personal-analysis') && <SettingsPersonalAnalysis />}
+                </div>
+                <div className={activeTab === 'cloud-connection' ? '' : 'hidden'}>
+                  {viewedTabs.has('cloud-connection') && <SettingsCloudConnection />}
                 </div>
                 <div className={activeTab === 'remote' ? '' : 'hidden'}>
                   {viewedTabs.has('remote') && (

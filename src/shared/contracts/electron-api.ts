@@ -166,8 +166,10 @@ import type {
 import type { WorkflowPlanDiagnostic } from '../workflow-plan';
 import type {
   CloudConnectionActionResult,
-  CloudConnectionFilePreview,
+  CloudConnectionGroupInput,
   CloudConnectionState,
+  CloudConnectionTableInput,
+  CloudConnectionTablePreview,
 } from './cloud-connection';
 
 export interface ElectronApi {
@@ -673,11 +675,28 @@ export interface ElectronApi {
     connect: () => Promise<CloudConnectionActionResult>;
     disconnect: () => Promise<CloudConnectionActionResult>;
     setAutoConnect: (enabled: boolean) => Promise<CloudConnectionActionResult>;
-    setSourceName: (name: string) => Promise<CloudConnectionActionResult>;
-    addFiles: () => Promise<CloudConnectionActionResult>;
-    removeFile: (filePath: string) => Promise<CloudConnectionActionResult>;
-    refreshFiles: () => Promise<CloudConnectionActionResult>;
-    previewFile: (filePath: string) => Promise<CloudConnectionFilePreview>;
+    addGroup: (input: CloudConnectionGroupInput) => Promise<CloudConnectionActionResult>;
+    updateGroup: (
+      id: string,
+      input: CloudConnectionGroupInput
+    ) => Promise<CloudConnectionActionResult>;
+    deleteGroup: (id: string) => Promise<CloudConnectionActionResult>;
+    saveTable: (
+      groupId: string,
+      originalName: string | null,
+      input: CloudConnectionTableInput
+    ) => Promise<CloudConnectionActionResult>;
+    deleteTable: (groupId: string, tableName: string) => Promise<CloudConnectionActionResult>;
+    removeLegacyFile: (groupId: string, filePath: string) => Promise<CloudConnectionActionResult>;
+    refreshTables: (groupId?: string) => Promise<CloudConnectionActionResult>;
+    previewTable: (groupId: string, tableId: string) => Promise<CloudConnectionTablePreview>;
+    previewDraft: (
+      groupId: string,
+      originalName: string | null,
+      input: CloudConnectionTableInput
+    ) => Promise<CloudConnectionTablePreview>;
+    pickDirectory: () => Promise<string | null>;
+    pickTablePath: (groupId: string, kind: 'file' | 'directory') => Promise<string | null>;
     onState: (callback: (state: CloudConnectionState) => void) => () => void;
   };
 }

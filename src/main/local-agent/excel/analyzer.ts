@@ -90,10 +90,20 @@ function expandHeader(rows: CellData[][]): CellData[] {
  * `inferLimit` 为类型推断取样的数据行数（Java page(100) → 100）。
  */
 export function analyzeCells(
-  input: CellData[][],
-  options: { locale?: AgentLocale; inferLimit?: number; maxColSize?: number } = {}
+  rawInput: CellData[][],
+  options: {
+    locale?: AgentLocale;
+    inferLimit?: number;
+    maxColSize?: number;
+    /** `ExcelWorkerItem.getHeadIndex`（= 表头行序号 - 1）：表头前面的行直接丢弃。 */
+    headIndex?: number;
+    /** `TableFieldTypeStrategy.NONE`：所有列作为文本（样本内全空的列仍为 INFER）。 */
+    allText?: boolean;
+  } = {}
 ): AnalyzedTable {
   const locale = options.locale ?? 'zh';
+  const headIndex = Math.max(0, options.headIndex ?? 0);
+  const input = headIndex > 0 ? rawInput.slice(Math.min(headIndex, rawInput.length)) : rawInput;
   if (input.length === 0) return { head: [], rows: [] };
   // filterBodyEmpty：保留表头，去掉全空的数据行
   let list: CellData[][] = [input[0], ...input.slice(1).filter((r) => !isBlankRow(r))];
@@ -118,6 +128,7 @@ export function analyzeCells(
   }
   // ExcelFieldsHook.filterHead：样本内全空的列置 INFER；appendHeaderTypes：YEAR_MONTH_DAY → DATE
   const sample = data.slice(0, inferLimit);
+  if (options.allText) for (const cell of head) cell.type = FieldType.STRING;
   for (let i = 0; i < head.length; i++) {
     const allEmpty = sample.every((r) => !(r[i] && r[i].data));
     if (allEmpty) head[i].type = FieldType.INFER;

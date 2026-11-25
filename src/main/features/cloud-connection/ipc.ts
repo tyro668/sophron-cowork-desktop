@@ -1,6 +1,10 @@
 import { dialog, type OpenDialogOptions } from 'electron';
 
-import type { CloudConnectionActionResult } from '../../../shared/contracts';
+import type {
+  CloudConnectionActionResult,
+  CloudConnectionGroupInput,
+  CloudConnectionTableInput,
+} from '../../../shared/contracts';
 import { appContext } from '../../app/context';
 import { handleIpc } from '../../ipc-handle';
 import { logError } from '../../utils/logger';
@@ -49,29 +53,55 @@ export function registerCloudConnectionIpc(): void {
   handleIpc('cloudConnection.setAutoConnect', (_event, enabled: boolean) =>
     run(() => getCloudConnectionService().setAutoConnect(enabled))
   );
-  handleIpc('cloudConnection.setSourceName', (_event, name: string) =>
-    run(() => getCloudConnectionService().setSourceName(name))
+  handleIpc('cloudConnection.addGroup', (_event, input: CloudConnectionGroupInput) =>
+    run(() => getCloudConnectionService().addGroup(input))
   );
-
-  handleIpc('cloudConnection.addFiles', () =>
-    run(async () => {
-      const files = await showOpen({
-        properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'xlsm', 'csv'] }],
+  handleIpc('cloudConnection.updateGroup', (_event, id: string, input: CloudConnectionGroupInput) =>
+    run(() => getCloudConnectionService().updateGroup(id, input))
+  );
+  handleIpc('cloudConnection.deleteGroup', (_event, id: string) =>
+    run(() => getCloudConnectionService().deleteGroup(id))
+  );
+  handleIpc(
+    'cloudConnection.saveTable',
+    (_event, groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
+      run(() => getCloudConnectionService().saveTable(groupId, originalName, input))
+  );
+  handleIpc('cloudConnection.deleteTable', (_event, groupId: string, tableName: string) =>
+    run(() => getCloudConnectionService().deleteTable(groupId, tableName))
+  );
+  handleIpc('cloudConnection.removeLegacyFile', (_event, groupId: string, filePath: string) =>
+    run(() => getCloudConnectionService().removeLegacyFile(groupId, filePath))
+  );
+  handleIpc('cloudConnection.refreshTables', (_event, groupId?: string) =>
+    run(() => getCloudConnectionService().refreshTables(groupId))
+  );
+  handleIpc('cloudConnection.previewTable', (_event, groupId: string, tableId: string) =>
+    getCloudConnectionService().previewTable(groupId, tableId)
+  );
+  handleIpc(
+    'cloudConnection.previewDraft',
+    (_event, groupId: string, originalName: string | null, input: CloudConnectionTableInput) =>
+      getCloudConnectionService().previewDraft(groupId, originalName, input)
+  );
+  handleIpc('cloudConnection.pickDirectory', async () => {
+    const [dir] = await showOpen({ properties: ['openDirectory'] });
+    return dir ?? null;
+  });
+  handleIpc(
+    'cloudConnection.pickTablePath',
+    async (_event, groupId: string, kind: 'file' | 'directory') => {
+      const service = getCloudConnectionService();
+      const group = service.getState().groups.find((g) => g.id === groupId);
+      const [picked] = await showOpen({
+        defaultPath: group?.directoryPath || undefined,
+        properties: [kind === 'directory' ? 'openDirectory' : 'openFile'],
+        filters:
+          kind === 'file'
+            ? [{ name: 'Excel / CSV', extensions: ['xlsx', 'xls', 'csv'] }]
+            : undefined,
       });
-      if (files.length === 0) return;
-      const rejected = await getCloudConnectionService().addFiles(files);
-      if (rejected.length > 0) throw new Error(rejected.join('；'));
-    })
-  );
-
-  handleIpc('cloudConnection.removeFile', (_event, filePath: string) =>
-    run(() => getCloudConnectionService().removeFile(filePath))
-  );
-  handleIpc('cloudConnection.refreshFiles', () =>
-    run(() => getCloudConnectionService().refreshFiles())
-  );
-  handleIpc('cloudConnection.previewFile', (_event, filePath: string) =>
-    getCloudConnectionService().previewFile(filePath)
+      return picked ? service.relativePathInGroup(groupId, picked) : null;
+    }
   );
 }

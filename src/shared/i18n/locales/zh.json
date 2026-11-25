@@ -2414,7 +2414,8 @@
       "deleteNode": "删除选中的节点（加工画布）",
       "escape": "关闭弹窗 · 拒绝权限请求",
       "newTask": "新建任务"
-    }
+    },
+    "cloudConnection": "云连接"
   },
   "personalAnalysis": {
     "apiOrigin": "服务地址",
@@ -4727,17 +4728,18 @@
       "importConfig": "导入 config.yaml",
       "reimportConfig": "重新导入",
       "clearConfig": "清除配置",
-      "addFiles": "添加文件",
       "refresh": "刷新",
       "preview": "预览",
       "remove": "移除",
-      "close": "关闭"
+      "close": "关闭",
+      "goToSettings": "前往设置导入配置",
+      "manage": "配置管理"
     },
     "sections": {
       "config": "连接配置",
       "status": "连接状态",
-      "files": "本地文件",
-      "activity": "云端请求"
+      "activity": "云端请求",
+      "tables": "上报的表"
     },
     "fields": {
       "configFile": "配置文件",
@@ -4748,39 +4750,91 @@
       "state": "状态",
       "connectedAt": "连接时间",
       "remoteEnv": "环境参数",
-      "lastError": "最近错误",
-      "sourceName": "数据源名称"
+      "lastError": "最近错误"
     },
     "tokenSaved": "已加密保存",
     "tokenMissing": "未设置",
     "notConfigured": "尚未导入 config.yaml",
     "none": "无",
-    "fileColumns": {
-      "name": "文件",
-      "status": "解析状态",
-      "tables": "表",
-      "rows": "行数",
-      "columns": "列数",
-      "actions": "操作"
-    },
     "fileStatus": {
       "pending": "待解析",
       "parsing": "解析中",
       "ready": "已解析",
       "error": "解析失败"
     },
-    "emptyFiles": "还没有添加本地 Excel / CSV 文件",
     "emptyActivity": "暂无云端请求",
-    "previewTitle": "文件预览",
+    "previewTitle": "表预览",
     "previewRows": "前 {{count}} 行",
-    "sheet": "Sheet",
     "rowCount": "共 {{count}} 行",
     "columnTypes": {
       "5": "数值",
       "6": "文本",
       "9": "日期"
     },
-    "sourceNameLocked": "断开连接后才能修改",
-    "removeConfirm": "移除后云端将无法再读取此文件，确定移除？"
+    "removeConfirm": "移除后云端将无法再读取此文件，确定移除？",
+    "emptyConfig": "尚未导入云连接配置",
+    "ds": {
+      "title": "数据源",
+      "addGroup": "添加数据源",
+      "addTable": "添加表",
+      "newGroup": "新建分组",
+      "newTable": "新建表",
+      "edit": "编辑",
+      "browse": "浏览",
+      "manual": "手动",
+      "emptyGroups": "还没有数据源分组",
+      "emptyTables": "暂无表",
+      "selectHint": "选择左侧分组或表进行配置",
+      "groupName": "分组名",
+      "directory": "目录",
+      "strategy": "策略",
+      "groupStrategy": {
+        "0": "不自动读取",
+        "1": "仅读取当前目录",
+        "2": "递归读取所有子目录"
+      },
+      "legacyFiles": "早期添加的文件",
+      "deleteGroupConfirm": "删除分组后云端将无法再读取其中的表，确定删除？",
+      "deleteTableConfirm": "确定删除这张手动表？",
+      "tableName": "表名",
+      "sourceStrategy": "表来源策略",
+      "source": {
+        "merge": "添加合并表(追加多张表)",
+        "single": "添加单文件(单文件作为一张表)"
+      },
+      "mergeStrategy": "合并策略",
+      "appendStrategy": {
+        "0": "按字段顺序合并",
+        "1": "按字段名称合并"
+      },
+      "sortStrategy": {
+        "5": "无排序追加",
+        "1": "按创建时间",
+        "2": "按修改时间",
+        "3": "按文件名（编码顺序）",
+        "4": "按文件名（自然顺序）"
+      },
+      "readStrategy": {
+        "0": "仅读取当前目录",
+        "1": "递归读取所有子目录"
+      },
+      "fieldStrategy": "列判断策略",
+      "fieldType": {
+        "0": "自动判断列类型",
+        "1": "所有列均作为文本类型"
+      },
+      "filePath": "文件路径",
+      "password": "文件密码",
+      "passwordPlaceholder": "非必填，合并表仅追加密码匹配的文件",
+      "passwordSaved": "已设置（留空保持不变）",
+      "clearPassword": "清除密码",
+      "sheetStrategy": "Sheet选择策略",
+      "sheet": {
+        "0": "按Sheet序号",
+        "1": "按Sheet名字",
+        "2": "所有文件的所有Sheet合并为一张表"
+      },
+      "headerRow": "表头行序号"
+    }
   }
 }

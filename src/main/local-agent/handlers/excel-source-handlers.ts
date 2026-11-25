@@ -170,7 +170,7 @@ export class ExcelSourceHandlers {
         s3.meta = meta;
         fetchBean.tableMeta = meta;
         s3.type = WriteType.OVERWRITE;
-        const rows = await excel.writeFullData(table, meta.tableColumns!.length, (row) =>
+        const rows = await excel.writeFullData(table, meta.tableColumns!, (row) =>
           stream.writeRow(row.map(transOutputValue))
         );
         this.observe(

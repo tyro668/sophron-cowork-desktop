@@ -1,50 +1,39 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * 数据 → 云连接：运行视图（连接状态、上报给云端的表、云端请求）。导入配置、连接管理与数据源
+ * 配置都在「设置 → 云连接」；未导入配置时只显示一个跳转到设置的空状态。
+ */
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Eye,
-  FilePlus2,
   FileSpreadsheet,
-  FileUp,
+  Folder,
   Link2,
   Loader2,
   PlugZap,
   RefreshCw,
-  Trash2,
+  Settings2,
+  Table2,
   Unplug,
 } from 'lucide-react';
-import type {
-  CloudConnectionActionResult,
-  CloudConnectionFile,
-  CloudConnectionFilePreview,
-  CloudConnectionState,
-  CloudConnectionStatus,
-} from '../../../shared/contracts';
+
+import type { CloudConnectionTablePreview } from '../../../shared/contracts';
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
 import {
-  Badge,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Switch,
-} from '../ui';
-import type { BadgeTone } from '../ui';
+  errorText,
+  isLiveStatus,
+  useCloudConnection,
+} from '../../features/cloud-connection/hooks/use-cloud-connection';
+import { useAppStore } from '../../store';
 import { showToast } from '../../utils/toast';
-import { useOptionalConfirmDialog } from '../ConfirmDialog';
-import { EmptyState, flatToolbarRowClass, DataToolbarButton, formatDateTime } from './shared';
+import { Badge, Button } from '../ui';
+import {
+  CLOUD_CONNECTION_STATUS_TONE,
+  CloudConnectionPreviewDialog,
+} from './cloud-connection-preview';
+import { DataToolbarButton, EmptyState, flatToolbarRowClass, formatDateTime } from './shared';
 
-const STATUS_TONE: Record<CloudConnectionStatus, BadgeTone> = {
-  idle: 'default',
-  connecting: 'warning',
-  connected: 'success',
-  reconnecting: 'warning',
-  disconnected: 'default',
-  offline: 'error',
-  stopped: 'default',
-};
+export const CLOUD_CONNECTION_SETTINGS_TAB = 'cloud-connection';
 
 const REMOTE_ENV_KEYS = [
   'baseUrl',
@@ -56,7 +45,7 @@ const REMOTE_ENV_KEYS = [
   'maxColSize',
 ];
 
-function FormRow({ label, children }: { label: string; children: React.ReactNode }) {
+function FormRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ui-form-row">
       <span className="ui-form-label items-center">{label}</span>
@@ -65,72 +54,34 @@ function FormRow({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function sheetStats(file: CloudConnectionFile) {
-  const sheets = file.sheets ?? [];
-  return {
-    tables: sheets.length,
-    rows: sheets.reduce((sum, s) => sum + s.rowCount, 0),
-    columns: sheets.reduce((max, s) => Math.max(max, s.columns.length), 0),
-  };
+/** 打开「设置 → 云连接」。 */
+export function useOpenCloudConnectionSettings() {
+  const setSettingsTab = useAppStore((s) => s.setSettingsTab);
+  const setShowSettings = useAppStore((s) => s.setShowSettings);
+  return useCallback(() => {
+    setSettingsTab(CLOUD_CONNECTION_SETTINGS_TAB);
+    setShowSettings(true);
+  }, [setSettingsTab, setShowSettings]);
 }
 
 export function CloudConnectionPanel() {
   const { t, i18n } = useTranslation();
-  const confirmDialog = useOptionalConfirmDialog();
-  const [state, setState] = useState<CloudConnectionState | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [sourceName, setSourceName] = useState('');
-  const [preview, setPreview] = useState<CloudConnectionFilePreview | null>(null);
-  const [previewSheet, setPreviewSheet] = useState(0);
+  const { state, busy, run } = useCloudConnection();
+  const openSettings = useOpenCloudConnectionSettings();
+  const [preview, setPreview] = useState<CloudConnectionTablePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!cloudConnectionClient.isAvailable()) return undefined;
-    let active = true;
-    void cloudConnectionClient.getState().then((s) => {
-      if (active) setState(s);
-    });
-    const off = cloudConnectionClient.onState((s) => setState(s));
-    return () => {
-      active = false;
-      off();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (state) setSourceName(state.sourceName);
-  }, [state?.sourceName]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const run = useCallback(
-    async (key: string, action: () => Promise<CloudConnectionActionResult>) => {
-      setBusy(key);
-      try {
-        const result = await action();
-        setState(result.state);
-        if (!result.success && result.error) showToast('error', result.error);
-      } catch (error) {
-        showToast('error', error instanceof Error ? error.message : String(error));
-      } finally {
-        setBusy(null);
-      }
-    },
-    []
-  );
-
-  const openPreview = useCallback(async (file: CloudConnectionFile) => {
-    setPreviewLoading(file.path);
+  const openPreview = useCallback(async (groupId: string, tableId: string) => {
+    setPreviewLoading(`${groupId}/${tableId}`);
     try {
-      const result = await cloudConnectionClient.previewFile(file.path);
-      setPreviewSheet(0);
-      setPreview(result);
+      setPreview(await cloudConnectionClient.previewTable(groupId, tableId));
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', errorText(error));
     } finally {
       setPreviewLoading(null);
     }
   }, []);
 
-  const isLive = state ? ['connecting', 'connected', 'reconnecting'].includes(state.status) : false;
   const remoteEnvEntries = useMemo(
     () =>
       state?.remoteEnv
@@ -149,10 +100,30 @@ export function CloudConnectionPanel() {
     );
   }
 
-  const config = state.config;
-  const serverText = config
-    ? `${config.protocol}://${config.host}:${config.port}${config.path ?? ''}`
-    : '';
+  if (!state.configured) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-panel">
+        <EmptyState
+          label={t('cloudConnection.emptyConfig')}
+          icon={<Link2 className="h-5 w-5" />}
+          action={
+            <Button
+              size="sm"
+              variant="primary"
+              data-testid="cloud-connection-open-settings"
+              onClick={openSettings}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {t('cloudConnection.actions.goToSettings')}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const live = isLiveStatus(state);
+  const tableCount = state.groups.reduce((sum, g) => sum + g.entries.length, 0);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-panel">
@@ -163,7 +134,10 @@ export function CloudConnectionPanel() {
             <span className="truncate text-[13px] font-semibold text-text-primary">
               {t('cloudConnection.title')}
             </span>
-            <Badge tone={STATUS_TONE[state.status]} data-testid="cloud-connection-status">
+            <Badge
+              tone={CLOUD_CONNECTION_STATUS_TONE[state.status]}
+              data-testid="cloud-connection-status"
+            >
               {(state.status === 'connecting' || state.status === 'reconnecting') && (
                 <Loader2 className="h-3 w-3 animate-spin" />
               )}
@@ -173,16 +147,11 @@ export function CloudConnectionPanel() {
         </div>
         <div className="flex">
           <DataToolbarButton
-            icon={<FileUp className="h-3.5 w-3.5" />}
-            label={
-              config
-                ? t('cloudConnection.actions.reimportConfig')
-                : t('cloudConnection.actions.importConfig')
-            }
-            disabled={busy !== null}
-            onClick={() => void run('import', cloudConnectionClient.importConfig)}
+            icon={<Settings2 className="h-3.5 w-3.5" />}
+            label={t('cloudConnection.actions.manage')}
+            onClick={openSettings}
           />
-          {isLive ? (
+          {live ? (
             <DataToolbarButton
               icon={<Unplug className="h-3.5 w-3.5" />}
               label={t('cloudConnection.actions.disconnect')}
@@ -195,7 +164,7 @@ export function CloudConnectionPanel() {
               icon={<PlugZap className="h-3.5 w-3.5" />}
               label={t('cloudConnection.actions.connect')}
               active
-              disabled={busy !== null || !config}
+              disabled={busy !== null}
               onClick={() => void run('connect', cloudConnectionClient.connect)}
             />
           )}
@@ -204,66 +173,9 @@ export function CloudConnectionPanel() {
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section className="ui-group bg-surface">
-          <h4 className="ui-group-title">{t('cloudConnection.sections.config')}</h4>
-          {config ? (
-            <>
-              <FormRow label={t('cloudConnection.fields.configFile')}>
-                <span className="truncate">{config.fileName ?? 'config.yaml'}</span>
-              </FormRow>
-              <FormRow label={t('cloudConnection.fields.agentId')}>
-                <span className="font-mono text-[12px]">{config.agentIdMasked}</span>
-              </FormRow>
-              <FormRow label={t('cloudConnection.fields.server')}>
-                <span className="truncate font-mono text-[12px]">{serverText}</span>
-              </FormRow>
-              <FormRow label={t('cloudConnection.fields.token')}>
-                <span>
-                  {config.hasToken
-                    ? t('cloudConnection.tokenSaved')
-                    : t('cloudConnection.tokenMissing')}
-                </span>
-              </FormRow>
-              <FormRow label={t('cloudConnection.fields.autoConnect')}>
-                <div className="flex items-center justify-between gap-2">
-                  <Switch
-                    size="sm"
-                    checked={state.autoConnect}
-                    disabled={busy !== null}
-                    onCheckedChange={(v) =>
-                      void run('auto', () => cloudConnectionClient.setAutoConnect(v))
-                    }
-                  />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={busy !== null}
-                    onClick={() => void run('clear', cloudConnectionClient.clearConfig)}
-                  >
-                    {t('cloudConnection.actions.clearConfig')}
-                  </Button>
-                </div>
-              </FormRow>
-            </>
-          ) : (
-            <div className="flex h-10 items-center justify-between px-3 text-[13px] text-text-muted">
-              <span>{t('cloudConnection.notConfigured')}</span>
-              <Button
-                size="sm"
-                variant="primary"
-                disabled={busy !== null}
-                onClick={() => void run('import', cloudConnectionClient.importConfig)}
-              >
-                <FileUp className="h-3.5 w-3.5" />
-                {t('cloudConnection.actions.importConfig')}
-              </Button>
-            </div>
-          )}
-        </section>
-
-        <section className="ui-group bg-surface">
           <h4 className="ui-group-title">{t('cloudConnection.sections.status')}</h4>
-          <FormRow label={t('cloudConnection.fields.state')}>
-            <span>{t(`cloudConnection.status.${state.status}`)}</span>
+          <FormRow label={t('cloudConnection.fields.agentId')}>
+            <span className="font-mono text-[12px]">{state.config?.agentIdMasked}</span>
           </FormRow>
           <FormRow label={t('cloudConnection.fields.connectedAt')}>
             <span>
@@ -291,155 +203,81 @@ export function CloudConnectionPanel() {
           </FormRow>
         </section>
 
-        <section className="ui-group bg-surface">
+        <section className="ui-group bg-surface" data-testid="cloud-connection-tables">
           <div className="ui-group-title justify-between">
-            <span>{t('cloudConnection.sections.files')}</span>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null || state.files.length === 0}
-                onClick={() => void run('refresh', cloudConnectionClient.refreshFiles)}
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                {t('cloudConnection.actions.refresh')}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-accent"
-                disabled={busy !== null}
-                onClick={() => void run('add', cloudConnectionClient.addFiles)}
-              >
-                <FilePlus2 className="h-3.5 w-3.5" />
-                {t('cloudConnection.actions.addFiles')}
+            <span>
+              {t('cloudConnection.sections.tables')}
+              <span className="ml-1.5 font-normal text-text-muted">{tableCount}</span>
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy !== null || state.groups.length === 0}
+              onClick={() => void run('refresh', () => cloudConnectionClient.refreshTables())}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t('cloudConnection.actions.refresh')}
+            </Button>
+          </div>
+          {state.groups.length === 0 ? (
+            <div className="flex h-10 items-center justify-between px-3 text-[13px] text-text-muted">
+              <span>{t('cloudConnection.ds.emptyGroups')}</span>
+              <Button size="sm" variant="ghost" className="text-accent" onClick={openSettings}>
+                {t('cloudConnection.ds.addGroup')}
               </Button>
             </div>
-          </div>
-          <FormRow label={t('cloudConnection.fields.sourceName')}>
-            <Input
-              value={sourceName}
-              disabled={isLive || busy !== null}
-              title={isLive ? t('cloudConnection.sourceNameLocked') : undefined}
-              onChange={(e) => setSourceName(e.target.value)}
-              onBlur={() => {
-                if (sourceName.trim() && sourceName.trim() !== state.sourceName)
-                  void run('source', () => cloudConnectionClient.setSourceName(sourceName.trim()));
-              }}
-              className="h-7 border-0 bg-transparent px-1 shadow-none"
-            />
-          </FormRow>
-          {state.files.length === 0 ? (
-            <EmptyState
-              label={t('cloudConnection.emptyFiles')}
-              icon={<FileSpreadsheet className="h-5 w-5" />}
-              action={
-                <Button
-                  size="sm"
-                  variant="primary"
-                  disabled={busy !== null}
-                  onClick={() => void run('add', cloudConnectionClient.addFiles)}
-                >
-                  <FilePlus2 className="h-3.5 w-3.5" />
-                  {t('cloudConnection.actions.addFiles')}
-                </Button>
-              }
-            />
           ) : (
-            <table className="w-full table-fixed text-[13px]">
-              <thead>
-                <tr className="h-8 border-b border-border-subtle bg-surface-muted text-left text-xs text-text-secondary">
-                  <th className="px-3 font-medium">{t('cloudConnection.fileColumns.name')}</th>
-                  <th className="w-24 px-2 font-medium">
-                    {t('cloudConnection.fileColumns.status')}
-                  </th>
-                  <th className="w-14 px-2 text-right font-medium">
-                    {t('cloudConnection.fileColumns.tables')}
-                  </th>
-                  <th className="w-20 px-2 text-right font-medium">
-                    {t('cloudConnection.fileColumns.rows')}
-                  </th>
-                  <th className="w-14 px-2 text-right font-medium">
-                    {t('cloudConnection.fileColumns.columns')}
-                  </th>
-                  <th className="w-[148px] px-2 font-medium">
-                    {t('cloudConnection.fileColumns.actions')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {state.files.map((file) => {
-                  const stats = sheetStats(file);
-                  const tone: BadgeTone =
-                    file.status === 'ready'
-                      ? 'success'
-                      : file.status === 'error'
-                        ? 'error'
-                        : 'default';
-                  return (
-                    <tr
-                      key={file.path}
-                      className="h-10 border-b border-border-subtle last:border-b-0 hover:bg-surface-hover/60"
+            state.groups.map((group) => (
+              <div key={group.id} className="border-b border-border-subtle last:border-b-0">
+                <div className="flex h-8 items-center gap-2 bg-surface-muted px-3 text-[12px]">
+                  <Folder className="h-3.5 w-3.5 text-accent" />
+                  <span className="font-medium text-text-primary">{group.sourceName}</span>
+                  <span className="min-w-0 truncate font-mono text-text-muted">
+                    {group.directoryPath}
+                  </span>
+                  {group.entriesStatus === 'pending' && (
+                    <Loader2 className="h-3 w-3 animate-spin text-text-muted" />
+                  )}
+                </div>
+                {group.entriesError && (
+                  <div className="px-3 py-1 text-[12px] text-error">{group.entriesError}</div>
+                )}
+                {group.entries.length === 0 && group.entriesStatus !== 'pending' ? (
+                  <div className="h-8 px-3 text-[12px] leading-8 text-text-muted">
+                    {t('cloudConnection.ds.emptyTables')}
+                  </div>
+                ) : (
+                  group.entries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex h-8 items-center gap-2 px-3 pl-8 text-[13px] hover:bg-surface-hover/60"
                     >
-                      <td className="px-3">
-                        <div className="truncate text-text-primary" title={file.path}>
-                          {file.name}
-                        </div>
-                        <div className="truncate text-[11px] text-text-muted" title={file.path}>
-                          {file.error ?? file.path}
-                        </div>
-                      </td>
-                      <td className="px-2">
-                        <Badge tone={tone}>{t(`cloudConnection.fileStatus.${file.status}`)}</Badge>
-                      </td>
-                      <td className="px-2 text-right tabular-nums">
-                        {file.sheets ? stats.tables : '-'}
-                      </td>
-                      <td className="px-2 text-right tabular-nums">
-                        {file.sheets ? stats.rows : '-'}
-                      </td>
-                      <td className="px-2 text-right tabular-nums">
-                        {file.sheets ? stats.columns : '-'}
-                      </td>
-                      <td className="px-2">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            disabled={file.status !== 'ready' || previewLoading !== null}
-                            loading={previewLoading === file.path}
-                            onClick={() => void openPreview(file)}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            {t('cloudConnection.actions.preview')}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="hover:text-error"
-                            disabled={busy !== null}
-                            onClick={async () => {
-                              const ok = confirmDialog
-                                ? await confirmDialog.confirmDelete({
-                                    message: t('cloudConnection.removeConfirm'),
-                                  })
-                                : true;
-                              if (ok)
-                                void run('remove', () =>
-                                  cloudConnectionClient.removeFile(file.path)
-                                );
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {t('cloudConnection.actions.remove')}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      {entry.manual ? (
+                        <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                      ) : (
+                        <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate" title={entry.id}>
+                        {entry.id}
+                      </span>
+                      {entry.manual && (
+                        <Badge tone="accent">{t('cloudConnection.ds.manual')}</Badge>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={previewLoading !== null}
+                        loading={previewLoading === `${group.id}/${entry.id}`}
+                        onClick={() => void openPreview(group.id, entry.id)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        {t('cloudConnection.actions.preview')}
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            ))
           )}
         </section>
 
@@ -478,92 +316,7 @@ export function CloudConnectionPanel() {
           )}
         </section>
       </div>
-
-      <Dialog
-        open={preview !== null}
-        onOpenChange={(open) => !open && setPreview(null)}
-        className="w-[min(960px,92vw)]"
-        ariaLabel={t('cloudConnection.previewTitle')}
-      >
-        {preview && (
-          <>
-            <DialogHeader>
-              <DialogTitle>
-                {t('cloudConnection.previewTitle')} · {preview.name}
-              </DialogTitle>
-            </DialogHeader>
-            <DialogBody className="max-h-[70vh] overflow-auto">
-              {preview.sheets.length > 1 && (
-                <div className="mb-2 flex flex-wrap gap-1">
-                  {preview.sheets.map((s, i) => (
-                    <Button
-                      key={s.tableId}
-                      size="sm"
-                      variant={i === previewSheet ? 'primary' : 'secondary'}
-                      onClick={() => setPreviewSheet(i)}
-                    >
-                      {s.sheetName ?? preview.name}
-                    </Button>
-                  ))}
-                </div>
-              )}
-              {(() => {
-                const sheet = preview.sheets[previewSheet];
-                if (!sheet) return null;
-                return (
-                  <div className="overflow-hidden rounded-md border border-border-subtle">
-                    <div className="flex h-8 items-center gap-3 border-b border-border-subtle bg-surface-muted px-3 text-xs text-text-secondary">
-                      <span className="font-mono">{sheet.tableId}</span>
-                      <span>{t('cloudConnection.rowCount', { count: sheet.rowCount })}</span>
-                      <span>
-                        {t('cloudConnection.previewRows', { count: sheet.sampleRows.length })}
-                      </span>
-                    </div>
-                    <div className="overflow-auto">
-                      <table className="min-w-full text-[12px]">
-                        <thead>
-                          <tr className="border-b border-border-subtle bg-surface-muted text-left">
-                            {sheet.columns.map((c, i) => (
-                              <th
-                                key={`${c}-${i}`}
-                                className="whitespace-nowrap px-2 py-1 font-medium"
-                              >
-                                <div className="text-text-primary">{c}</div>
-                                <div className="text-[11px] font-normal text-text-muted">
-                                  {t(`cloudConnection.columnTypes.${sheet.columnTypes[i]}`, {
-                                    defaultValue: String(sheet.columnTypes[i]),
-                                  })}
-                                </div>
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sheet.sampleRows.map((row, r) => (
-                            <tr key={r} className="border-b border-border-subtle last:border-b-0">
-                              {row.map((v, c) => (
-                                <td
-                                  key={c}
-                                  className="max-w-[240px] truncate whitespace-nowrap px-2 py-1"
-                                >
-                                  {v ?? ''}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                );
-              })()}
-            </DialogBody>
-            <DialogFooter>
-              <Button onClick={() => setPreview(null)}>{t('cloudConnection.actions.close')}</Button>
-            </DialogFooter>
-          </>
-        )}
-      </Dialog>
+      <CloudConnectionPreviewDialog preview={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

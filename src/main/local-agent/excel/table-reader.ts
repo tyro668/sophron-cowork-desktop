@@ -13,6 +13,7 @@ import * as path from 'node:path';
 
 import * as XLSX from '../../utils/xlsx';
 import { decodeCsvBuffer, detectCsvDelimiter, parseCsvRecords } from './csv-text';
+import { decryptOfficeFile } from './office-crypto';
 import {
   FieldType,
   fieldTypeFromFormat,
@@ -105,9 +106,20 @@ export interface WorkbookHandle {
   readSheet(sheetName: string): CellData[][];
 }
 
-export async function openWorkbook(filePath: string): Promise<WorkbookHandle> {
-  const buf = await readFile(filePath);
-  const wb = XLSX.read(buf, { type: 'buffer', cellNF: true, cellDates: false, dense: true });
+/**
+ * 打开工作簿。`password` 对应 `ExcelReadItem.password()`：加密的 xlsx 先用 office-crypto 解密；
+ * 未加密的文件忽略密码（与 POI 一致）；旧版 xls 把密码交给 SheetJS（仅支持 XOR 混淆）。
+ */
+export async function openWorkbook(filePath: string, password?: string): Promise<WorkbookHandle> {
+  const raw = await readFile(filePath);
+  const buf = decryptOfficeFile(raw, password);
+  const wb = XLSX.read(buf, {
+    type: 'buffer',
+    cellNF: true,
+    cellDates: false,
+    dense: true,
+    ...(password && buf === raw ? { password } : {}),
+  });
   const date1904 = Boolean(wb.Workbook?.WBProps?.date1904);
   return {
     sheetNames: [...wb.SheetNames],

@@ -2414,7 +2414,8 @@
       "deleteNode": "Delete selected nodes (pipeline canvas)",
       "escape": "Close dialog · deny permission request",
       "newTask": "New task"
-    }
+    },
+    "cloudConnection": "Cloud Connection"
   },
   "personalAnalysis": {
     "apiOrigin": "Host",
@@ -4727,17 +4728,18 @@
       "importConfig": "Import config.yaml",
       "reimportConfig": "Re-import",
       "clearConfig": "Clear config",
-      "addFiles": "Add files",
       "refresh": "Refresh",
       "preview": "Preview",
       "remove": "Remove",
-      "close": "Close"
+      "close": "Close",
+      "goToSettings": "Import in Settings",
+      "manage": "Manage"
     },
     "sections": {
       "config": "Connection config",
       "status": "Connection status",
-      "files": "Local files",
-      "activity": "Cloud requests"
+      "activity": "Cloud requests",
+      "tables": "Reported tables"
     },
     "fields": {
       "configFile": "Config file",
@@ -4748,39 +4750,91 @@
       "state": "State",
       "connectedAt": "Connected at",
       "remoteEnv": "Environment",
-      "lastError": "Last error",
-      "sourceName": "Source name"
+      "lastError": "Last error"
     },
     "tokenSaved": "Saved (encrypted)",
     "tokenMissing": "Not set",
     "notConfigured": "No config.yaml imported yet",
     "none": "None",
-    "fileColumns": {
-      "name": "File",
-      "status": "Parse status",
-      "tables": "Tables",
-      "rows": "Rows",
-      "columns": "Columns",
-      "actions": "Actions"
-    },
     "fileStatus": {
       "pending": "Pending",
       "parsing": "Parsing",
       "ready": "Parsed",
       "error": "Failed"
     },
-    "emptyFiles": "No local Excel / CSV files added yet",
     "emptyActivity": "No cloud requests yet",
-    "previewTitle": "File preview",
+    "previewTitle": "Table preview",
     "previewRows": "First {{count}} rows",
-    "sheet": "Sheet",
     "rowCount": "{{count}} rows",
     "columnTypes": {
       "5": "Number",
       "6": "Text",
       "9": "Date"
     },
-    "sourceNameLocked": "Disconnect to rename",
-    "removeConfirm": "The cloud will no longer be able to read this file. Remove it?"
+    "removeConfirm": "The cloud will no longer be able to read this file. Remove it?",
+    "emptyConfig": "No cloud connection configured",
+    "ds": {
+      "title": "Data sources",
+      "addGroup": "Add data source",
+      "addTable": "Add table",
+      "newGroup": "New group",
+      "newTable": "New table",
+      "edit": "Edit",
+      "browse": "Browse",
+      "manual": "Manual",
+      "emptyGroups": "No data source groups yet",
+      "emptyTables": "No tables",
+      "selectHint": "Select a group or table to configure",
+      "groupName": "Group name",
+      "directory": "Directory",
+      "strategy": "Auto tables",
+      "groupStrategy": {
+        "0": "Off",
+        "1": "Current folder",
+        "2": "All subfolders"
+      },
+      "legacyFiles": "Previously added files",
+      "deleteGroupConfirm": "The cloud will no longer read tables in this group. Delete it?",
+      "deleteTableConfirm": "Delete this manual table?",
+      "tableName": "Table name",
+      "sourceStrategy": "Table source",
+      "source": {
+        "merge": "Merged table (append files)",
+        "single": "Single file (one file as a table)"
+      },
+      "mergeStrategy": "Merge strategy",
+      "appendStrategy": {
+        "0": "Merge by column order",
+        "1": "Merge by column name"
+      },
+      "sortStrategy": {
+        "5": "Append unsorted",
+        "1": "By created time",
+        "2": "By modified time",
+        "3": "By file name (code order)",
+        "4": "By file name (natural order)"
+      },
+      "readStrategy": {
+        "0": "Current folder only",
+        "1": "All subfolders"
+      },
+      "fieldStrategy": "Column types",
+      "fieldType": {
+        "0": "Detect automatically",
+        "1": "Treat all columns as text"
+      },
+      "filePath": "File path",
+      "password": "File password",
+      "passwordPlaceholder": "Optional; merged tables only append files it opens",
+      "passwordSaved": "Saved (leave blank to keep)",
+      "clearPassword": "Clear",
+      "sheetStrategy": "Sheet selection",
+      "sheet": {
+        "0": "By sheet index",
+        "1": "By sheet name",
+        "2": "Merge all sheets of all files"
+      },
+      "headerRow": "Header row"
+    }
   }
 }

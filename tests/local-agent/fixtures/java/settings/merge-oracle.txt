@@ -1,0 +1,14 @@
+SCENARIO index-extend
+HEAD k:STRING|v:STRING|extra:NUMBER
+ROW 1|a|dir|a.csv|S
+ROW x|b|9|dir|b.csv|S
+ROW ~|dir|c.csv|S
+SCENARIO index-types
+HEAD d:DATE|n:NUMBER|m:STRING
+ROW 2024-01-01|~|1|dir|a.xlsx|S
+ROW 2024-01-02|5|2024-01-01|dir|b.xlsx|S
+SCENARIO name-merge
+HEAD k:NUMBER|v:STRING|new:STRING
+ROW 1|a|dir|a.csv|S
+ROW 2|b|7|dir|b.csv|S
+ROW ~|~|z|dir|c.csv|S
