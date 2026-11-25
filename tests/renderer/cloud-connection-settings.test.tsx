@@ -9,8 +9,11 @@ import type {
   CloudConnectionGroup,
   CloudConnectionState,
 } from '../../src/shared/contracts';
+import { ConfirmDialogProvider } from '../../src/renderer/components/ConfirmDialog';
 import { CloudConnectionPanel } from '../../src/renderer/components/data-view/cloud-connection';
 import { SettingsCloudConnection } from '../../src/renderer/components/settings/SettingsCloudConnection';
+import { EMPTY_DASHBOARD } from '../../src/renderer/features/data/model/types';
+import { DataViewPage } from '../../src/renderer/features/data/pages/DataViewPage';
 import { useAppStore } from '../../src/renderer/store';
 import i18n from './i18n-test';
 
@@ -93,7 +96,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   state = makeState();
   (window as unknown as { electronAPI: unknown }).electronAPI = { cloudConnection: api };
-  useAppStore.setState({ settingsTab: null, showSettings: false });
+  useAppStore.setState({
+    settingsTab: null,
+    showSettings: false,
+    pendingDataTabNavigation: null,
+    mainView: 'chat',
+  });
 });
 
 afterEach(() => {
@@ -199,5 +207,81 @@ describe('SettingsPanel registration', () => {
     expect(source).toMatch(/VALID_TABS = new Set<TabId>\(\[[^\]]*'cloud-connection'/s);
     expect(source).toMatch(/id: 'cloud-connection' as TabId,\s*group: 'data'/);
     expect(source).toContain('<SettingsCloudConnection />');
+  });
+});
+
+const DATA_TAB_KEYS = [
+  'data.tabs.pipelines',
+  'data.tabs.rawTables',
+  'data.tabs.resultTables',
+  'data.tabs.cloudAnalysis',
+  'data.tabs.cloudConnection',
+] as const;
+
+function dataTabLabels(): string[] {
+  return [...document.querySelectorAll('[data-fixed-tab]')].map(
+    (el) => el.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+  );
+}
+
+function expectedDataTabLabels(): string[] {
+  return DATA_TAB_KEYS.map((key) => t(key));
+}
+
+describe('数据页「云连接」tab（在云空间之后）', () => {
+  function setupDataBridge() {
+    const passthrough = (name: string) =>
+      vi.fn(async () => {
+        if (name === 'getDashboard') return EMPTY_DASHBOARD;
+        if (name === 'getAppConfig') return {};
+        return [];
+      });
+    const data = new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => passthrough(prop),
+        has: () => true,
+      }
+    );
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      data,
+      cloudConnection: api,
+    };
+  }
+
+  it('places 云连接 after 云空间 and shows datasource management in that tab', async () => {
+    setupDataBridge();
+    render(
+      <ConfirmDialogProvider>
+        <DataViewPage />
+      </ConfirmDialogProvider>
+    );
+    await screen.findByText(t('data.tabs.pipelines'));
+    expect(dataTabLabels()).toEqual(expectedDataTabLabels());
+    expect(screen.queryByTestId('cloud-connection-panel')).toBeNull();
+
+    useAppStore.getState().navigateToDataTab('cloud_connection');
+    await screen.findByTestId('cloud-connection-datasources');
+    expect(screen.getByTestId('cloud-connection-panel')).toBeTruthy();
+    expect(screen.getAllByText('销售合并').length).toBeGreaterThan(0);
+    const active = document.querySelector('[data-fixed-tab][data-state="active"]');
+    expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
+    expect(dataTabLabels()).toEqual(expectedDataTabLabels());
+  });
+
+  it('keeps the data-view tab bar visible in the empty state', async () => {
+    state = makeState({ configured: false, config: null, groups: [] });
+    setupDataBridge();
+    useAppStore.getState().navigateToDataTab('cloud_connection');
+    render(
+      <ConfirmDialogProvider>
+        <DataViewPage />
+      </ConfirmDialogProvider>
+    );
+    await screen.findByTestId('cloud-connection-open-settings');
+    expect(dataTabLabels()).toEqual(expectedDataTabLabels());
+    expect(screen.getByText(t('cloudConnection.emptyConfig'))).toBeTruthy();
+    const active = document.querySelector('[data-fixed-tab][data-state="active"]');
+    expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
   });
 });
