@@ -185,8 +185,8 @@ export function TablePickerTree({
             />
             <span
               className={cn(
-                'flex h-7 w-7 flex-shrink-0 items-center justify-center',
-                node.kind === 'group' ? 'bg-accent-muted text-accent' : 'bg-surface-muted'
+                'flex flex-shrink-0 items-center justify-center',
+                node.kind === 'group' && 'text-accent'
               )}
             >
               {node.icon}

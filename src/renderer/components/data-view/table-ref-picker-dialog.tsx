@@ -275,9 +275,7 @@ export function TableRefPickerDialog({
               className="flex h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center"
               data-testid="cloud-connection-picker-empty"
             >
-              <span className="flex h-12 w-12 items-center justify-center bg-surface-muted text-text-muted">
-                <Table2 className="h-6 w-6" />
-              </span>
+              <Table2 className="h-6 w-6 text-text-muted" />
               <div className="space-y-1">
                 <p className="text-[14px] font-semibold text-text-primary">
                   {isSearchEmpty
