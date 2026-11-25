@@ -4877,6 +4877,7 @@
       "pickerResult": "Result tables",
       "pickerEmpty": "No tables to reference. Create a raw table here, or import a raw table / generate a result table first.",
       "pickerAdd": "Add references",
+      "pickerReferenced": "Already referenced",
       "createRawTable": "New raw table",
       "createRawTableHint": "The new table will be referenced in the selected group",
       "pickerSelected": "{count} selected",

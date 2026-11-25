@@ -1,0 +1,792 @@
+/**
+ * Reusable grouped raw-table list (user folders + multi-member sources).
+ * Used by the 原始表 page (`variant="page"`) and the 云连接 table-picker dialog
+ * (`variant="picker"`).
+ */
+import { useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
+import {
+  ArrowUpDown,
+  FileSpreadsheet,
+  FileText,
+  Folder,
+  CloudDownload,
+  RefreshCw,
+  Table2,
+} from 'lucide-react';
+import type { DataRawTable, DataRawSource } from '../../types';
+import type { RawTableDraft } from '../../features/data/model/types';
+import { ExcelMultiSheetIcon } from './excel-multi-sheet-icon';
+import {
+  RawTableStatusBadge,
+  TABLE_PAGE_SIZE,
+  formatDateTime,
+  formatRelatedPipelineNames,
+  formatCloudMirrorLocation,
+  getCloudMirror,
+  getCloudMirrorSourceMeta,
+  getRawTableSourceMeta,
+} from './shared';
+import {
+  buildGroupSections,
+  GroupSectionRows,
+  hasNamedSections,
+  toggleCollapsed,
+  type DataListGroup,
+} from './group-ui';
+import { cn } from '../ui';
+
+export type MergePart = {
+  name: string;
+  included: boolean;
+  reason?: 'missing_sheet' | 'type_conflict';
+};
+
+/** Files / sheets a merged table is built from (null when the table is not a merge). */
+export function mergeParts(table: DataRawTable): MergePart[] | null {
+  const config = table.inputConfig as {
+    sourceKind?: string;
+    mergeSheets?: string[];
+    /** Sheets that were gone at the last refresh. */
+    missingMergeSheets?: string[];
+    mergeReport?: {
+      includedFiles?: string[];
+      missingSheetFiles?: string[];
+      typeConflictFiles?: Array<{ file: string }>;
+    };
+  };
+  if (config.sourceKind === 'excel' && (config.mergeSheets?.length ?? 0) > 1) {
+    const missing = new Set(config.missingMergeSheets ?? []);
+    return config.mergeSheets!.map((name) =>
+      missing.has(name)
+        ? { name, included: false, reason: 'missing_sheet' as const }
+        : { name, included: true }
+    );
+  }
+  if (config.sourceKind === 'folder' && config.mergeReport) {
+    const report = config.mergeReport;
+    return [
+      ...(report.includedFiles ?? []).map((name) => ({ name, included: true })),
+      ...(report.missingSheetFiles ?? []).map((name) => ({
+        name,
+        included: false,
+        reason: 'missing_sheet' as const,
+      })),
+      ...(report.typeConflictFiles ?? []).map((item) => ({
+        name: item.file,
+        included: false,
+        reason: 'type_conflict' as const,
+      })),
+    ];
+  }
+  return null;
+}
+
+export type RawTableSourceRow =
+  | { kind: 'rawTable'; id: string; rawTable: DataRawTable; child?: boolean; sourceName?: string }
+  | { kind: 'part'; id: string; rawTable: DataRawTable; part: MergePart; child?: boolean }
+  | {
+      kind: 'source';
+      id: string;
+      source: DataRawSource;
+      members: DataRawTable[];
+      rawTable: DataRawTable;
+    };
+
+/**
+ * Layout A: a source with more than one member table becomes a header row followed by its
+ * members as flush child rows; single-table sources stay one plain row.
+ */
+export function groupBySource(
+  rawTables: DataRawTable[],
+  sources: DataRawSource[],
+  expandedMerges: ReadonlySet<string> = new Set(),
+  collapsedSources: ReadonlySet<string> = new Set()
+): RawTableSourceRow[] {
+  const pushParts = (rows: RawTableSourceRow[], table: DataRawTable, child: boolean) => {
+    if (!expandedMerges.has(table.id)) return;
+    (mergeParts(table) ?? []).forEach((part, index) =>
+      rows.push({ kind: 'part', id: `part:${table.id}:${index}`, rawTable: table, part, child })
+    );
+  };
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const membersBySource = new Map<string, DataRawTable[]>();
+  for (const table of rawTables) {
+    const source = table.sourceId ? byId.get(table.sourceId) : undefined;
+    if (!source || source.memberIds.length <= 1) continue;
+    const list = membersBySource.get(source.id) ?? [];
+    list.push(table);
+    membersBySource.set(source.id, list);
+  }
+  const rows: RawTableSourceRow[] = [];
+  const emitted = new Set<string>();
+  for (const table of rawTables) {
+    const members = table.sourceId ? membersBySource.get(table.sourceId) : undefined;
+    if (!members) {
+      rows.push({ kind: 'rawTable', id: table.id, rawTable: table });
+      pushParts(rows, table, false);
+      continue;
+    }
+    if (emitted.has(table.sourceId!)) continue;
+    emitted.add(table.sourceId!);
+    const source = byId.get(table.sourceId!)!;
+    const ordered = [...members].sort(
+      (a, b) => source.memberIds.indexOf(a.id) - source.memberIds.indexOf(b.id)
+    );
+    rows.push({
+      kind: 'source',
+      id: `source:${source.id}`,
+      source,
+      members: ordered,
+      rawTable: table,
+    });
+    if (collapsedSources.has(source.id)) continue;
+    for (const member of ordered) {
+      rows.push({
+        kind: 'rawTable',
+        id: member.id,
+        rawTable: member,
+        child: true,
+        sourceName: source.name,
+      });
+      pushParts(rows, member, true);
+    }
+  }
+  return rows;
+}
+
+const COLLAPSED_SOURCES_KEY = 'sophron.rawSources.collapsed';
+
+function loadCollapsedSources(): Set<string> {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(COLLAPSED_SOURCES_KEY) ?? '[]');
+    return new Set(Array.isArray(value) ? value.filter((v) => typeof v === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedSources(ids: ReadonlySet<string>): void {
+  try {
+    window.localStorage.setItem(COLLAPSED_SOURCES_KEY, JSON.stringify([...ids]));
+  } catch {
+    // storage unavailable: the state just isn't remembered
+  }
+}
+
+/** Child rows show only the sheet / file part ("经营 / 目标" → "目标"). */
+export function childDisplayName(table: DataRawTable, sourceName?: string): string {
+  const stem = (sourceName ?? '').replace(/\.[^./\\]+$/, '');
+  if (stem && table.name.startsWith(`${stem} / `)) return table.name.slice(stem.length + 3);
+  return table.name;
+}
+
+export type RawTableTreeRow =
+  { kind: 'draft'; id: string; draft: RawTableDraft } | RawTableSourceRow;
+
+export type RawTableTreeVariant = 'page' | 'picker';
+export type TableTreeSelectionMode = 'single' | 'multi' | 'none';
+
+export interface RawTableTreeProps {
+  rawTables: DataRawTable[];
+  sources?: DataRawSource[];
+  groups: DataListGroup[];
+  groupCounts?: Record<string, number>;
+  groupPages?: Record<string, number>;
+  onGroupPageChange?: (groupKey: string, page: number) => void;
+  drafts?: RawTableDraft[];
+  isLoading?: boolean;
+  variant?: RawTableTreeVariant;
+  /** Page: highlight the active row. */
+  activeId?: string | null;
+  onActiveIdChange?: (id: string | null) => void;
+  onOpenTable?: (table: DataRawTable) => void;
+  onOpenDraft?: (id: string) => void;
+  onOpenSource?: (source: DataRawSource, tableId?: string) => void;
+  onRefreshSource?: (source: DataRawSource) => void;
+  onRenameGroup?: (group: DataListGroup) => void;
+  onDeleteGroup?: (group: DataListGroup) => void;
+  actionId?: string | null;
+  selectionMode?: TableTreeSelectionMode;
+  selectedIds?: readonly string[];
+  disabledIds?: readonly string[];
+  onSelectedIdsChange?: (ids: string[]) => void;
+  onSelect?: (table: DataRawTable) => void;
+}
+
+export function RawTableTree({
+  rawTables,
+  sources = [],
+  groups,
+  groupCounts = {},
+  groupPages = {},
+  onGroupPageChange,
+  drafts = [],
+  isLoading = false,
+  variant = 'page',
+  activeId = null,
+  onActiveIdChange,
+  onOpenTable,
+  onOpenDraft,
+  onOpenSource,
+  onRefreshSource,
+  onRenameGroup,
+  onDeleteGroup,
+  actionId = null,
+  selectionMode = 'none',
+  selectedIds = [],
+  disabledIds = [],
+  onSelectedIdsChange,
+  onSelect,
+}: RawTableTreeProps) {
+  const { t } = useTranslation();
+  const isPicker = variant === 'picker';
+  const lastChildBySource = useRef(new Map<string, string>());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedMerges, setExpandedMerges] = useState<Set<string>>(new Set());
+  const [collapsedSources, setCollapsedSources] = useState<Set<string>>(
+    isPicker ? () => new Set() : loadCollapsedSources
+  );
+  const selected = new Set(selectedIds);
+  const disabled = new Set(disabledIds);
+
+  const toggleMerge = (id: string) =>
+    setExpandedMerges((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleSource = (id: string) =>
+    setCollapsedSources((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      if (!isPicker) saveCollapsedSources(next);
+      return next;
+    });
+
+  const visibleRows = useMemo(() => {
+    if (isLoading) return [] as RawTableTreeRow[];
+    const sourceRows = groupBySource(
+      rawTables,
+      sources,
+      isPicker ? new Set() : expandedMerges,
+      collapsedSources
+    );
+    if (isPicker) return sourceRows;
+    return [
+      ...drafts.map((draft) => ({ kind: 'draft' as const, id: draft.id, draft })),
+      ...sourceRows,
+    ];
+  }, [rawTables, isLoading, drafts, sources, expandedMerges, collapsedSources, isPicker]);
+
+  const pageSections = useMemo(
+    () =>
+      buildGroupSections(visibleRows, groups, (row) =>
+        row.kind !== 'draft' ? (row.rawTable?.groupId ?? null) : null
+      ),
+    [visibleRows, groups]
+  );
+  const sectionCounts = useMemo(() => {
+    const counts: Record<string, number> = { ...groupCounts };
+    if (!isPicker) counts.ungrouped = (counts.ungrouped ?? 0) + drafts.length;
+    return counts;
+  }, [groupCounts, drafts.length, isPicker]);
+  const grouped = hasNamedSections(pageSections);
+  const colSpan = isPicker ? 2 : 6;
+  const pageSize = isPicker ? Number.MAX_SAFE_INTEGER : TABLE_PAGE_SIZE;
+
+  const toggleSelected = (tableId: string) => {
+    if (disabled.has(tableId)) return;
+    const table = rawTables.find((item) => item.id === tableId);
+    if (!table) return;
+    if (selectionMode === 'single') {
+      onSelectedIdsChange?.([tableId]);
+      onSelect?.(table);
+      return;
+    }
+    if (selectionMode !== 'multi') return;
+    const next = new Set(selected);
+    if (next.has(tableId)) next.delete(tableId);
+    else next.add(tableId);
+    onSelectedIdsChange?.([...next]);
+    onSelect?.(table);
+  };
+
+  const renderRow = (row: RawTableTreeRow, indented = false) => {
+    if (row.kind === 'source') {
+      return renderSourceRow(row.source, row.members, indented, {
+        isPicker,
+        collapsedSources,
+        activeId,
+        actionId,
+        lastChildBySource,
+        toggleSource,
+        onActiveIdChange,
+        onOpenSource,
+        onRefreshSource,
+        t,
+      });
+    }
+    if (row.kind === 'part') {
+      return renderPartRow(row, indented, t);
+    }
+    if (isPicker && row.kind === 'rawTable') {
+      return renderPickerTableRow(row, indented, {
+        selected,
+        disabled,
+        toggleSelected,
+        t,
+      });
+    }
+    return renderPageTableRow(row, indented, {
+      activeId,
+      expandedMerges,
+      lastChildBySource,
+      onActiveIdChange,
+      onOpenTable,
+      onOpenDraft,
+      toggleMerge,
+      t,
+    });
+  };
+
+  if (isLoading) return null;
+
+  return (
+    <div className="min-w-full overflow-x-auto" data-testid="raw-table-tree">
+      <table className="data-list-table w-full table-fixed border-collapse text-left">
+        {isPicker ? (
+          <thead>
+            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
+              <th className="w-10 whitespace-nowrap px-2" />
+              <th className="whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
+            </tr>
+          </thead>
+        ) : (
+          <thead>
+            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
+              <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
+              <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
+              <th className="w-[12%] whitespace-nowrap px-2 pr-6 text-right">
+                {t('data.columns.rowCount')}
+              </th>
+              <th className="w-[22%] whitespace-nowrap px-2">
+                {t('data.columns.relatedPipelines')}
+              </th>
+              <th className="w-[16%] whitespace-nowrap px-2">
+                <span className="inline-flex items-center gap-1">
+                  {t('data.columns.updatedAt')}
+                  <ArrowUpDown className="h-3 w-3" />
+                </span>
+              </th>
+              <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+            </tr>
+          </thead>
+        )}
+        <tbody>
+          {pageSections.map((section) => (
+            <GroupSectionRows
+              key={section.key}
+              colSpan={colSpan}
+              section={section}
+              grouped={grouped}
+              collapsed={collapsedGroups.has(section.key)}
+              onToggle={() =>
+                setCollapsedGroups((current) => toggleCollapsed(current, section.key))
+              }
+              onRename={!isPicker && section.group ? onRenameGroup : undefined}
+              onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
+              count={
+                isPicker ? section.rows.length : (sectionCounts[section.key] ?? section.rows.length)
+              }
+              page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
+              pageSize={pageSize}
+              onPageChange={(page) => onGroupPageChange?.(section.key, page)}
+              renderRow={(row, _index, sectionIndented) => renderRow(row, sectionIndented)}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderPartRow(
+  row: Extract<RawTableTreeRow, { kind: 'part' }>,
+  indented: boolean,
+  t: (key: string) => string
+) {
+  return (
+    <tr
+      key={row.id}
+      data-testid="raw-merge-part-row"
+      className="h-8 border-b border-dashed border-border-muted/60 text-[12px]"
+    >
+      <td
+        colSpan={6}
+        className={`pr-2 ${
+          row.child ? (indented ? 'pl-[5.5rem]' : 'pl-16') : indented ? 'pl-[4.25rem]' : 'pl-12'
+        }`}
+      >
+        <span className="inline-flex items-center gap-2">
+          <FileText className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+          <span
+            className={row.part.included ? 'text-text-secondary' : 'text-text-muted line-through'}
+          >
+            {row.part.name}
+          </span>
+          {!row.part.included && (
+            <span className="ml-2 text-warning">
+              {t(
+                row.part.reason === 'type_conflict'
+                  ? 'data.rawSources.list.partConflict'
+                  : 'data.rawSources.list.partMissingSheet'
+              )}
+            </span>
+          )}
+        </span>
+      </td>
+    </tr>
+  );
+}
+
+function renderPickerTableRow(
+  row: Extract<RawTableSourceRow, { kind: 'rawTable' }>,
+  indented: boolean,
+  ctx: {
+    selected: Set<string>;
+    disabled: Set<string>;
+    toggleSelected: (id: string) => void;
+    t: (key: string) => string;
+  }
+) {
+  const isChild = Boolean(row.child);
+  const table = row.rawTable;
+  const isDisabled = ctx.disabled.has(table.id);
+  const isSelected = ctx.selected.has(table.id) || isDisabled;
+  const name = isChild ? childDisplayName(table, row.sourceName) : table.name;
+  return (
+    <tr
+      key={row.id}
+      data-testid="raw-table-tree-row"
+      data-table-id={table.id}
+      className={cn(
+        'h-9 border-b border-border-muted/85 text-[13px]',
+        isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-hover',
+        ctx.selected.has(table.id) && !isDisabled ? 'bg-accent-muted' : ''
+      )}
+      onClick={() => {
+        if (!isDisabled) ctx.toggleSelected(table.id);
+      }}
+    >
+      <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          disabled={isDisabled}
+          onChange={() => ctx.toggleSelected(table.id)}
+          onClick={(event) => event.stopPropagation()}
+          className="accent-[var(--color-accent)]"
+          aria-label={name}
+        />
+      </td>
+      <td className={isChild ? 'pl-8 pr-2' : 'px-2'}>
+        <div className="flex min-w-0 items-center gap-2">
+          {isChild ? (
+            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+          ) : (
+            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
+          )}
+          <span className="min-w-0 truncate text-text-primary">{name}</span>
+          {isDisabled && (
+            <span className="flex-shrink-0 text-[11px] text-text-muted">
+              {ctx.t('cloudConnection.ds.pickerReferenced')}
+            </span>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function renderPageTableRow(
+  row: RawTableTreeRow,
+  indented: boolean,
+  ctx: {
+    activeId: string | null;
+    expandedMerges: Set<string>;
+    lastChildBySource: MutableRefObject<Map<string, string>>;
+    onActiveIdChange?: (id: string | null) => void;
+    onOpenTable?: (table: DataRawTable) => void;
+    onOpenDraft?: (id: string) => void;
+    toggleMerge: (id: string) => void;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  }
+) {
+  const isChild = row.kind === 'rawTable' && row.child;
+  const rawTable = row.kind === 'rawTable' ? row.rawTable : null;
+  const draft = row.kind === 'draft' ? row.draft : null;
+  const sourceKind = rawTable ? rawTable.sourceKind : 'draft';
+  const cloudMirror = getCloudMirror(rawTable);
+  const sourceMeta = cloudMirror ? getCloudMirrorSourceMeta() : getRawTableSourceMeta(sourceKind);
+  const parts = rawTable && !isChild ? mergeParts(rawTable) : null;
+  const typeIcon = cloudMirror ? (
+    <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+  ) : parts && sourceKind === 'folder' ? (
+    <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+  ) : sourceKind === 'excel' ? (
+    <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+  ) : sourceKind === 'csv' ? (
+    <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+  ) : (
+    <Table2 className="h-4 w-4 flex-shrink-0 text-accent" />
+  );
+  const selected = row.id === ctx.activeId;
+  const rowName =
+    isChild && rawTable
+      ? childDisplayName(rawTable, row.sourceName)
+      : (rawTable?.name ?? draft?.name ?? '');
+  const rowUpdatedAt = rawTable?.updatedAt ?? draft?.updatedAt ?? null;
+  return (
+    <tr
+      key={row.id}
+      aria-expanded={parts ? ctx.expandedMerges.has(row.id) : undefined}
+      data-merge-row={parts ? 'true' : undefined}
+      onClick={() => {
+        ctx.onActiveIdChange?.(row.id);
+        if (isChild && rawTable?.sourceId)
+          ctx.lastChildBySource.current.set(rawTable.sourceId, rawTable.id);
+        if (parts && rawTable) ctx.toggleMerge(rawTable.id);
+      }}
+      onDoubleClick={() => {
+        if (draft) ctx.onOpenDraft?.(draft.id);
+        else if (rawTable) ctx.onOpenTable?.(rawTable);
+      }}
+      data-testid={isChild ? 'raw-source-child-row' : undefined}
+      className={`cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
+        isChild ? 'h-[2.625rem]' : 'h-[2.875rem]'
+      } ${
+        selected
+          ? 'bg-accent-muted'
+          : parts
+            ? 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
+            : 'hover:bg-surface-hover'
+      }`}
+    >
+      <td
+        className={`relative pr-2 ${
+          isChild ? (indented ? 'pl-[4.25rem]' : 'pl-12') : indented ? 'pl-9' : 'pl-2'
+        } ${isChild && selected ? 'shadow-[inset_2px_0_0_var(--color-accent)]' : ''}`}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          {isChild ? <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" /> : typeIcon}
+          <div
+            className={`min-w-0 truncate text-[13px] text-text-primary ${
+              isChild ? '' : parts ? 'font-semibold' : 'font-medium'
+            }`}
+            title={
+              cloudMirror
+                ? formatCloudMirrorLocation(cloudMirror)
+                : rawTable
+                  ? rawTable.sourcePath
+                  : ctx.t('data.rawTables.notConfigured')
+            }
+          >
+            {rowName}
+          </div>
+          {parts && (
+            <span className="flex-shrink-0 rounded bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
+              {ctx.t('data.rawSources.list.mergeBadge')}
+            </span>
+          )}
+        </div>
+      </td>
+      <td className="px-2">
+        <span
+          className={`inline-flex h-6 items-center rounded-md px-2 text-xs font-medium ${sourceMeta.badgeClassName}`}
+        >
+          {ctx.t(sourceMeta.labelKey)}
+        </span>
+      </td>
+      <td className="whitespace-nowrap px-2 pr-6 text-right text-[13px] tabular-nums text-text-secondary">
+        {rawTable ? (
+          rawTable.rowCount.toLocaleString('en-US')
+        ) : (
+          <span className="text-text-muted">—</span>
+        )}
+      </td>
+      <td className="px-2">
+        <div className="truncate text-[13px] font-medium text-text-secondary">
+          {rawTable
+            ? formatRelatedPipelineNames(rawTable.relatedPipelineNames, ctx.t)
+            : ctx.t('data.rawTables.noRelatedPipelines')}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+        {formatDateTime(rowUpdatedAt)}
+      </td>
+      <td className="px-2">
+        <RawTableStatusBadge
+          label={
+            draft
+              ? ctx.t('data.rawTables.status.draft')
+              : rawTable?.health
+                ? ctx.t('data.rawTables.status.abnormal')
+                : rawTable?.memberStatus === 'missing'
+                  ? ctx.t('data.rawSources.list.memberMissing')
+                  : ctx.t('data.rawTables.status.available')
+          }
+          title={rawTable?.health?.reason}
+          tone={
+            rawTable?.health
+              ? 'error'
+              : draft || rawTable?.memberStatus === 'missing'
+                ? 'warning'
+                : 'success'
+          }
+        />
+      </td>
+    </tr>
+  );
+}
+
+function renderSourceRow(
+  source: DataRawSource,
+  members: DataRawTable[],
+  indented: boolean,
+  ctx: {
+    isPicker: boolean;
+    collapsedSources: Set<string>;
+    activeId: string | null;
+    actionId: string | null;
+    lastChildBySource: MutableRefObject<Map<string, string>>;
+    toggleSource: (id: string) => void;
+    onActiveIdChange?: (id: string | null) => void;
+    onOpenSource?: (source: DataRawSource, tableId?: string) => void;
+    onRefreshSource?: (source: DataRawSource) => void;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  }
+) {
+  const missing = members.filter((member) => member.memberStatus === 'missing').length;
+  const abnormal = members.filter((member) => member.health);
+  const merged = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
+  const updatedAt = Math.max(...members.map((member) => member.updatedAt));
+  const pipelines = [...new Set(members.flatMap((member) => member.relatedPipelineNames ?? []))];
+  const expanded = !ctx.collapsedSources.has(source.id);
+  const selected = ctx.activeId === `source:${source.id}`;
+  const icon =
+    source.sourceKind === 'cloud' ? (
+      <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+    ) : source.sourceKind === 'folder' ? (
+      <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+    ) : source.sourceKind === 'csv' ? (
+      <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+    ) : source.buildMode === 'excel_per_sheet' ? (
+      <ExcelMultiSheetIcon className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+    ) : (
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+    );
+  if (ctx.isPicker) {
+    return (
+      <tr
+        key={`source:${source.id}`}
+        data-testid="raw-source-group-row"
+        aria-expanded={expanded}
+        onClick={() => ctx.toggleSource(source.id)}
+        className="h-9 cursor-pointer border-b border-border-muted/85 bg-[var(--data-grid-header-surface)] hover:bg-surface-hover"
+      >
+        <td className={indented ? 'pl-9 pr-2' : 'px-2'} />
+        <td className="px-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {icon}
+            <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
+              {source.name}
+            </span>
+            <span
+              className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+                merged ? 'bg-warning/10 text-warning' : 'bg-accent-muted text-accent'
+              }`}
+            >
+              {merged
+                ? ctx.t('data.rawSources.list.mergeBadge')
+                : ctx.t('data.rawSources.list.tablesBadge', { count: source.memberIds.length })}
+            </span>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <tr
+      key={`source:${source.id}`}
+      data-testid="raw-source-group-row"
+      aria-expanded={expanded}
+      aria-selected={selected}
+      onClick={() => {
+        ctx.onActiveIdChange?.(`source:${source.id}`);
+        ctx.toggleSource(source.id);
+      }}
+      onDoubleClick={() => ctx.onOpenSource?.(source, ctx.lastChildBySource.current.get(source.id))}
+      className={`h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 ${
+        selected ? 'bg-accent-muted' : 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
+      }`}
+    >
+      <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
+        <div className="flex min-w-0 items-center gap-2">
+          {icon}
+          <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
+            {source.name}
+          </span>
+          <span
+            className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+              merged ? 'bg-warning/10 text-warning' : 'bg-accent-muted text-accent'
+            }`}
+          >
+            {merged
+              ? ctx.t('data.rawSources.list.mergeBadge')
+              : ctx.t('data.rawSources.list.tablesBadge', { count: source.memberIds.length })}
+          </span>
+        </div>
+      </td>
+      <td />
+      <td className="px-2">
+        <div className="truncate text-[13px] font-medium text-text-secondary">
+          {formatRelatedPipelineNames(pipelines, ctx.t)}
+        </div>
+      </td>
+      <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
+        {formatDateTime(Number.isFinite(updatedAt) ? updatedAt : null)}
+      </td>
+      <td className="px-2">
+        <div className="flex items-center gap-1">
+          <RawTableStatusBadge
+            label={
+              abnormal.length > 0
+                ? ctx.t('data.rawTables.status.abnormal')
+                : missing > 0
+                  ? ctx.t('data.rawSources.list.missingMembers', { count: missing })
+                  : ctx.t('data.rawTables.status.available')
+            }
+            title={abnormal.map((member) => `${member.name}：${member.health?.reason}`).join('\n')}
+            tone={abnormal.length > 0 ? 'error' : missing > 0 ? 'warning' : 'success'}
+          />
+          <button
+            type="button"
+            className="ml-auto flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-accent disabled:opacity-50"
+            disabled={ctx.actionId === `refresh-source:${source.id}`}
+            title={ctx.t('data.rawSources.list.refreshSource')}
+            onClick={(event) => {
+              event.stopPropagation();
+              ctx.onRefreshSource?.(source);
+            }}
+            data-testid="raw-source-group-refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}

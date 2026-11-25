@@ -1,7 +1,7 @@
 /**
  * 数据 → 云连接：左侧逻辑分组 + 右侧引用原始表 / 结果表。
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
@@ -28,12 +28,9 @@ import type {
   CloudConnectionState,
   CloudConnectionTablePreview,
   CloudConnectionTableRef,
-  DataRawTable,
   DataRawTablePreview,
-  DataResultTable,
 } from '../../../shared/contracts';
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
-import { dataClient } from '../../features/data/api/data-client';
 import {
   errorText,
   isLiveStatus,
@@ -42,6 +39,7 @@ import { showToast } from '../../utils/toast';
 import { GlassDropdownMenu, GlassMenuItem, GlassMenuSeparator } from '../GlassDropdownMenu';
 import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { CloudConnectionPreviewDialog, toDataRawTablePreview } from './cloud-connection-preview';
+import { TableRefPickerDialog } from './table-ref-picker-dialog';
 import { EmptyState, fixedTabGroupWidth } from './shared';
 import { Badge, cn } from '../ui';
 import { groupClass, titleCellClass } from './raw-source-wizard';
@@ -448,21 +446,43 @@ export function DatasourceManager({
             />
           )}
           {selection.kind === 'newTable' && selectedGroup && (
-            <TablePicker
-              group={selectedGroup}
-              busy={busy}
-              onCreateRawTable={
-                onCreateRawTable ? () => onCreateRawTable(selectedGroup.id) : undefined
-              }
-              onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
-              onSave={async (refs) => {
-                const ok = await run('add-refs', () =>
-                  cloudConnectionClient.addTableRefs(selectedGroup.id, refs)
-                );
-                if (ok) setSelection({ kind: 'group', groupId: selectedGroup.id });
-                return ok;
-              }}
-            />
+            <>
+              <GroupForm
+                group={selectedGroup}
+                busy={busy}
+                onSave={async (input) =>
+                  run('update-group', () =>
+                    cloudConnectionClient.updateGroup(selectedGroup.id, input)
+                  )
+                }
+                onDelete={async () => {
+                  if (!(await confirm(t('cloudConnection.ds.deleteGroupConfirm')))) return;
+                  const ok = await run('delete-group', () =>
+                    cloudConnectionClient.deleteGroup(selectedGroup.id)
+                  );
+                  if (ok) setSelection({ kind: 'none' });
+                }}
+                onAddTable={() => setSelection({ kind: 'newTable', groupId: selectedGroup.id })}
+              />
+              <TableRefPickerDialog
+                open
+                group={selectedGroup}
+                busy={busy === 'add-refs'}
+                onOpenChange={(open) => {
+                  if (!open) setSelection({ kind: 'group', groupId: selectedGroup.id });
+                }}
+                onCreateRawTable={
+                  onCreateRawTable ? () => onCreateRawTable(selectedGroup.id) : undefined
+                }
+                onSave={async (refs) => {
+                  const ok = await run('add-refs', () =>
+                    cloudConnectionClient.addTableRefs(selectedGroup.id, refs)
+                  );
+                  if (ok) setSelection({ kind: 'group', groupId: selectedGroup.id });
+                  return ok;
+                }}
+              />
+            </>
           )}
           {selection.kind === 'table' && selectedGroup && (
             <TableRefForm
@@ -606,198 +626,6 @@ function GroupForm({
         )}
       </div>
     </div>
-  );
-}
-
-function TablePicker({
-  group,
-  busy,
-  onCancel,
-  onSave,
-  onCreateRawTable,
-}: {
-  group: CloudConnectionGroup;
-  busy: string | null;
-  onCancel: () => void;
-  onSave: (refs: Array<{ kind: 'raw' | 'result'; tableId: string }>) => Promise<boolean>;
-  onCreateRawTable?: () => void;
-}) {
-  const { t } = useTranslation();
-  const [query, setQuery] = useState('');
-  const [rawTables, setRawTables] = useState<DataRawTable[]>([]);
-  const [resultTables, setResultTables] = useState<DataResultTable[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    dataClient
-      .getDashboard({
-        includeSummary: false,
-        includePipelines: false,
-        includeRawTables: true,
-        includeResultTables: true,
-        rawTableLimit: 1000,
-        outputLimit: 1000,
-      })
-      .then((dashboard) => {
-        if (cancelled) return;
-        setRawTables(dashboard.rawTables ?? []);
-        setResultTables(dashboard.resultTables ?? []);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(errorText(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const used = useMemo(
-    () => new Set(group.tables.map((table) => `${table.kind}:${table.tableId}`)),
-    [group.tables]
-  );
-  const match = (name: string) => name.toLowerCase().includes(query.trim().toLowerCase());
-  const raws = rawTables.filter((table) => !query.trim() || match(table.name));
-  const results = resultTables.filter((table) => !query.trim() || match(table.name));
-
-  const toggle = (key: string) => {
-    if (used.has(key)) return;
-    setPicked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-picker">
-      <PaneHeader title={t('cloudConnection.ds.pickerTitle')}>
-        <HeaderAction
-          testId="cloud-connection-create-raw-table"
-          onClick={onCreateRawTable}
-          disabled={!onCreateRawTable}
-        >
-          {t('cloudConnection.ds.createRawTable')}
-        </HeaderAction>
-        <HeaderAction onClick={onCancel}>{t('common.cancel')}</HeaderAction>
-        <HeaderAction
-          testId="cloud-connection-save-table"
-          disabled={picked.size === 0}
-          loading={busy === 'add-refs'}
-          onClick={() =>
-            void onSave(
-              [...picked].map((key) => {
-                const [kind, tableId] = key.split(':') as ['raw' | 'result', string];
-                return { kind, tableId };
-              })
-            )
-          }
-        >
-          {t('cloudConnection.ds.pickerAdd')}
-        </HeaderAction>
-      </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={t('cloudConnection.ds.pickerSearch')}
-          className="mb-3 h-9 w-full border border-border-subtle bg-transparent px-2.5 text-[13px] outline-none"
-          data-testid="cloud-connection-picker-search"
-        />
-        {loading ? (
-          <div className="flex items-center gap-2 text-[13px] text-text-muted">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          </div>
-        ) : error ? (
-          <p className="text-[13px] text-error">{error}</p>
-        ) : raws.length === 0 && results.length === 0 ? (
-          <div
-            className="flex flex-col items-start gap-3"
-            data-testid="cloud-connection-picker-empty"
-          >
-            <p className="text-[13px] text-text-muted">{t('cloudConnection.ds.pickerEmpty')}</p>
-            <button
-              type="button"
-              data-testid="cloud-connection-create-raw-table-empty"
-              onClick={onCreateRawTable}
-              disabled={!onCreateRawTable}
-              className="inline-flex h-8 items-center gap-1.5 border border-border-subtle bg-surface px-3 text-[13px] font-medium text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t('cloudConnection.ds.createRawTable')}
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4" data-testid="cloud-connection-picker-list">
-            <PickerSection
-              title={t('cloudConnection.ds.pickerRaw')}
-              items={raws.map((table) => ({
-                key: `raw:${table.id}`,
-                name: table.name,
-                disabled: used.has(`raw:${table.id}`),
-              }))}
-              picked={picked}
-              onToggle={toggle}
-            />
-            <PickerSection
-              title={t('cloudConnection.ds.pickerResult')}
-              items={results.map((table) => ({
-                key: `result:${table.id}`,
-                name: table.name,
-                disabled: used.has(`result:${table.id}`),
-              }))}
-              picked={picked}
-              onToggle={toggle}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function PickerSection({
-  title,
-  items,
-  picked,
-  onToggle,
-}: {
-  title: string;
-  items: Array<{ key: string; name: string; disabled: boolean }>;
-  picked: Set<string>;
-  onToggle: (key: string) => void;
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section className={groupClass}>
-      <div className="ui-group-title">{title}</div>
-      {items.map((item) => (
-        <label
-          key={item.key}
-          className={cn(
-            'flex h-9 items-center gap-2 border-t border-border-subtle px-3 text-[13px]',
-            item.disabled
-              ? 'cursor-not-allowed opacity-50'
-              : 'cursor-pointer hover:bg-surface-hover'
-          )}
-        >
-          <input
-            type="checkbox"
-            checked={picked.has(item.key) || item.disabled}
-            disabled={item.disabled}
-            onChange={() => onToggle(item.key)}
-            className="accent-[var(--color-accent)]"
-          />
-          <span className="min-w-0 truncate">{item.name}</span>
-        </label>
-      ))}
-    </section>
   );
 }
 

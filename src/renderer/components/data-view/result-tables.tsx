@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
-  ArrowUpDown,
   Download,
   Eye,
   EyeOff,
@@ -14,7 +13,6 @@ import {
   Plus,
   RefreshCw,
   Trash2,
-  UploadCloud,
   Table2,
   ArrowRight,
   Check,
@@ -35,11 +33,7 @@ import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import {
   AssignGroupDialog,
-  buildGroupSections,
   GroupNameDialog,
-  GroupSectionRows,
-  hasNamedSections,
-  toggleCollapsed,
   type AssignGroupTarget,
   type DataListGroup,
 } from './group-ui';
@@ -53,10 +47,8 @@ import {
   RawTableSelect,
   RawTableStatusBadge,
   LoadingState,
-  TABLE_PAGE_SIZE,
   flatToolbarRowClass,
   formatDateTime,
-  formatResultTableRelatedPipelineNames,
   RAW_TABLE_PREVIEW_PAGE_SIZE,
   RESULT_TABLE_INPUT_CHOICES_LIMIT,
   bottomTabBarClass,
@@ -74,6 +66,7 @@ import {
   Input,
 } from '../ui';
 import { ResultTableAutomations } from './table-automations';
+import { ResultTableTree } from './result-table-tree';
 import { resultTableDeleteImpact } from '../../features/data/utils/delete-impact';
 import {
   getAutomationTableBindings,
@@ -155,7 +148,6 @@ export function ResultTablesPanel({
   const [selectedResultTableId, setSelectedResultTableId] = useState<string | null>(null);
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const selectedResultTable =
     resultTables.find((resultTable) => resultTable.id === selectedResultTableId) ?? null;
@@ -173,52 +165,6 @@ export function ResultTablesPanel({
       setSelectedResultTableId(null);
     }
   }, [isLoading, resultTables, selectedResultTableId]);
-
-  const sections = useMemo(
-    () => buildGroupSections(resultTables, groups, (resultTable) => resultTable.groupId),
-    [resultTables, groups]
-  );
-  const grouped = hasNamedSections(sections);
-
-  const renderRow = (resultTable: DataResultTable, indented = false) => {
-    const selected = resultTable.id === selectedResultTableId;
-    return (
-      <tr
-        key={resultTable.id}
-        onClick={() => setSelectedResultTableId(resultTable.id)}
-        onDoubleClick={() => onEdit(resultTable)}
-        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
-          selected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
-        }`}
-      >
-        <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
-          <div className="flex min-w-0 items-center gap-3">
-            {indented ? (
-              <UploadCloud className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-            ) : (
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-                <UploadCloud className="h-4 w-4" />
-              </div>
-            )}
-            <div className="min-w-0 truncate text-[13px] font-medium text-text-primary">
-              {resultTable.name}
-            </div>
-          </div>
-        </td>
-        <td className="px-2">
-          <div className="truncate text-[13px] font-medium text-text-secondary">
-            {formatResultTableRelatedPipelineNames(resultTable, t)}
-          </div>
-        </td>
-        <td className="whitespace-nowrap px-2 text-[13px] font-medium text-text-secondary">
-          {formatDateTime(resultTable.updatedAt)}
-        </td>
-        <td className="px-2">
-          <RawTableStatusBadge label={t('data.resultTables.status.available')} tone="success" />
-        </td>
-      </tr>
-    );
-  };
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
@@ -374,50 +320,20 @@ export function ResultTablesPanel({
               }
             />
           ) : (
-            <div className="min-w-full overflow-x-auto">
-              <table className="data-list-table w-full table-fixed border-collapse text-left">
-                <thead>
-                  <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-                    <th className="w-[36%] whitespace-nowrap px-2">
-                      {t('data.columns.resultTableName')}
-                    </th>
-                    <th className="w-[32%] whitespace-nowrap px-2">
-                      {t('data.columns.relatedPipelines')}
-                    </th>
-                    <th className="w-[18%] whitespace-nowrap px-2">
-                      <span className="inline-flex items-center gap-1">
-                        {t('data.columns.updatedAt')}
-                        <ArrowUpDown className="h-3 w-3" />
-                      </span>
-                    </th>
-                    <th className="w-[14%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sections.map((section) => (
-                    <GroupSectionRows
-                      key={section.key}
-                      colSpan={4}
-                      section={section}
-                      grouped={grouped}
-                      collapsed={collapsedGroups.has(section.key)}
-                      onToggle={() =>
-                        setCollapsedGroups((current) => toggleCollapsed(current, section.key))
-                      }
-                      onRename={section.group ? setRenameTarget : undefined}
-                      onDelete={section.group ? onDeleteGroup : undefined}
-                      count={groupCounts[section.key] ?? section.rows.length}
-                      page={groupPages[section.key] ?? 1}
-                      pageSize={TABLE_PAGE_SIZE}
-                      onPageChange={(page) => onGroupPageChange(section.key, page)}
-                      renderRow={(resultTable, _index, indented) =>
-                        renderRow(resultTable, indented)
-                      }
-                    />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ResultTableTree
+              variant="page"
+              resultTables={resultTables}
+              groups={groups}
+              groupCounts={groupCounts}
+              groupPages={groupPages}
+              onGroupPageChange={onGroupPageChange}
+              isLoading={isLoading}
+              activeId={selectedResultTableId}
+              onActiveIdChange={setSelectedResultTableId}
+              onOpenTable={onEdit}
+              onRenameGroup={setRenameTarget}
+              onDeleteGroup={onDeleteGroup}
+            />
           )}
         </div>
       </div>

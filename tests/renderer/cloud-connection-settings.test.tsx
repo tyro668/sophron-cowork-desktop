@@ -196,16 +196,23 @@ describe('数据 → 云连接', () => {
     fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
     await screen.findByTestId('cloud-connection-table-picker');
     await screen.findByTestId('cloud-connection-picker-list');
+    expect(screen.getByTestId('cloud-connection-group-form')).toBeTruthy();
     expect(screen.getByText('订单')).toBeTruthy();
-    expect(screen.getByText('汇总')).toBeTruthy();
+    expect(screen.queryByText('汇总')).toBeNull();
     expect(screen.getByTestId('cloud-connection-create-raw-table').textContent).toContain(
       t('cloudConnection.ds.createRawTable')
     );
+    fireEvent.click(screen.getByTestId('table-ref-picker-tab-result'));
+    expect(screen.getByText('汇总')).toBeTruthy();
+    expect(screen.queryByText('订单')).toBeNull();
+    expect(screen.queryByTestId('cloud-connection-create-raw-table')).toBeNull();
+    fireEvent.click(screen.getByTestId('table-ref-picker-tab-raw'));
     fireEvent.click(screen.getByText('订单'));
     fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
     await waitFor(() =>
       expect(api.addTableRefs).toHaveBeenCalledWith('g1', [{ kind: 'raw', tableId: 'raw-2' }])
     );
+    await waitFor(() => expect(screen.queryByTestId('cloud-connection-table-picker')).toBeNull());
   });
 
   it('shows 新建原始表 in the add-table picker even when the list is empty', async () => {
@@ -502,5 +509,115 @@ describe('云连接：新建原始表并自动引用', () => {
     expect(screen.getAllByText('销售日报（合并）').length).toBeGreaterThan(0);
     const active = document.querySelector('[data-fixed-tab][data-state="active"]');
     expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
+  });
+});
+
+describe('云连接：引用表弹窗分组与已引用', () => {
+  const rawGroup = { id: 'rg1', scope: 'raw' as const, name: '销售组', createdAt: 1 };
+  const resultGroup = { id: 'og1', scope: 'result' as const, name: '分析组', createdAt: 1 };
+  const source = {
+    id: 's1',
+    name: '经营.xlsx',
+    sourcePath: '/data/经营.xlsx',
+    sourceKind: 'excel' as const,
+    buildMode: 'excel_per_sheet' as const,
+    config: { autoInclude: true },
+    memberIds: ['t1', 't2'],
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const member = (id: string, name: string) => ({
+    id,
+    name,
+    groupId: 'rg1',
+    sourcePath: '/data/经营.xlsx',
+    sourceKind: 'excel' as const,
+    fileCount: 1,
+    tableName: `rawTable_${id}`,
+    rowCount: 3,
+    columnCount: 2,
+    relatedPipelineNames: [] as string[],
+    inputConfig: { sourceKind: 'excel' },
+    sourceId: 's1',
+    memberStatus: 'ok' as const,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+
+  function installPickerData() {
+    const dataApi = {
+      getDashboard: vi.fn(() =>
+        Promise.resolve({
+          rawTables: [
+            { id: 'raw-1', name: '销售原始表', groupId: 'rg1' },
+            member('t1', '经营 / 目标'),
+            member('t2', '经营 / 销售'),
+            { id: 'raw-2', name: '订单', groupId: 'rg1' },
+          ],
+          resultTables: [
+            {
+              id: 'out-1',
+              name: '汇总',
+              groupId: 'og1',
+              sourceRawTableId: null,
+              tableName: 'out_1',
+              rowCount: 1,
+              columnCount: 1,
+              relatedPipelineNames: [],
+              relatedPipelineIds: [],
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          ],
+          groups: [rawGroup, resultGroup],
+        })
+      ),
+      listRawSources: vi.fn(() => Promise.resolve([source])),
+    };
+    (
+      window as unknown as { electronAPI: { cloudConnection: typeof api; data: typeof dataApi } }
+    ).electronAPI = { cloudConnection: api, data: dataApi };
+  }
+
+  async function openPicker() {
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
+    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
+    await screen.findByTestId('cloud-connection-table-picker');
+  }
+
+  it('keeps folder and source grouping, marks already-referenced tables, and selects across tabs', async () => {
+    installPickerData();
+    await openPicker();
+    await screen.findByTestId('raw-table-tree');
+    expect(screen.getByText('销售组')).toBeTruthy();
+    expect(screen.getByTestId('raw-source-group-row').textContent).toContain('经营.xlsx');
+    expect(screen.getByText('目标')).toBeTruthy();
+    expect(screen.getByText('销售')).toBeTruthy();
+    expect(screen.getByText('订单')).toBeTruthy();
+    const referenced = screen.getByText('销售原始表').closest('tr');
+    expect(referenced?.textContent).toContain(t('cloudConnection.ds.pickerReferenced'));
+    const referencedBox = referenced?.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(referencedBox.disabled).toBe(true);
+    fireEvent.click(screen.getByText('销售原始表'));
+    fireEvent.click(screen.getByText('订单'));
+    fireEvent.click(screen.getByTestId('table-ref-picker-tab-result'));
+    expect(screen.queryByTestId('raw-table-tree')).toBeNull();
+    await screen.findByTestId('result-table-tree');
+    expect(screen.getByText('分析组')).toBeTruthy();
+    expect(screen.getByText('汇总')).toBeTruthy();
+    expect(screen.queryByText('订单')).toBeNull();
+    fireEvent.click(screen.getByText('汇总'));
+    fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
+    await waitFor(() => expect(api.addTableRefs).toHaveBeenCalled());
+    const refs = api.addTableRefs.mock.calls[0][1] as Array<{ kind: string; tableId: string }>;
+    expect(refs).toEqual(
+      expect.arrayContaining([
+        { kind: 'raw', tableId: 'raw-2' },
+        { kind: 'result', tableId: 'out-1' },
+      ])
+    );
+    expect(refs).toHaveLength(2);
+    expect(refs.some((item) => item.tableId === 'raw-1')).toBe(false);
   });
 });
