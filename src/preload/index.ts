@@ -24,6 +24,7 @@ import { createRemoteApi } from './api/remote';
 import { createScheduleApi } from './api/schedule';
 import { createAutomationApi } from './api/automation';
 import { createMemoryApi } from './api/memory';
+import { createCloudConnectionApi } from './api/cloud-connection';
 
 const electronApi = {
   ...createCoreApi(),
@@ -42,6 +43,7 @@ const electronApi = {
   schedule: createScheduleApi(),
   automation: createAutomationApi(),
   memory: createMemoryApi(),
+  cloudConnection: createCloudConnectionApi(),
 } satisfies ElectronApi;
 
 // Expose protected methods that allow the renderer process to use

@@ -25,3 +25,6 @@
 
 # Lock files - enforce LF to prevent cross-platform false diffs
 package-lock.json text eol=lf
+
+# Byte-exact Java compatibility fixtures (CRLF CSV, LZ4 frames)
+tests/local-agent/fixtures/java/** binary

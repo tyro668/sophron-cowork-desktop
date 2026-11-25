@@ -2,6 +2,7 @@ import { abortAllAiRuns } from '../agent/ai-runs';
 import { app, BrowserWindow } from 'electron';
 import { closeDatabase } from '../db/database';
 import { stopNavServer } from '../nav-server';
+import { stopCloudConnection } from '../features/cloud-connection/runtime';
 import { remoteManager } from '../remote/remote-manager';
 import { shutdownSandbox } from '../sandbox/sandbox-adapter';
 import { SandboxSync } from '../sandbox/sandbox-sync';
@@ -48,6 +49,13 @@ export async function cleanupSandboxResources(): Promise<void> {
   appContext.skillsManager?.stopStorageMonitoring();
   appContext.tray?.destroy();
   appContext.tray = null;
+
+  // 断开云连接（本地宝）
+  try {
+    stopCloudConnection();
+  } catch (error) {
+    logError('[App] Error stopping cloud connection:', error);
+  }
 
   // 停止远程控制
   try {

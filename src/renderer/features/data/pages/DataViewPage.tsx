@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
 import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
+import { CloudConnectionPanel } from '../../../components/data-view/cloud-connection';
 import { PipelineEditor, PipelinesPanel } from '../../../components/data-view/data-pipelines';
 import {
   RawTableEditor,
@@ -402,6 +403,7 @@ export function DataViewPage() {
                           ['raw_tables', 'data.tabs.rawTables'],
                           ['result_tables', 'data.tabs.resultTables'],
                           ['cloud_analysis', 'data.tabs.cloudAnalysis'],
+                          ['cloud_connection', 'data.tabs.cloudConnection'],
                         ] as const
                       ).map(([value, key]) => (
                         <TabsTrigger
@@ -523,6 +525,12 @@ export function DataViewPage() {
                   </TabsContent>
                   <TabsContent value="cloud_analysis" className="min-h-0 flex-1 bg-transparent">
                     <CloudAnalysisPanel />
+                  </TabsContent>
+                  <TabsContent
+                    value="cloud_connection"
+                    className="flex min-h-0 flex-1 flex-col bg-transparent"
+                  >
+                    <CloudConnectionPanel />
                   </TabsContent>
                 </Tabs>
               </tabBarAction.Provider>

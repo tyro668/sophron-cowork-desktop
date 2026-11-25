@@ -5,7 +5,8 @@
  */
 import type { DataDashboard, DataRawTable, DataResultTable } from '../../../types';
 
-export type DataTab = 'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis';
+export type DataTab =
+  'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis' | 'cloud_connection';
 export type RawTableSourceKind = 'excel' | 'csv' | 'folder' | 'cloud' | 'file' | 'draft';
 
 /** Locally-drafted input table not yet imported into the store. */

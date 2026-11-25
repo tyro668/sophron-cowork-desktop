@@ -37,6 +37,7 @@ import { MemoryService } from '../memory/memory-service';
 import { startNavServer } from '../nav-server';
 import { remoteConfigStore } from '../remote/remote-config-store';
 import { remoteManager, type AgentExecutor } from '../remote/remote-manager';
+import { startCloudConnection } from '../features/cloud-connection/runtime';
 import { SessionManager } from '../session/session-manager';
 import { PluginCatalogService } from '../skills/plugin-catalog-service';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
@@ -387,6 +388,13 @@ export async function bootstrap(): Promise<void> {
     },
   };
   remoteManager.setAgentExecutor(agentExecutor);
+
+  // 云连接（本地宝）：开启自动连接时连接云端
+  try {
+    startCloudConnection();
+  } catch (error) {
+    logError('[App] Failed to start cloud connection:', error);
+  }
 
   // 远程控制启用时启动
   if (remoteConfigStore.isEnabled()) {
