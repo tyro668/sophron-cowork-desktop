@@ -4733,12 +4733,13 @@
       "remove": "Remove",
       "close": "Close",
       "goToSettings": "Import in Settings",
-      "manage": "Manage"
+      "openSettings": "Connection settings"
     },
     "sections": {
       "config": "Connection config",
       "status": "Connection status",
       "activity": "Cloud requests",
+      "runtime": "Runtime",
       "tables": "Reported tables"
     },
     "fields": {

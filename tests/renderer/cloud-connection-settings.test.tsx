@@ -112,26 +112,18 @@ describe('数据 → 云连接', () => {
     expect(useAppStore.getState().showSettings).toBe(true);
   });
 
-  it('keeps the runtime view (status + reported tables) when configured', async () => {
+  it('shows data-source management and jumps to Settings for connection config', async () => {
     render(<CloudConnectionPanel />);
-    await screen.findByTestId('cloud-connection-tables');
+    await screen.findByTestId('cloud-connection-datasources');
     expect(screen.getAllByText('销售合并').length).toBeGreaterThan(0);
     expect(screen.getByText('a.csv')).toBeTruthy();
-    fireEvent.click(screen.getByText(t('cloudConnection.actions.manage')));
+    fireEvent.click(screen.getByText(t('cloudConnection.actions.openSettings')));
     expect(useAppStore.getState().settingsTab).toBe('cloud-connection');
-  });
-});
-
-describe('设置 → 云连接', () => {
-  it('imports config from settings when nothing is configured', async () => {
-    state = makeState({ configured: false, config: null, groups: [] });
-    render(<SettingsCloudConnection />);
-    fireEvent.click(await screen.findByTestId('cloud-connection-import'));
-    await waitFor(() => expect(api.importConfig).toHaveBeenCalled());
+    expect(useAppStore.getState().showSettings).toBe(true);
   });
 
   it('edits a manual table and keeps the saved password unless changed', async () => {
-    render(<SettingsCloudConnection />);
+    render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('销售合并'));
     const form = await screen.findByTestId('cloud-connection-table-form');
     expect(form.textContent).toContain(t('cloudConnection.ds.mergeStrategy'));
@@ -162,7 +154,7 @@ describe('设置 → 云连接', () => {
   });
 
   it('creates a group through 添加数据源', async () => {
-    render(<SettingsCloudConnection />);
+    render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByTestId('cloud-connection-add-group'));
     fireEvent.change(screen.getByTestId('cloud-connection-group-name'), {
       target: { value: '新分组' },
@@ -177,6 +169,24 @@ describe('设置 → 云连接', () => {
         strategy: 1,
       })
     );
+  });
+});
+
+describe('设置 → 云连接', () => {
+  it('imports config from settings when nothing is configured', async () => {
+    state = makeState({ configured: false, config: null, groups: [] });
+    render(<SettingsCloudConnection />);
+    fireEvent.click(await screen.findByTestId('cloud-connection-import'));
+    await waitFor(() => expect(api.importConfig).toHaveBeenCalled());
+  });
+
+  it('shows only connection config, not data-source management', async () => {
+    render(<SettingsCloudConnection />);
+    await screen.findByTestId('settings-cloud-connection');
+    expect(screen.getByText('0123****cdef')).toBeTruthy();
+    expect(screen.queryByTestId('cloud-connection-datasources')).toBeNull();
+    expect(screen.queryByTestId('cloud-connection-add-group')).toBeNull();
+    expect(screen.queryByText('销售合并')).toBeNull();
   });
 });
 

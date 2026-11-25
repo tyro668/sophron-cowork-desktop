@@ -1,5 +1,5 @@
 /**
- * 云连接数据源管理（对应本地宝 agent-ui 的「数据源」页）：左侧分组目录树（分组 → 手动表 / 自动表），
+ * 数据 → 云连接的数据源管理（对应本地宝 agent-ui 的「数据源」页）：左侧分组目录树（分组 → 手动表 / 自动表），
  * 右侧为分组或手动表的配置表单。字段语义与 Java `LocalDatasourceBean` / `ExcelTableBean` 一致。
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -26,12 +26,12 @@ import type {
   CloudConnectionTableConfig,
   CloudConnectionTableInput,
   CloudConnectionTablePreview,
-} from '../../../../shared/contracts';
-import { cloudConnectionClient } from '../../../features/cloud-connection/api/cloud-connection-client';
-import { errorText } from '../../../features/cloud-connection/hooks/use-cloud-connection';
-import { showToast } from '../../../utils/toast';
-import { useOptionalConfirmDialog } from '../../ConfirmDialog';
-import { CloudConnectionPreviewDialog } from '../../data-view/cloud-connection-preview';
+} from '../../../shared/contracts';
+import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
+import { errorText } from '../../features/cloud-connection/hooks/use-cloud-connection';
+import { showToast } from '../../utils/toast';
+import { useOptionalConfirmDialog } from '../ConfirmDialog';
+import { CloudConnectionPreviewDialog } from './cloud-connection-preview';
 import {
   Badge,
   Button,
@@ -42,8 +42,8 @@ import {
   SelectTrigger,
   SelectValue,
   cn,
-} from '../../ui';
-import { SegmentedControl } from '../schedule/editor-controls';
+} from '../ui';
+import { SegmentedControl } from '../settings/schedule/editor-controls';
 
 type Selection =
   | { kind: 'none' }
@@ -168,7 +168,10 @@ export function DatasourceManager({
       : undefined;
 
   return (
-    <section className="ui-group bg-surface" data-testid="cloud-connection-datasources">
+    <section
+      className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col bg-surface"
+      data-testid="cloud-connection-datasources"
+    >
       <div className="ui-group-title justify-between">
         <span>{t('cloudConnection.ds.title')}</span>
         <div className="flex items-center gap-1">
@@ -193,9 +196,9 @@ export function DatasourceManager({
           </Button>
         </div>
       </div>
-      <div className="grid min-h-[420px] grid-cols-[minmax(180px,34%)_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-[minmax(180px,34%)_minmax(0,1fr)] overflow-hidden">
         <div
-          className="min-w-0 overflow-y-auto border-r border-border-subtle py-1"
+          className="min-h-0 min-w-0 overflow-y-auto border-r border-border-subtle py-1"
           data-testid="cloud-connection-group-tree"
         >
           {state.groups.length === 0 && (
@@ -316,7 +319,7 @@ export function DatasourceManager({
             );
           })}
         </div>
-        <div className="min-w-0">
+        <div className="min-h-0 min-w-0 overflow-y-auto">
           {selection.kind === 'newGroup' && (
             <GroupForm
               key="new-group"

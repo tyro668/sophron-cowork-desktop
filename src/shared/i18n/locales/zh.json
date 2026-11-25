@@ -4733,12 +4733,13 @@
       "remove": "移除",
       "close": "关闭",
       "goToSettings": "前往设置导入配置",
-      "manage": "配置管理"
+      "openSettings": "连接设置"
     },
     "sections": {
       "config": "连接配置",
       "status": "连接状态",
       "activity": "云端请求",
+      "runtime": "运行状态",
       "tables": "上报的表"
     },
     "fields": {

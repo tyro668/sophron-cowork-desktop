@@ -1,6 +1,6 @@
 /**
- * 设置 → 云连接：导入 config.yaml、连接 / 断开、自动连接、清除配置，以及数据源（分组 / 手动表）管理。
- * 与「云空间」一样，连接配置集中在设置里；数据页只展示运行状态。
+ * 设置 → 云连接：导入 / 重新导入 config.yaml、连接 / 断开、自动连接、清除配置与连接状态。
+ * 与「云空间」一样，这里只管理连接本身；分组和表的数据源管理在「数据 → 云连接」。
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,7 +13,6 @@ import {
 } from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { CLOUD_CONNECTION_STATUS_TONE } from '../data-view/cloud-connection-preview';
 import { Badge, Button, Switch } from '../ui';
-import { DatasourceManager } from './cloud-connection/DatasourceManager';
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -152,8 +151,6 @@ export function SettingsCloudConnection() {
           </div>
         )}
       </section>
-
-      <DatasourceManager state={state} busy={busy} run={run} />
     </div>
   );
 }
