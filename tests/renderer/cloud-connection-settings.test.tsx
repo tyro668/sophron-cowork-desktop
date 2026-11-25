@@ -595,10 +595,22 @@ describe('云连接：引用表弹窗分组与已引用', () => {
     expect(screen.getByText('目标')).toBeTruthy();
     expect(screen.getByText('销售')).toBeTruthy();
     expect(screen.getByText('订单')).toBeTruthy();
-    const referenced = screen.getByText('销售原始表').closest('tr');
+    const referenced = screen.getByText('销售原始表').closest('[data-testid="raw-table-tree-row"]');
     expect(referenced?.textContent).toContain(t('cloudConnection.ds.pickerReferenced'));
     const referencedBox = referenced?.querySelector('input[type="checkbox"]') as HTMLInputElement;
     expect(referencedBox.disabled).toBe(true);
+    // Group node is expandable; collapsing hides its descendant tables.
+    const salesGroup = screen
+      .getByText('销售组')
+      .closest('[data-testid="table-picker-tree-group"]');
+    expect(salesGroup?.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(screen.getByText('销售组'));
+    expect(salesGroup?.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      screen.queryByText('订单', { selector: '[data-testid="raw-table-tree-row"]' })
+    ).toBeNull();
+    fireEvent.click(screen.getByText('销售组'));
+    expect(screen.getByText('订单')).toBeTruthy();
     fireEvent.click(screen.getByText('销售原始表'));
     fireEvent.click(screen.getByText('订单'));
     fireEvent.click(screen.getByTestId('table-ref-picker-tab-result'));
@@ -606,7 +618,7 @@ describe('云连接：引用表弹窗分组与已引用', () => {
     await screen.findByTestId('result-table-tree');
     expect(screen.getByText('分析组')).toBeTruthy();
     expect(screen.getByText('汇总')).toBeTruthy();
-    expect(screen.queryByText('订单')).toBeNull();
+    expect(screen.queryByTestId('raw-table-tree-row')).toBeNull();
     fireEvent.click(screen.getByText('汇总'));
     fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
     await waitFor(() => expect(api.addTableRefs).toHaveBeenCalled());

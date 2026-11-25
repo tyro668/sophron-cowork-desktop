@@ -7,6 +7,9 @@ import { useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowUpDown,
+  Check,
+  Minus,
+  ChevronRight,
   FileSpreadsheet,
   FileText,
   Folder,
@@ -35,6 +38,7 @@ import {
   type DataListGroup,
 } from './group-ui';
 import { cn } from '../ui';
+import { TablePickerTree, type TablePickerTreeNode } from './table-picker-tree';
 
 export type MergePart = {
   name: string;
@@ -297,6 +301,12 @@ export function RawTableTree({
   const colSpan = isPicker ? 2 : 6;
   const pageSize = isPicker ? Number.MAX_SAFE_INTEGER : TABLE_PAGE_SIZE;
 
+  const pickerNodes = useMemo(
+    () =>
+      isPicker ? buildRawPickerNodes(rawTables, sources, groups, new Set(disabledIds), t) : [],
+    [isPicker, rawTables, sources, groups, disabledIds, t]
+  );
+
   const toggleSelected = (tableId: string) => {
     if (disabled.has(tableId)) return;
     const table = rawTables.find((item) => item.id === tableId);
@@ -354,17 +364,25 @@ export function RawTableTree({
 
   if (isLoading) return null;
 
+  if (isPicker) {
+    return (
+      <div data-testid="raw-table-tree">
+        <TablePickerTree
+          nodes={pickerNodes}
+          selectedIds={selectedIds}
+          onSelectedIdsChange={onSelectedIdsChange}
+          leafTestId="raw-table-tree-row"
+          sourceTestId="raw-source-group-row"
+          referencedLabel={t('cloudConnection.ds.pickerReferenced')}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-full overflow-x-auto" data-testid="raw-table-tree">
       <table className="data-list-table w-full table-fixed border-collapse text-left">
-        {isPicker ? (
-          <thead>
-            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-              <th className="w-10 whitespace-nowrap px-2" />
-              <th className="whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
-            </tr>
-          </thead>
-        ) : (
+        {isPicker ? null : (
           <thead>
             <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
               <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
@@ -399,12 +417,15 @@ export function RawTableTree({
               onRename={!isPicker && section.group ? onRenameGroup : undefined}
               onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
               count={
-                isPicker ? section.rows.length : (sectionCounts[section.key] ?? section.rows.length)
+                isPicker
+                  ? section.rows.filter((row) => row.kind === 'rawTable').length
+                  : (sectionCounts[section.key] ?? section.rows.length)
               }
               page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
               pageSize={pageSize}
               onPageChange={(page) => onGroupPageChange?.(section.key, page)}
               renderRow={(row, _index, sectionIndented) => renderRow(row, sectionIndented)}
+              headerAppearance={isPicker ? 'picker' : 'default'}
             />
           ))}
         </tbody>
@@ -452,6 +473,47 @@ function renderPartRow(
   );
 }
 
+export function PickerCheck(opts: {
+  checked: boolean;
+  disabled?: boolean;
+  indeterminate?: boolean;
+  label: string;
+  onChange: () => void;
+}) {
+  const filled = (opts.checked || opts.indeterminate) && !opts.disabled;
+  return (
+    <span className="relative inline-flex h-4 w-4 flex-shrink-0 items-center justify-center">
+      <input
+        type="checkbox"
+        checked={opts.checked && !opts.indeterminate}
+        disabled={opts.disabled}
+        ref={(el) => {
+          if (el) el.indeterminate = Boolean(opts.indeterminate);
+        }}
+        onChange={opts.onChange}
+        onClick={(event) => event.stopPropagation()}
+        className="peer absolute inset-0 z-10 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+        aria-label={opts.label}
+      />
+      <span
+        className={cn(
+          'flex h-4 w-4 items-center justify-center border',
+          filled
+            ? 'border-accent bg-accent text-accent-foreground'
+            : 'border-border bg-surface text-transparent',
+          opts.disabled && 'border-border-subtle bg-surface-muted text-text-muted'
+        )}
+      >
+        {opts.indeterminate && !opts.disabled ? (
+          <Minus className="h-3 w-3" strokeWidth={3} />
+        ) : opts.checked ? (
+          <Check className="h-3 w-3" strokeWidth={3} />
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
 function renderPickerTableRow(
   row: Extract<RawTableSourceRow, { kind: 'rawTable' }>,
   indented: boolean,
@@ -459,49 +521,77 @@ function renderPickerTableRow(
     selected: Set<string>;
     disabled: Set<string>;
     toggleSelected: (id: string) => void;
-    t: (key: string) => string;
+    t: (key: string, options?: Record<string, unknown>) => string;
   }
 ) {
   const isChild = Boolean(row.child);
   const table = row.rawTable;
   const isDisabled = ctx.disabled.has(table.id);
-  const isSelected = ctx.selected.has(table.id) || isDisabled;
+  const isSelected = ctx.selected.has(table.id);
   const name = isChild ? childDisplayName(table, row.sourceName) : table.name;
+  const sourceKind = table.sourceKind ?? 'excel';
+  const typeIcon =
+    sourceKind === 'folder' ? (
+      <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+    ) : sourceKind === 'excel' ? (
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+    ) : sourceKind === 'csv' ? (
+      <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
+    ) : (
+      <Table2 className="h-4 w-4 flex-shrink-0 text-accent" />
+    );
+  const typeLabel = ctx.t(getRawTableSourceMeta(sourceKind).labelKey);
+  const fileName = fileBaseName(table.sourcePath);
+  const meta = [
+    typeLabel,
+    fileName && fileName !== name ? fileName : null,
+    typeof table.rowCount === 'number'
+      ? ctx.t('cloudConnection.ds.pickerRows', {
+          count: Number(table.rowCount).toLocaleString(),
+        })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <tr
       key={row.id}
       data-testid="raw-table-tree-row"
       data-table-id={table.id}
       className={cn(
-        'h-9 border-b border-border-muted/85 text-[13px]',
-        isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-hover',
-        ctx.selected.has(table.id) && !isDisabled ? 'bg-accent-muted' : ''
+        'h-12 border-b border-border-muted/70 text-[13px] transition-colors',
+        isDisabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-surface-hover',
+        isSelected && !isDisabled && 'bg-accent-muted'
       )}
       onClick={() => {
         if (!isDisabled) ctx.toggleSelected(table.id);
       }}
     >
-      <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          disabled={isDisabled}
-          onChange={() => ctx.toggleSelected(table.id)}
-          onClick={(event) => event.stopPropagation()}
-          className="accent-[var(--color-accent)]"
-          aria-label={name}
-        />
+      <td className={cn('w-11', indented ? 'pl-5 pr-2' : 'pl-4 pr-2')}>
+        {PickerCheck({
+          checked: isSelected,
+          disabled: isDisabled,
+          label: name,
+          onChange: () => ctx.toggleSelected(table.id),
+        })}
       </td>
-      <td className={isChild ? 'pl-8 pr-2' : 'px-2'}>
-        <div className="flex min-w-0 items-center gap-2">
-          {isChild ? (
-            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-          ) : (
-            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-          )}
-          <span className="min-w-0 truncate text-text-primary">{name}</span>
+      <td className="py-1.5 pr-4">
+        <div className={cn('flex min-w-0 items-center gap-3', isChild ? 'pl-8' : 'pl-0')}>
+          <span className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center bg-surface-muted">
+            {isChild && (
+              <span
+                aria-hidden
+                className="absolute -left-5 top-[-10px] h-[calc(100%+20px)] w-px bg-border-subtle"
+              />
+            )}
+            {typeIcon}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-medium text-text-primary">{name}</div>
+            {meta ? <div className="truncate text-[12px] text-text-muted">{meta}</div> : null}
+          </div>
           {isDisabled && (
-            <span className="flex-shrink-0 text-[11px] text-text-muted">
+            <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
               {ctx.t('cloudConnection.ds.pickerReferenced')}
             </span>
           )}
@@ -695,19 +785,26 @@ function renderSourceRow(
         data-testid="raw-source-group-row"
         aria-expanded={expanded}
         onClick={() => ctx.toggleSource(source.id)}
-        className="h-9 cursor-pointer border-b border-border-muted/85 bg-[var(--data-grid-header-surface)] hover:bg-surface-hover"
+        className="h-11 cursor-pointer border-b border-border-muted/70 bg-surface-muted/60 hover:bg-surface-hover"
       >
-        <td className={indented ? 'pl-9 pr-2' : 'px-2'} />
-        <td className="px-2">
+        <td className={cn('w-11', indented ? 'pl-5 pr-2' : 'pl-4 pr-2')} />
+        <td className="pr-4">
           <div className="flex min-w-0 items-center gap-2">
+            <ChevronRight
+              className={cn(
+                'h-4 w-4 flex-shrink-0 text-text-muted transition-transform',
+                expanded && 'rotate-90'
+              )}
+            />
             {icon}
             <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
               {source.name}
             </span>
             <span
-              className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[11px] ${
+              className={cn(
+                'flex-shrink-0 px-1.5 py-0.5 text-[11px] font-medium',
                 merged ? 'bg-warning/10 text-warning' : 'bg-accent-muted text-accent'
-              }`}
+              )}
             >
               {merged
                 ? ctx.t('data.rawSources.list.mergeBadge')
@@ -789,4 +886,86 @@ function renderSourceRow(
       </td>
     </tr>
   );
+}
+
+function rawPickerIcon(sourceKind: string | undefined) {
+  if (sourceKind === 'folder') return <Folder className="h-4 w-4 text-amber-500" />;
+  if (sourceKind === 'excel') return <FileSpreadsheet className="h-4 w-4 text-emerald-600" />;
+  if (sourceKind === 'csv') return <FileText className="h-4 w-4 text-accent" />;
+  if (sourceKind === 'cloud') return <CloudDownload className="h-4 w-4 text-sky-500" />;
+  return <Table2 className="h-4 w-4 text-accent" />;
+}
+
+function fileBaseName(path?: string | null): string {
+  if (!path) return '';
+  return (path.split(/[\\/]/).pop() ?? '').trim();
+}
+
+function rawPickerTableNode(
+  table: DataRawTable,
+  disabled: Set<string>,
+  t: (key: string, options?: Record<string, unknown>) => string,
+  sourceName?: string
+): TablePickerTreeNode {
+  const kind = table.sourceKind ?? 'excel';
+  const typeLabel = t(getRawTableSourceMeta(kind).labelKey);
+  const fileName = fileBaseName(table.sourcePath);
+  const name = sourceName ? childDisplayName(table, sourceName) : table.name;
+  const meta = [
+    typeLabel,
+    !sourceName && fileName && fileName !== name ? fileName : null,
+    typeof table.rowCount === 'number'
+      ? t('cloudConnection.ds.pickerRows', { count: Number(table.rowCount).toLocaleString() })
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  const isDisabled = disabled.has(table.id);
+  return {
+    id: table.id,
+    kind: 'table',
+    tableId: table.id,
+    name,
+    meta,
+    icon: rawPickerIcon(kind),
+    disabled: isDisabled,
+    referenced: isDisabled,
+  };
+}
+
+function buildRawPickerNodes(
+  rawTables: DataRawTable[],
+  sources: DataRawSource[],
+  groups: DataListGroup[],
+  disabled: Set<string>,
+  t: (key: string, options?: Record<string, unknown>) => string
+): TablePickerTreeNode[] {
+  const sections = buildGroupSections(rawTables, groups, (table) => table.groupId ?? null);
+  return sections.map((section) => {
+    const rows = groupBySource(section.rows, sources, new Set(), new Set());
+    const children: TablePickerTreeNode[] = [];
+    for (const row of rows) {
+      if (row.kind === 'source') {
+        const sourceKind = row.source.sourceKind;
+        children.push({
+          id: row.id,
+          kind: 'source',
+          name: row.source.name,
+          icon: rawPickerIcon(sourceKind),
+          children: row.members.map((table) =>
+            rawPickerTableNode(table, disabled, t, row.source.name)
+          ),
+        });
+      } else if (row.kind === 'rawTable' && !row.child) {
+        children.push(rawPickerTableNode(row.rawTable, disabled, t));
+      }
+    }
+    return {
+      id: section.key,
+      kind: 'group',
+      name: section.group?.name ?? t('data.groups.ungrouped'),
+      icon: <Folder className="h-4 w-4" />,
+      children,
+    };
+  });
 }

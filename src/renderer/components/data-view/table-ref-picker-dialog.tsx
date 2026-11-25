@@ -4,7 +4,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, Search, Table2, X } from 'lucide-react';
 import type {
   CloudConnectionGroup,
   DataGroup,
@@ -14,9 +14,9 @@ import type {
 } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
 import { errorText } from '../../features/cloud-connection/hooks/use-cloud-connection';
-import { Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle, cn } from '../ui';
-import { RawTableTree } from './raw-table-tree';
+import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle, cn } from '../ui';
 import { ResultTableTree } from './result-table-tree';
+import { RawTableTree, childDisplayName } from './raw-table-tree';
 import { matchesSearchText } from './shared';
 
 export type TableRefKind = 'raw' | 'result';
@@ -150,6 +150,19 @@ export function TableRefPickerDialog({
     [picked]
   );
 
+  const selectedItems = useMemo(() => {
+    return [...picked].map((key) => {
+      const kind = key.startsWith('raw:') ? ('raw' as const) : ('result' as const);
+      const tableId = kind === 'raw' ? key.slice(4) : key.slice(7);
+      const raw = kind === 'raw' ? rawTables.find((table) => table.id === tableId) : undefined;
+      const result =
+        kind === 'result' ? resultTables.find((table) => table.id === tableId) : undefined;
+      const sourceName = raw?.sourceId ? sourceById.get(raw.sourceId)?.name : undefined;
+      const name = raw ? childDisplayName(raw, sourceName) : (result?.name ?? tableId);
+      return { key, kind, tableId, name };
+    });
+  }, [picked, rawTables, resultTables, sourceById]);
+
   const setKindIds = (kind: TableRefKind, ids: readonly string[]) => {
     setPicked((current) => {
       const next = new Set([...current].filter((key) => !key.startsWith(`${kind}:`)));
@@ -160,10 +173,12 @@ export function TableRefPickerDialog({
 
   const visibleEmpty =
     !loading && !error && (tab === 'raw' ? filteredRaw.length === 0 : filteredResult.length === 0);
+  const isSearchEmpty = visibleEmpty && query.trim().length > 0;
 
   const handleSave = async () => {
     const refs: TableRefPick[] = [...picked].map((key) => {
-      const [kind, tableId] = key.split(':') as [TableRefKind, string];
+      const kind = key.startsWith('raw:') ? ('raw' as const) : ('result' as const);
+      const tableId = kind === 'raw' ? key.slice(4) : key.slice(7);
       return { kind, tableId };
     });
     if (refs.length === 0) return;
@@ -182,72 +197,110 @@ export function TableRefPickerDialog({
       onOpenChange={onOpenChange}
       busy={saving || busy}
       ariaLabel={t('cloudConnection.ds.pickerTitle')}
-      className="flex h-[min(36rem,80vh)] w-[min(48rem,92vw)] flex-col gap-0 rounded-none p-0 shadow-none"
+      className="flex h-[min(40rem,86vh)] w-[min(52rem,92vw)] max-w-[min(52rem,92vw)] flex-col gap-0 overflow-hidden rounded-none border-border-subtle p-0 shadow-elevated"
     >
-      <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-picker">
-        <DialogHeader className="flex h-12 flex-shrink-0 flex-row items-center justify-between border-b border-border-subtle px-4 py-0">
-          <DialogTitle className="text-[14px] font-semibold">
-            {t('cloudConnection.ds.pickerTitle')}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-shrink-0 items-center gap-3 border-b border-border-subtle px-4 py-2">
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
+        data-testid="cloud-connection-table-picker"
+      >
+        <DialogHeader className="flex flex-shrink-0 flex-col items-start gap-4 border-b border-border-subtle px-6 pb-4 pt-5">
+          <div className="space-y-1">
+            <DialogTitle className="text-[17px] font-semibold tracking-tight">
+              {t('cloudConnection.ds.pickerTitle')}
+            </DialogTitle>
+            <p className="text-[13px] text-text-muted">
+              {t('cloudConnection.ds.pickerSubtitle', { name: group.sourceName })}
+            </p>
+          </div>
           <div
-            className="inline-flex h-8 border border-border-subtle"
+            className="grid h-10 w-full grid-cols-2 border border-border-subtle bg-surface-muted"
             role="tablist"
             aria-label={t('cloudConnection.ds.pickerTitle')}
           >
-            {(['raw', 'result'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                data-testid={`table-ref-picker-tab-${value}`}
-                onClick={() => setTab(value)}
-                className={cn(
-                  'h-full min-w-[5.5rem] px-3 text-[13px] font-medium',
-                  tab === value
-                    ? 'bg-accent-muted text-accent'
-                    : 'text-text-secondary hover:bg-surface-hover'
-                )}
-              >
-                {value === 'raw'
-                  ? t('cloudConnection.ds.pickerRaw')
-                  : t('cloudConnection.ds.pickerResult')}
-              </button>
-            ))}
+            {(['raw', 'result'] as const).map((value) => {
+              const active = tab === value;
+              const count = value === 'raw' ? filteredRaw.length : filteredResult.length;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  data-testid={`table-ref-picker-tab-${value}`}
+                  onClick={() => setTab(value)}
+                  className={cn(
+                    'inline-flex h-full items-center justify-center gap-2 text-[13px] font-medium transition-colors',
+                    active
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                  )}
+                >
+                  {value === 'raw'
+                    ? t('cloudConnection.ds.pickerRaw')
+                    : t('cloudConnection.ds.pickerResult')}
+                  <span
+                    className={cn(
+                      'inline-flex h-5 min-w-[1.25rem] items-center justify-center px-1.5 text-[11px] tabular-nums',
+                      active
+                        ? 'bg-accent-foreground/15 text-accent-foreground'
+                        : 'bg-background text-text-muted'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={t('cloudConnection.ds.pickerSearch')}
-            className="h-8 min-w-0 flex-1 border border-border-subtle bg-transparent px-2.5 text-[13px] outline-none"
-            data-testid="cloud-connection-picker-search"
-          />
-        </div>
-        <DialogBody className="min-h-0 flex-1 overflow-auto p-0">
+          <div className="relative w-full">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('cloudConnection.ds.pickerSearch')}
+              className="h-10 w-full border border-border-subtle bg-background pl-9 pr-3 text-[13px] text-text-primary outline-none placeholder:text-text-muted focus:border-accent"
+              data-testid="cloud-connection-picker-search"
+            />
+          </div>
+        </DialogHeader>
+        <DialogBody className="min-h-0 flex-1 overflow-y-auto bg-surface p-0">
           {loading ? (
-            <div className="flex items-center gap-2 px-4 py-6 text-[13px] text-text-muted">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <div className="flex h-full items-center justify-center gap-2 text-[13px] text-text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" />
             </div>
           ) : error ? (
-            <p className="px-4 py-6 text-[13px] text-error">{error}</p>
+            <p className="px-6 py-10 text-[13px] text-error">{error}</p>
           ) : visibleEmpty ? (
             <div
-              className="flex flex-col items-start gap-3 px-4 py-6"
+              className="flex h-full flex-col items-center justify-center gap-3 px-6 py-10 text-center"
               data-testid="cloud-connection-picker-empty"
             >
-              <p className="text-[13px] text-text-muted">{t('cloudConnection.ds.pickerEmpty')}</p>
-              {tab === 'raw' && (
-                <button
-                  type="button"
+              <span className="flex h-12 w-12 items-center justify-center bg-surface-muted text-text-muted">
+                <Table2 className="h-6 w-6" />
+              </span>
+              <div className="space-y-1">
+                <p className="text-[14px] font-semibold text-text-primary">
+                  {isSearchEmpty
+                    ? t('cloudConnection.ds.pickerEmptySearch')
+                    : t('cloudConnection.ds.pickerEmptyTitle')}
+                </p>
+                <p className="max-w-sm text-[13px] text-text-muted">
+                  {isSearchEmpty
+                    ? t('cloudConnection.ds.pickerEmptySearchHint')
+                    : t('cloudConnection.ds.pickerEmpty')}
+                </p>
+              </div>
+              {tab === 'raw' && !isSearchEmpty && (
+                <Button
+                  variant="secondary"
+                  className="rounded-none"
                   data-testid="cloud-connection-create-raw-table-empty"
                   onClick={onCreateRawTable}
                   disabled={!onCreateRawTable}
-                  className="inline-flex h-8 items-center gap-1.5 border border-border-subtle bg-surface px-3 text-[13px] font-medium text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
                 >
+                  <Plus className="h-3.5 w-3.5" />
                   {t('cloudConnection.ds.createRawTable')}
-                </button>
+                </Button>
               )}
             </div>
           ) : tab === 'raw' ? (
@@ -277,41 +330,70 @@ export function TableRefPickerDialog({
             </div>
           )}
         </DialogBody>
-        <DialogFooter className="h-12 flex-shrink-0 items-center justify-between gap-0 border-t border-border-subtle p-0 pt-0">
-          <div className="flex h-full items-center">
+        <DialogFooter className="relative z-10 flex-shrink-0 items-center justify-between gap-4 border-t border-border-subtle bg-surface px-5 py-3 pt-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span
+              className="flex-shrink-0 text-[13px] text-text-secondary"
+              data-testid="cloud-connection-picker-selected"
+            >
+              {t('cloudConnection.ds.pickerSelected', { count: picked.size })}
+            </span>
+            {selectedItems.length > 0 && (
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 overflow-hidden">
+                {selectedItems.slice(0, 4).map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="inline-flex max-w-[9rem] items-center gap-1 border border-border-subtle bg-background px-1.5 py-0.5 text-[12px] text-text-primary hover:border-border hover:bg-surface-hover"
+                    onClick={() =>
+                      setPicked((current) => {
+                        const next = new Set(current);
+                        next.delete(item.key);
+                        return next;
+                      })
+                    }
+                    title={item.name}
+                  >
+                    <span className="min-w-0 truncate">{item.name}</span>
+                    <X className="h-3 w-3 flex-shrink-0 text-text-muted" />
+                  </button>
+                ))}
+                {selectedItems.length > 4 && (
+                  <span className="text-[12px] text-text-muted">+{selectedItems.length - 4}</span>
+                )}
+              </div>
+            )}
             {tab === 'raw' && (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                className="ml-auto flex-shrink-0 rounded-none text-accent hover:bg-accent-muted hover:text-accent"
                 data-testid="cloud-connection-create-raw-table"
                 onClick={onCreateRawTable}
                 disabled={!onCreateRawTable}
-                className="inline-flex h-full items-center px-4 text-[13px] font-medium text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
+                <Plus className="h-3.5 w-3.5" />
                 {t('cloudConnection.ds.createRawTable')}
-              </button>
+              </Button>
             )}
           </div>
-          <div className="flex h-full items-center">
-            <button
-              type="button"
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <Button
+              variant="secondary"
+              className="rounded-none"
               onClick={() => onOpenChange(false)}
-              className="inline-flex h-full items-center border-l border-border-subtle px-4 text-[13px] text-text-primary hover:bg-surface-hover"
             >
               {t('common.cancel')}
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
+              className="rounded-none"
               data-testid="cloud-connection-save-table"
               disabled={picked.size === 0 || saving || busy}
+              loading={saving}
               onClick={() => void handleSave()}
-              className="inline-flex h-full items-center border-l border-border-subtle px-4 text-[13px] font-medium text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {saving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                t('cloudConnection.ds.pickerAdd')
-              )}
-            </button>
+              {t('cloudConnection.ds.pickerAdd')}
+            </Button>
           </div>
         </DialogFooter>
       </div>

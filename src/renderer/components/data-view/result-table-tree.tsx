@@ -5,7 +5,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowUpDown, UploadCloud } from 'lucide-react';
+import { ArrowUpDown, Folder, UploadCloud } from 'lucide-react';
 import type { DataResultTable } from '../../types';
 import {
   RawTableStatusBadge,
@@ -21,7 +21,8 @@ import {
   type DataListGroup,
 } from './group-ui';
 import { cn } from '../ui';
-import type { TableTreeSelectionMode } from './raw-table-tree';
+import { PickerCheck, type TableTreeSelectionMode } from './raw-table-tree';
+import { TablePickerTree, type TablePickerTreeNode } from './table-picker-tree';
 
 export type ResultTableTreeVariant = 'page' | 'picker';
 
@@ -78,6 +79,11 @@ export function ResultTableTree({
   const colSpan = isPicker ? 2 : 4;
   const pageSize = isPicker ? Number.MAX_SAFE_INTEGER : TABLE_PAGE_SIZE;
 
+  const pickerNodes = useMemo(
+    () => (isPicker ? buildResultPickerNodes(resultTables, groups, new Set(disabledIds), t) : []),
+    [isPicker, resultTables, groups, disabledIds, t]
+  );
+
   const toggleSelected = (tableId: string) => {
     if (disabled.has(tableId)) return;
     const table = resultTables.find((item) => item.id === tableId);
@@ -98,38 +104,50 @@ export function ResultTableTree({
   const renderRow = (resultTable: DataResultTable, indented = false) => {
     if (isPicker) {
       const isDisabled = disabled.has(resultTable.id);
-      const isSelected = selected.has(resultTable.id) || isDisabled;
+      const isSelected = selected.has(resultTable.id);
+      const meta = [
+        typeof resultTable.rowCount === 'number'
+          ? t('cloudConnection.ds.pickerRows', {
+              count: Number(resultTable.rowCount).toLocaleString(),
+            })
+          : null,
+        resultTable.updatedAt ? formatDateTime(resultTable.updatedAt) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
       return (
         <tr
           key={resultTable.id}
           data-testid="result-table-tree-row"
           data-table-id={resultTable.id}
           className={cn(
-            'h-9 border-b border-border-muted/85 text-[13px]',
-            isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-surface-hover',
-            selected.has(resultTable.id) && !isDisabled ? 'bg-accent-muted' : ''
+            'h-12 border-b border-border-muted/70 text-[13px] transition-colors',
+            isDisabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-surface-hover',
+            isSelected && !isDisabled && 'bg-accent-muted'
           )}
           onClick={() => {
             if (!isDisabled) toggleSelected(resultTable.id);
           }}
         >
-          <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
-            <input
-              type="checkbox"
+          <td className={cn('w-11', indented ? 'pl-5 pr-2' : 'pl-4 pr-2')}>
+            <PickerCheck
               checked={isSelected}
               disabled={isDisabled}
+              label={resultTable.name}
               onChange={() => toggleSelected(resultTable.id)}
-              onClick={(event) => event.stopPropagation()}
-              className="accent-[var(--color-accent)]"
-              aria-label={resultTable.name}
             />
           </td>
-          <td className="px-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <UploadCloud className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-              <span className="min-w-0 truncate text-text-primary">{resultTable.name}</span>
+          <td className="py-1.5 pr-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center bg-surface-muted text-accent">
+                <UploadCloud className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium text-text-primary">{resultTable.name}</div>
+                {meta ? <div className="truncate text-[12px] text-text-muted">{meta}</div> : null}
+              </div>
               {isDisabled && (
-                <span className="flex-shrink-0 text-[11px] text-text-muted">
+                <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
                   {t('cloudConnection.ds.pickerReferenced')}
                 </span>
               )}
@@ -179,17 +197,24 @@ export function ResultTableTree({
 
   if (isLoading) return null;
 
+  if (isPicker) {
+    return (
+      <div data-testid="result-table-tree">
+        <TablePickerTree
+          nodes={pickerNodes}
+          selectedIds={selectedIds}
+          onSelectedIdsChange={onSelectedIdsChange}
+          leafTestId="result-table-tree-row"
+          referencedLabel={t('cloudConnection.ds.pickerReferenced')}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-w-full overflow-x-auto" data-testid="result-table-tree">
       <table className="data-list-table w-full table-fixed border-collapse text-left">
-        {isPicker ? (
-          <thead>
-            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-              <th className="w-10 whitespace-nowrap px-2" />
-              <th className="whitespace-nowrap px-2">{t('data.columns.resultTableName')}</th>
-            </tr>
-          </thead>
-        ) : (
+        {isPicker ? null : (
           <thead>
             <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
               <th className="w-[36%] whitespace-nowrap px-2">
@@ -228,10 +253,49 @@ export function ResultTableTree({
               pageSize={pageSize}
               onPageChange={(page) => onGroupPageChange?.(section.key, page)}
               renderRow={(table, _index, indented) => renderRow(table, indented)}
+              headerAppearance={isPicker ? 'picker' : 'default'}
             />
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function buildResultPickerNodes(
+  resultTables: DataResultTable[],
+  groups: DataListGroup[],
+  disabled: Set<string>,
+  t: (key: string, options?: Record<string, unknown>) => string
+): TablePickerTreeNode[] {
+  const sections = buildGroupSections(resultTables, groups, (table) => table.groupId);
+  return sections.map((section) => ({
+    id: section.key,
+    kind: 'group',
+    name: section.group?.name ?? t('data.groups.ungrouped'),
+    icon: <Folder className="h-4 w-4" />,
+    children: section.rows.map((table) => {
+      const isDisabled = disabled.has(table.id);
+      const meta = [
+        typeof table.rowCount === 'number'
+          ? t('cloudConnection.ds.pickerRows', {
+              count: Number(table.rowCount).toLocaleString(),
+            })
+          : null,
+        table.updatedAt ? formatDateTime(table.updatedAt) : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      return {
+        id: table.id,
+        kind: 'table' as const,
+        tableId: table.id,
+        name: table.name,
+        meta,
+        icon: <UploadCloud className="h-4 w-4 text-accent" />,
+        disabled: isDisabled,
+        referenced: isDisabled,
+      };
+    }),
+  }));
 }

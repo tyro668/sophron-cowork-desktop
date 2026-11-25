@@ -100,6 +100,7 @@ export function GroupHeaderRow({
   page = 1,
   totalPages = 1,
   onPageChange,
+  appearance = 'default',
 }: {
   colSpan: number;
   group: DataListGroup | null;
@@ -111,15 +112,22 @@ export function GroupHeaderRow({
   page?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
+  appearance?: 'default' | 'picker';
 }) {
   const { t } = useTranslation();
   const hasPagination = totalPages > 1;
   const canPrev = page > 1;
   const canNext = page < totalPages;
+  const isPicker = appearance === 'picker';
   return (
-    <tr className="border-b border-border-muted/85 bg-surface-muted/50">
-      <td colSpan={colSpan} className="px-3">
-        <div className="flex h-8 items-center gap-1.5">
+    <tr
+      className={cn(
+        'border-b border-border-muted/85',
+        isPicker ? 'bg-surface-muted' : 'bg-surface-muted/50'
+      )}
+    >
+      <td colSpan={colSpan} className={isPicker ? 'px-4' : 'px-3'}>
+        <div className={cn('flex items-center gap-1.5', isPicker ? 'h-10' : 'h-8')}>
           <button
             type="button"
             onClick={onToggle}
@@ -128,15 +136,29 @@ export function GroupHeaderRow({
           >
             <ChevronRight
               className={cn(
-                'h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform',
+                'flex-shrink-0 text-text-muted transition-transform',
+                isPicker ? 'h-4 w-4' : 'h-3.5 w-3.5',
                 !collapsed && 'rotate-90'
               )}
             />
-            <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-            <span className="truncate text-xs font-medium text-text-primary">
+            <Folder
+              className={cn('flex-shrink-0 text-accent', isPicker ? 'h-4 w-4' : 'h-3.5 w-3.5')}
+            />
+            <span
+              className={cn(
+                'truncate text-text-primary',
+                isPicker ? 'text-[13px] font-semibold' : 'text-xs font-medium'
+              )}
+            >
               {group ? group.name : t('data.groups.ungrouped')}
             </span>
-            <span className="flex-shrink-0 text-xs text-text-muted">{count}</span>
+            {isPicker ? (
+              <span className="ml-1 inline-flex h-5 min-w-[1.25rem] flex-shrink-0 items-center justify-center bg-background px-1.5 text-[11px] font-medium tabular-nums text-text-secondary">
+                {count}
+              </span>
+            ) : (
+              <span className="flex-shrink-0 text-xs text-text-muted">{count}</span>
+            )}
           </button>
           <div className="flex flex-shrink-0 items-center gap-1">
             {hasPagination && (
@@ -212,6 +234,7 @@ export function GroupSectionRows<T>({
   pageSize,
   onPageChange,
   renderRow,
+  headerAppearance = 'default',
 }: {
   colSpan: number;
   section: GroupSection<T>;
@@ -225,6 +248,7 @@ export function GroupSectionRows<T>({
   pageSize: number;
   onPageChange: (page: number) => void;
   renderRow: (row: T, index: number, indented: boolean) => ReactNode;
+  headerAppearance?: 'default' | 'picker';
 }) {
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   return (
@@ -241,6 +265,7 @@ export function GroupSectionRows<T>({
           page={page}
           totalPages={totalPages}
           onPageChange={onPageChange}
+          appearance={headerAppearance}
         />
       )}
       {!collapsed && section.rows.map((row, index) => renderRow(row, index, grouped))}
