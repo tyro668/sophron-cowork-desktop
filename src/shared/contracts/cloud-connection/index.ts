@@ -5,6 +5,25 @@
 export type CloudConnectionStatus =
   'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'offline' | 'stopped';
 
+/** 新安装或配置中缺少该字段时默认自动连接；仅保留用户在设置里明确关闭的 false。 */
+export const DEFAULT_AUTO_CONNECT = true;
+/** 首次连接等待时限（毫秒）。 */
+export const CLOUD_CONNECT_TIMEOUT_MS = 15_000;
+/** 与主进程超时失败文案一致（设置页 / toast 直接展示）。 */
+export const CLOUD_CONNECT_TIMEOUT_ERROR = '连接超时，请检查云连接配置';
+
+/** 缺省或未写入时视为开启自动连接。 */
+export function resolveAutoConnect(value: boolean | undefined | null): boolean {
+  return value ?? DEFAULT_AUTO_CONNECT;
+}
+
+/** 未连接 / 连接失败 / 已断开 / 已下线时可点击徽标发起连接。 */
+export function isCloudConnectionBadgeClickable(state: { status: CloudConnectionStatus }): boolean {
+  return (
+    state.status !== 'connected' && state.status !== 'connecting' && state.status !== 'reconnecting'
+  );
+}
+
 /** 已导入配置的脱敏信息。 */
 export interface CloudConnectionConfigSummary {
   /** agentId 脱敏显示（前 4 位 + 后 4 位）。 */

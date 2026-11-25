@@ -65,7 +65,7 @@ let state: CloudConnectionState;
 const ok = (): Promise<CloudConnectionActionResult> => Promise.resolve({ success: true, state });
 const api = {
   getState: vi.fn(() => Promise.resolve(state)),
-  onState: vi.fn(() => () => undefined),
+  onState: vi.fn((_cb?: (next: CloudConnectionState) => void) => () => undefined),
   importConfig: vi.fn(ok),
   clearConfig: vi.fn(ok),
   connect: vi.fn(ok),
@@ -90,6 +90,7 @@ beforeEach(() => {
     showSettings: false,
     pendingDataTabNavigation: null,
     mainView: 'chat',
+    globalNotice: null,
   });
 });
 
@@ -655,5 +656,73 @@ describe('云连接：引用表弹窗分组与已引用', () => {
     );
     expect(refs).toHaveLength(2);
     expect(refs.some((item) => item.tableId === 'raw-1')).toBe(false);
+  });
+});
+
+describe('云连接状态徽标', () => {
+  const listeners: Array<(next: CloudConnectionState) => void> = [];
+
+  const emit = (patch: Partial<CloudConnectionState>) => {
+    state = makeState({ ...state, ...patch });
+    listeners.forEach((cb) => cb(state));
+  };
+
+  beforeEach(() => {
+    listeners.length = 0;
+    api.onState.mockImplementation((cb?: (next: CloudConnectionState) => void) => {
+      if (cb) listeners.push(cb);
+      return () => {
+        if (!cb) return;
+        const index = listeners.indexOf(cb);
+        if (index >= 0) listeners.splice(index, 1);
+      };
+    });
+  });
+
+  it('clicking 未连接 connects and then shows 已连接', async () => {
+    state = makeState({ status: 'idle' });
+    api.connect.mockImplementation(async () => {
+      emit({ status: 'connecting', lastError: null });
+      emit({ status: 'connected', connectedAt: Date.now(), lastError: null });
+      return { success: true, state };
+    });
+    render(<CloudConnectionPanel />);
+    const badge = await screen.findByTestId('cloud-connection-status');
+    expect(badge.textContent).toContain(t('cloudConnection.status.idle'));
+    expect(badge.getAttribute('title')).toBe(t('cloudConnection.actions.clickToConnect'));
+    expect(badge.getAttribute('data-clickable')).toBe('true');
+    fireEvent.click(badge);
+    await waitFor(() =>
+      expect(screen.getByTestId('cloud-connection-status').textContent).toContain(
+        t('cloudConnection.status.connected')
+      )
+    );
+    expect(api.connect).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().showSettings).toBe(false);
+  });
+
+  it('clicking 未连接 opens Settings → 云连接 and toasts when connect fails', async () => {
+    state = makeState({ status: 'idle' });
+    api.connect.mockImplementation(async () => {
+      emit({ status: 'connecting', lastError: null });
+      emit({ status: 'stopped', lastError: 'gateway unreachable' });
+      return { success: true, state };
+    });
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByTestId('cloud-connection-status'));
+    await waitFor(() => expect(useAppStore.getState().showSettings).toBe(true));
+    expect(useAppStore.getState().settingsTab).toBe('cloud-connection');
+    expect(useAppStore.getState().globalNotice?.type).toBe('error');
+    expect(useAppStore.getState().globalNotice?.message).toContain('gateway unreachable');
+  });
+
+  it('does not start a new connect when the badge already shows 已连接', async () => {
+    state = makeState({ status: 'connected', connectedAt: 1 });
+    render(<CloudConnectionPanel />);
+    const badge = await screen.findByTestId('cloud-connection-status');
+    expect(badge.textContent).toContain(t('cloudConnection.status.connected'));
+    expect(badge.getAttribute('data-clickable')).toBe('false');
+    fireEvent.click(badge);
+    expect(api.connect).not.toHaveBeenCalled();
   });
 });

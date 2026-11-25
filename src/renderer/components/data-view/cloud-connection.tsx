@@ -2,14 +2,20 @@
  * 数据 → 云连接：布局对齐「云空间」——左侧标题 + 连接状态徽标 + ⋮ 菜单，右侧为选中分组 / 表的配置。
  * 连接配置在「设置 → 云连接」；未导入配置时显示跳转到设置的空状态。
  */
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link2, Loader2, Settings2 } from 'lucide-react';
 
 import type { CloudConnectionState, CloudConnectionStatus } from '../../../shared/contracts';
-import { useCloudConnection } from '../../features/cloud-connection/hooks/use-cloud-connection';
+import { isCloudConnectionBadgeClickable } from '../../../shared/contracts';
+import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
+import {
+  useCloudConnection,
+  waitForCloudConnectionResult,
+} from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { useAppStore } from '../../store';
-import { Badge, Dialog, DialogBody, DialogTitle, type BadgeTone } from '../ui';
+import { showToast } from '../../utils/toast';
+import { Badge, Dialog, DialogBody, DialogTitle, cn, type BadgeTone } from '../ui';
 import { DatasourceManager, type CloudConnectionFocus } from './cloud-connection-datasource';
 import { formatDateTime } from './shared';
 
@@ -49,6 +55,56 @@ export function connectionStatusBadge(state: CloudConnectionState): {
   return { tone: 'default', labelKey: 'idle' };
 }
 
+export function CloudConnectionStatusBadge({
+  state,
+  connecting = false,
+  onClick,
+}: {
+  state: CloudConnectionState;
+  connecting?: boolean;
+  onClick: () => void;
+}) {
+  const { t } = useTranslation();
+  const badge = connectionStatusBadge(
+    connecting && state.status !== 'connected'
+      ? { ...state, status: 'connecting', lastError: null }
+      : state
+  );
+  const inFlight = connecting || state.status === 'connecting' || state.status === 'reconnecting';
+  const clickable = !inFlight && isCloudConnectionBadgeClickable(state);
+  const title = clickable
+    ? t('cloudConnection.actions.clickToConnect')
+    : state.status === 'connected'
+      ? t('cloudConnection.status.connected')
+      : (state.lastError ?? undefined);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (!clickable) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClick();
+    }
+  };
+
+  return (
+    <Badge
+      tone={badge.tone}
+      data-testid="cloud-connection-status"
+      data-clickable={clickable ? 'true' : 'false'}
+      role={clickable ? 'button' : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      aria-disabled={!clickable}
+      title={title}
+      onClick={clickable ? onClick : undefined}
+      onKeyDown={onKeyDown}
+      className={cn(clickable ? 'cursor-pointer' : 'cursor-default')}
+    >
+      {inFlight && <Loader2 className="h-3 w-3 animate-spin" />}
+      {t(`cloudConnection.status.${badge.labelKey}`)}
+    </Badge>
+  );
+}
+
 /** 打开「设置 → 云连接」。 */
 export function useOpenCloudConnectionSettings() {
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
@@ -70,6 +126,25 @@ export function CloudConnectionPanel({
   const { state, busy, run } = useCloudConnection();
   const openSettings = useOpenCloudConnectionSettings();
   const [logOpen, setLogOpen] = useState(false);
+  const [connectingFromBadge, setConnectingFromBadge] = useState(false);
+
+  const onStatusBadgeClick = useCallback(async () => {
+    if (!state || !isCloudConnectionBadgeClickable(state) || connectingFromBadge) return;
+    setConnectingFromBadge(true);
+    try {
+      const started = await run('connect', cloudConnectionClient.connect);
+      if (!started) {
+        openSettings();
+        return;
+      }
+      const result = await waitForCloudConnectionResult();
+      if (result.ok) return;
+      if (result.error) showToast('error', result.error);
+      openSettings();
+    } finally {
+      setConnectingFromBadge(false);
+    }
+  }, [state, connectingFromBadge, run, openSettings]);
 
   const remoteEnvEntries = useMemo(
     () =>
@@ -123,8 +198,6 @@ export function CloudConnectionPanel({
     );
   }
 
-  const badge = connectionStatusBadge(state);
-
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent"
@@ -135,16 +208,11 @@ export function CloudConnectionPanel({
         busy={busy}
         run={run}
         statusBadge={
-          <Badge
-            tone={badge.tone}
-            data-testid="cloud-connection-status"
-            title={state.lastError ?? undefined}
-          >
-            {(state.status === 'connecting' || state.status === 'reconnecting') && (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            )}
-            {t(`cloudConnection.status.${badge.labelKey}`)}
-          </Badge>
+          <CloudConnectionStatusBadge
+            state={state}
+            connecting={connectingFromBadge}
+            onClick={() => void onStatusBadgeClick()}
+          />
         }
         onOpenSettings={openSettings}
         onOpenLog={() => setLogOpen(true)}

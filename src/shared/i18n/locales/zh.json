@@ -4743,7 +4743,7 @@
     "title": "云连接",
     "status": {
       "idle": "未连接",
-      "connecting": "连接中",
+      "connecting": "连接中…",
       "connected": "已连接",
       "reconnecting": "重连中",
       "disconnected": "已断开",
@@ -4763,7 +4763,8 @@
       "close": "关闭",
       "goToSettings": "前往设置导入配置",
       "openSettings": "连接设置",
-      "activityLog": "运行日志"
+      "activityLog": "运行日志",
+      "clickToConnect": "点击连接"
     },
     "sections": {
       "config": "连接配置",
@@ -4794,6 +4795,9 @@
       "error": "解析失败"
     },
     "emptyActivity": "暂无云端请求",
+    "errors": {
+      "connectTimeout": "连接超时，请检查云连接配置"
+    },
     "previewTitle": "表预览",
     "previewRows": "前 {{count}} 行",
     "rowCount": "共 {{count}} 行",

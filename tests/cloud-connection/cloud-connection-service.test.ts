@@ -4,15 +4,21 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Server as IOServer } from 'socket.io';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 
 import {
   CLOUD_CONNECTION_SCHEMA_VERSION,
+  CLOUD_CONNECT_TIMEOUT_ERROR,
+  CLOUD_CONNECT_TIMEOUT_MS,
   CloudConnectionService,
+  DEFAULT_AUTO_CONNECT,
   MemoryCloudConnectionStore,
   maskAgentId,
+  resolveAutoConnect,
 } from '../../src/main/features/cloud-connection/service';
+import type { LocalAgent } from '../../src/main/local-agent/local-agent';
 import { HttpEvent } from '../../src/main/local-agent/constants';
 import { silentLocalAgentLogger, type LocalAgentLogger } from '../../src/main/local-agent/logger';
 import { startMockSyncServer, type MockSyncServer } from '../local-agent/mock-sync-server';
@@ -208,7 +214,7 @@ describe('CloudConnectionService', () => {
   it('imports config without exposing the token', () => {
     const notified: string[] = [];
     service = new CloudConnectionService({
-      store: new MemoryCloudConnectionStore(),
+      store: new MemoryCloudConnectionStore({ autoConnect: false }),
       logger,
       notify: (s) => notified.push(JSON.stringify(s)),
     });
@@ -362,6 +368,120 @@ describe('CloudConnectionService', () => {
     ]);
     expect(store.read().groups[0].legacyTables).toBeUndefined();
     expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
+  });
+
+  class FakeAgent extends EventEmitter {
+    startCalls = 0;
+    stopCalls = 0;
+    start(): boolean {
+      this.startCalls += 1;
+      this.emit('state', 'connecting');
+      return true;
+    }
+    stop(): void {
+      this.stopCalls += 1;
+    }
+    onTask(): this {
+      return this;
+    }
+    registerTableContentProvider(): void {}
+    fail(message: string): void {
+      this.emit('connectError', message);
+    }
+    succeed(): void {
+      this.emit('connectSuccess', { baseUrl: 'https://mock.local' });
+      this.emit('state', 'connected');
+    }
+  }
+
+  describe('autoConnect defaults and start()', () => {
+    it('defaults autoConnect to true for new and missing values, keeps explicit false', () => {
+      expect(DEFAULT_AUTO_CONNECT).toBe(true);
+      expect(new MemoryCloudConnectionStore().read().autoConnect).toBe(true);
+      expect(resolveAutoConnect(undefined)).toBe(true);
+      expect(resolveAutoConnect(null)).toBe(true);
+      expect(resolveAutoConnect(true)).toBe(true);
+      expect(resolveAutoConnect(false)).toBe(false);
+      expect(new MemoryCloudConnectionStore({ autoConnect: false }).read().autoConnect).toBe(false);
+      const store = new MemoryCloudConnectionStore();
+      expect(new CloudConnectionService({ store, logger }).getState().autoConnect).toBe(true);
+    });
+
+    it('connects on start() when config is present and autoConnect is on', () => {
+      const agent = new FakeAgent();
+      const store = new MemoryCloudConnectionStore({ autoConnect: false });
+      service = new CloudConnectionService({
+        store,
+        logger,
+        createAgent: () => agent as unknown as LocalAgent,
+      });
+      service.importConfigText(yaml(9));
+      expect(agent.startCalls).toBe(0);
+      service.setAutoConnect(true);
+      service.start();
+      expect(agent.startCalls).toBe(1);
+      expect(service.getState().status).toBe('connecting');
+    });
+
+    it('does not connect on start() when the user saved autoConnect false', () => {
+      const agent = new FakeAgent();
+      const store = new MemoryCloudConnectionStore({ autoConnect: false });
+      service = new CloudConnectionService({
+        store,
+        logger,
+        createAgent: () => agent as unknown as LocalAgent,
+      });
+      service.importConfigText(yaml(9));
+      service.start();
+      expect(agent.startCalls).toBe(0);
+      expect(service.getState().status).toBe('idle');
+    });
+
+    it('auto-connects after importing a valid config when autoConnect is the default', () => {
+      const agent = new FakeAgent();
+      service = new CloudConnectionService({
+        store: new MemoryCloudConnectionStore(),
+        logger,
+        createAgent: () => agent as unknown as LocalAgent,
+      });
+      service.importConfigText(yaml(9));
+      expect(agent.startCalls).toBe(1);
+      expect(service.getState().status).toBe('connecting');
+      expect(service.getState().autoConnect).toBe(true);
+    });
+
+    it('fails the initial connect on connectError and on timeout', () => {
+      vi.useFakeTimers();
+      try {
+        const agent = new FakeAgent();
+        service = new CloudConnectionService({
+          store: new MemoryCloudConnectionStore(),
+          logger,
+          createAgent: () => agent as unknown as LocalAgent,
+        });
+        service.importConfigText(yaml(9));
+        expect(service.getState().status).toBe('connecting');
+        vi.advanceTimersByTime(CLOUD_CONNECT_TIMEOUT_MS - 1);
+        expect(service.getState().status).toBe('connecting');
+        vi.advanceTimersByTime(1);
+        expect(service.getState().status).toBe('stopped');
+        expect(service.getState().lastError).toBe(CLOUD_CONNECT_TIMEOUT_ERROR);
+
+        const agent2 = new FakeAgent();
+        service.stop();
+        service = new CloudConnectionService({
+          store: new MemoryCloudConnectionStore(),
+          logger,
+          createAgent: () => agent2 as unknown as LocalAgent,
+        });
+        service.importConfigText(yaml(9));
+        agent2.fail('gateway unreachable');
+        expect(service.getState().status).toBe('stopped');
+        expect(service.getState().lastError).toBe('gateway unreachable');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('connected', () => {

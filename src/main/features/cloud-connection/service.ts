@@ -29,6 +29,12 @@ import type {
   CloudConnectionTableRefInput,
   LegacyCloudConnectionTableConfig,
 } from '../../../shared/contracts';
+import {
+  CLOUD_CONNECT_TIMEOUT_ERROR,
+  CLOUD_CONNECT_TIMEOUT_MS,
+  DEFAULT_AUTO_CONNECT,
+  resolveAutoConnect,
+} from '../../../shared/contracts';
 import { parseLocalAgentConfig } from '../../local-agent/config';
 import { DEFAULT_AGENT_VERSION } from '../../local-agent/constants';
 import { LocalReadStrategy, validateGroupName } from '../../local-agent/excel/local-config';
@@ -61,6 +67,13 @@ import type { LocalAgentConfig } from '../../local-agent/types';
 export const DEFAULT_SOURCE_NAME = '九思助理本地文件';
 export const CLOUD_CONNECTION_SCHEMA_VERSION = 3;
 const MAX_ACTIVITIES = 50;
+
+export {
+  CLOUD_CONNECT_TIMEOUT_ERROR,
+  CLOUD_CONNECT_TIMEOUT_MS,
+  DEFAULT_AUTO_CONNECT,
+  resolveAutoConnect,
+};
 
 export interface StoredCloudConfig {
   config: LocalAgentConfig;
@@ -128,7 +141,7 @@ export class MemoryCloudConnectionStore implements CloudConnectionStorePort {
   constructor(initial?: Partial<CloudConnectionPersisted> & Record<string, unknown>) {
     this.data = {
       config: null,
-      autoConnect: false,
+      autoConnect: DEFAULT_AUTO_CONNECT,
       groups: [],
       versions: {},
       schemaVersion: initial ? (initial.schemaVersion ?? 0) : CLOUD_CONNECTION_SCHEMA_VERSION,
@@ -249,6 +262,8 @@ export class CloudConnectionService {
   private lastError: string | null = null;
   private activities: CloudConnectionActivity[] = [];
   private readonly runtimes = new Map<string, GroupRuntime>();
+  private connectTimer: ReturnType<typeof setTimeout> | null = null;
+  private initialConnect = false;
 
   constructor(private readonly deps: CloudConnectionServiceDeps) {
     const migration = migrateCloudConnectionData(deps.store.read());
@@ -314,7 +329,7 @@ export class CloudConnectionService {
       connectedAt: this.connectedAt,
       remoteEnv: this.remoteEnv,
       lastError: this.lastError,
-      autoConnect: persisted.autoConnect,
+      autoConnect: resolveAutoConnect(persisted.autoConnect),
       groups: this.groups().map((g) => this.groupState(g)),
       activities: [...this.activities],
     };
@@ -384,11 +399,19 @@ export class CloudConnectionService {
       `cloud connection config imported, agentId: ${maskAgentId(config.server.agentId)}, host: ${config.server.host}`
     );
     this.emit();
+    if (resolveAutoConnect(this.deps.store.read().autoConnect)) {
+      try {
+        this.connect();
+      } catch (error) {
+        this.lastError = messageOf(error);
+        this.emit();
+      }
+    }
   }
 
   clearConfig(): void {
     this.disconnect();
-    this.deps.store.write({ config: null, autoConnect: false });
+    this.deps.store.write({ config: null });
     this.lastError = null;
     this.emit();
   }
@@ -435,6 +458,8 @@ export class CloudConnectionService {
       this.emit();
     });
     agent.on('connectSuccess', (env) => {
+      this.initialConnect = false;
+      this.clearConnectTimer();
       this.status = 'connected';
       this.connectedAt = Date.now();
       this.remoteEnv = { ...env } as Record<string, unknown>;
@@ -444,23 +469,55 @@ export class CloudConnectionService {
     agent.on('connectError', (message) => {
       this.lastError = message;
       this.pushActivity({ type: 'error', event: 'connect_error', detail: message });
+      if (this.initialConnect) this.failInitialConnect(message);
     });
     agent.on('disconnect', (reason) => {
       this.pushActivity({ type: 'info', event: 'disconnect', detail: reason });
     });
     agent.on('offline', () => {
-      this.lastError = '云端通知本连接已下线（可能在其他地方使用了同一个 agentId）';
+      const message = '云端通知本连接已下线（可能在其他地方使用了同一个 agentId）';
+      this.lastError = message;
       this.pushActivity({ type: 'error', event: 'offline' });
+      if (this.initialConnect) this.failInitialConnect(message);
     });
     this.agent = agent;
     this.handlers = handlers;
     this.status = 'connecting';
     this.lastError = null;
+    this.initialConnect = true;
+    this.armConnectTimer();
     agent.start();
     this.emit();
   }
 
+  private clearConnectTimer(): void {
+    if (this.connectTimer) {
+      clearTimeout(this.connectTimer);
+      this.connectTimer = null;
+    }
+  }
+
+  private armConnectTimer(): void {
+    this.clearConnectTimer();
+    this.connectTimer = setTimeout(() => {
+      this.connectTimer = null;
+      if (!this.initialConnect || this.status === 'connected') return;
+      this.failInitialConnect(CLOUD_CONNECT_TIMEOUT_ERROR);
+    }, CLOUD_CONNECT_TIMEOUT_MS);
+  }
+
+  /** 首次连接失败：记录原因并停止本次尝试，避免无限重连把状态一直停在「连接中」。 */
+  private failInitialConnect(message: string): void {
+    this.initialConnect = false;
+    this.clearConnectTimer();
+    this.lastError = message;
+    if (this.agent) this.disconnect();
+    else this.emit();
+  }
+
   disconnect(): void {
+    this.clearConnectTimer();
+    this.initialConnect = false;
     const agent = this.agent;
     this.agent = null;
     this.handlers = null;
@@ -473,10 +530,10 @@ export class CloudConnectionService {
     this.emit();
   }
 
-  /** 应用启动时调用：开启了自动连接且已有配置则连接。 */
+  /** 应用启动时调用：已有配置且自动连接（默认开启）则连接。 */
   start(): void {
     const persisted = this.deps.store.read();
-    if (persisted.autoConnect && persisted.config) {
+    if (resolveAutoConnect(persisted.autoConnect) && persisted.config) {
       try {
         this.connect();
       } catch (error) {

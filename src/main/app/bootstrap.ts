@@ -389,7 +389,7 @@ export async function bootstrap(): Promise<void> {
   };
   remoteManager.setAgentExecutor(agentExecutor);
 
-  // 云连接（本地宝）：开启自动连接时连接云端
+  // 云连接（本地宝）：配置有效且自动连接（默认开启）时在启动时连接云端
   try {
     startCloudConnection();
   } catch (error) {

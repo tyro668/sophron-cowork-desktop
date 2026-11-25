@@ -4743,7 +4743,7 @@
     "title": "Cloud connection",
     "status": {
       "idle": "Not connected",
-      "connecting": "Connecting",
+      "connecting": "Connecting…",
       "connected": "Connected",
       "reconnecting": "Reconnecting",
       "disconnected": "Disconnected",
@@ -4763,7 +4763,8 @@
       "close": "Close",
       "goToSettings": "Import in Settings",
       "openSettings": "Connection settings",
-      "activityLog": "Run log"
+      "activityLog": "Run log",
+      "clickToConnect": "Click to connect"
     },
     "sections": {
       "config": "Connection config",
@@ -4794,6 +4795,9 @@
       "error": "Failed"
     },
     "emptyActivity": "No cloud requests yet",
+    "errors": {
+      "connectTimeout": "Connection timed out. Please check the cloud connection settings."
+    },
     "previewTitle": "Table preview",
     "previewRows": "First {{count}} rows",
     "rowCount": "{{count}} rows",

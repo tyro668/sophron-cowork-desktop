@@ -22,7 +22,7 @@ export class ElectronCloudConnectionStore implements CloudConnectionStorePort {
         projectName: 'sophron',
         defaults: {
           config: null,
-          autoConnect: false,
+          autoConnect: true,
           groups: [],
           versions: {},
           // 缺省 0：老用户（v1 无此字段）与新安装都会先走一次迁移，迁移后写入当前版本
@@ -38,7 +38,7 @@ export class ElectronCloudConnectionStore implements CloudConnectionStorePort {
   read(): CloudConnectionPersisted {
     return {
       config: this.store.get('config') ?? null,
-      autoConnect: this.store.get('autoConnect') ?? false,
+      autoConnect: this.store.get('autoConnect') ?? true,
       groups: this.store.get('groups') ?? [],
       versions: this.store.get('versions') ?? {},
       schemaVersion: this.store.get('schemaVersion') ?? 0,
