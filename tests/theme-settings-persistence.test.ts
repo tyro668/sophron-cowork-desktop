@@ -38,7 +38,7 @@ describe('theme settings persistence', () => {
       'const applyConfigSnapshot = (config: AppConfig, isConfigured: boolean) => {'
     );
     expect(source).toContain("theme: config.theme || 'light'");
-    expect(source).toContain("accentTheme: config.accentTheme || 'mint'");
+    expect(source).toContain("accentTheme: config.accentTheme || 'lavender'");
     expect(source).toContain("logoVariant: config.logoVariant || 'mark'");
     expect(source).toContain(
       'permissionPolicy: normalizePermissionPolicy(config.permissionPolicy)'
@@ -53,5 +53,19 @@ describe('theme settings persistence', () => {
     expect(source).toContain("type: 'settings.update'");
     expect(source).toContain('setSettings: (updates) =>');
     expect(source).toContain('updateSettings: (updates) =>');
+  });
+
+  it('defaults accentTheme to lavender for fresh installs and missing preferences', () => {
+    const configStore = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/main/config/config-store.ts'),
+      'utf8'
+    );
+    const store = fs.readFileSync(storePath, 'utf8');
+    expect(configStore).toContain("accentTheme: 'lavender'");
+    expect(store).toContain("accentTheme: 'lavender'");
+    // Saved values win; only missing/invalid accents fall back to the default.
+    expect(configStore).toContain(
+      'accentTheme: isAppAccentTheme(raw.accentTheme) ? raw.accentTheme : defaultConfig.accentTheme'
+    );
   });
 });

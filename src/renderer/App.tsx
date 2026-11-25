@@ -150,7 +150,7 @@ function App() {
     }
   }, [settings.theme, systemDarkMode]);
 
-  // Apply accent color family — mint is the stylesheet default, others set data-accent-theme
+  // Apply accent color family — mint is the stylesheet default (no attribute); lavender/lake/orange/rose set data-accent-theme
   useEffect(() => {
     const accent = settings.accentTheme;
     if (accent && accent !== 'mint') {

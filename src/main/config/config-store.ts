@@ -206,7 +206,7 @@ const defaultConfig: AppConfig = {
   globalSkillsPath: '',
   enableDevLogs: false,
   theme: 'light',
-  accentTheme: 'mint',
+  accentTheme: 'lavender',
   logoVariant: 'mark',
   permissionPolicy: DEFAULT_PERMISSION_POLICY,
   sandboxEnabled: false,

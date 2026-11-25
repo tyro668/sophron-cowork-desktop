@@ -339,7 +339,7 @@ interface AppState {
 
 const defaultSettings: Settings = {
   theme: 'light',
-  accentTheme: 'mint',
+  accentTheme: 'lavender',
   logoVariant: 'mark',
   defaultTools: [
     'askuserquestion',
