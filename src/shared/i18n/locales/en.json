@@ -4779,7 +4779,7 @@
     "emptyConfigDesc": "Import config.yaml to manage local groups and tables, and sync them when the cloud asks.",
     "ds": {
       "title": "Data sources",
-      "addGroup": "Add data source",
+      "addGroup": "Add directory",
       "addTable": "Add table",
       "newGroup": "New group",
       "newTable": "New table",

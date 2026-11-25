@@ -9,16 +9,7 @@ import { Link2, Loader2, Settings2 } from 'lucide-react';
 import type { CloudConnectionState, CloudConnectionStatus } from '../../../shared/contracts';
 import { useCloudConnection } from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { useAppStore } from '../../store';
-import {
-  Badge,
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  type BadgeTone,
-} from '../ui';
+import { Badge, Dialog, DialogBody, DialogTitle, type BadgeTone } from '../ui';
 import { DatasourceManager } from './cloud-connection-datasource';
 import { formatDateTime } from './shared';
 
@@ -38,7 +29,7 @@ function FormRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ui-form-row">
       <span className="ui-form-label items-center">{label}</span>
-      <div className="ui-form-value text-[13px] text-text-primary">{children}</div>
+      <div className="ui-form-value">{children}</div>
     </div>
   );
 }
@@ -100,7 +91,7 @@ export function CloudConnectionPanel() {
       >
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
           <div className="flex w-full max-w-[340px] flex-col items-center text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
+            <div className="flex h-12 w-12 items-center justify-center bg-accent-muted text-accent-text">
               <Link2 className="h-6 w-6" />
             </div>
             <h3 className="mt-4 text-[16px] font-semibold leading-tight text-text-primary">
@@ -114,7 +105,7 @@ export function CloudConnectionPanel() {
                 type="button"
                 data-testid="cloud-connection-open-settings"
                 onClick={openSettings}
-                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover"
+                className="inline-flex h-9 w-full items-center justify-center gap-2 bg-accent px-4 text-[13px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover"
               >
                 <Settings2 className="h-4 w-4" />
                 {t('cloudConnection.actions.goToSettings')}
@@ -156,26 +147,31 @@ export function CloudConnectionPanel() {
       <Dialog
         open={logOpen}
         onOpenChange={setLogOpen}
-        className="w-[min(640px,92vw)]"
+        className="w-[min(640px,92vw)] gap-0 rounded-none p-0 shadow-none"
         ariaLabel={t('cloudConnection.actions.activityLog')}
       >
-        <DialogHeader>
-          <DialogTitle>{t('cloudConnection.actions.activityLog')}</DialogTitle>
-        </DialogHeader>
-        <DialogBody className="max-h-[70vh] overflow-auto" data-testid="cloud-connection-runtime">
-          <section className="ui-group bg-surface">
+        <div className="flex h-12 flex-shrink-0 items-center border-b border-border-subtle px-4">
+          <DialogTitle className="text-[14px]">
+            {t('cloudConnection.actions.activityLog')}
+          </DialogTitle>
+        </div>
+        <DialogBody
+          className="ui-dialog-pad max-h-[70vh] overflow-auto p-2"
+          data-testid="cloud-connection-runtime"
+        >
+          <section className="ui-group ui-form-flush bg-surface">
             <h4 className="ui-group-title">{t('cloudConnection.sections.status')}</h4>
             <FormRow label={t('cloudConnection.fields.agentId')}>
-              <span className="font-mono text-[12px]">{state.config?.agentIdMasked}</span>
+              <span className="ui-flush-text font-mono">{state.config?.agentIdMasked}</span>
             </FormRow>
             <FormRow label={t('cloudConnection.fields.connectedAt')}>
-              <span>
+              <span className="ui-flush-text">
                 {state.connectedAt ? formatDateTime(state.connectedAt) : t('cloudConnection.none')}
               </span>
             </FormRow>
             <FormRow label={t('cloudConnection.fields.remoteEnv')}>
               {remoteEnvEntries.length > 0 ? (
-                <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 py-1 font-mono text-[12px]">
+                <div className="grid min-h-[35px] grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 px-[10px] py-1 font-mono text-[12px]">
                   {remoteEnvEntries.map(([k, v]) => (
                     <div key={k} className="contents">
                       <span className="text-text-muted">{k}</span>
@@ -184,16 +180,21 @@ export function CloudConnectionPanel() {
                   ))}
                 </div>
               ) : (
-                <span className="text-text-muted">{t('cloudConnection.none')}</span>
+                <span className="ui-flush-text text-text-muted">{t('cloudConnection.none')}</span>
               )}
             </FormRow>
             <FormRow label={t('cloudConnection.fields.lastError')}>
-              <span className={state.lastError ? 'text-error' : 'text-text-muted'}>
+              <span
+                className={`ui-flush-text ${state.lastError ? 'text-error' : 'text-text-muted'}`}
+              >
                 {state.lastError ?? t('cloudConnection.none')}
               </span>
             </FormRow>
           </section>
-          <section className="ui-group bg-surface" data-testid="cloud-connection-activity">
+          <section
+            className="ui-group ui-form-flush bg-surface"
+            data-testid="cloud-connection-activity"
+          >
             <h4 className="ui-group-title">{t('cloudConnection.sections.activity')}</h4>
             {state.activities.length === 0 ? (
               <div className="flex h-10 items-center px-3 text-[13px] text-text-muted">
@@ -228,9 +229,11 @@ export function CloudConnectionPanel() {
             )}
           </section>
         </DialogBody>
-        <DialogFooter>
-          <Button onClick={() => setLogOpen(false)}>{t('cloudConnection.actions.close')}</Button>
-        </DialogFooter>
+        <div className="ui-footer-split mx-2 mb-2 rounded-none">
+          <button type="button" onClick={() => setLogOpen(false)}>
+            {t('cloudConnection.actions.close')}
+          </button>
+        </div>
       </Dialog>
     </div>
   );

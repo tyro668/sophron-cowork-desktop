@@ -4,7 +4,7 @@
  */
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileUp, Link2, Loader2, PlugZap, Unplug } from 'lucide-react';
+import { FileUp, Loader2, PlugZap, Unplug } from 'lucide-react';
 
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
 import {
@@ -12,13 +12,13 @@ import {
   useCloudConnection,
 } from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { CLOUD_CONNECTION_STATUS_TONE } from '../data-view/cloud-connection-preview';
-import { Badge, Button, Switch } from '../ui';
+import { Badge, Switch } from '../ui';
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ui-form-row">
       <span className="ui-form-label items-center">{label}</span>
-      <div className="ui-form-value text-[13px] text-text-primary">{children}</div>
+      <div className="ui-form-value">{children}</div>
     </div>
   );
 }
@@ -42,15 +42,10 @@ export function SettingsCloudConnection() {
     : '';
 
   return (
-    <div className="space-y-4" data-testid="settings-cloud-connection">
-      <section className="ui-group bg-surface">
-        <div className="flex items-center gap-3 border-b border-border-subtle px-3 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-accent">
-            <Link2 className="h-4 w-4" />
-          </div>
-          <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-text-primary">
-            {t('cloudConnection.sections.config')}
-          </span>
+    <div data-testid="settings-cloud-connection">
+      <section className="ui-group ui-form-flush bg-surface">
+        <div className="ui-group-title justify-between gap-2">
+          <span className="truncate">{t('cloudConnection.sections.config')}</span>
           <Badge
             tone={CLOUD_CONNECTION_STATUS_TONE[state.status]}
             data-testid="cloud-connection-status"
@@ -64,90 +59,106 @@ export function SettingsCloudConnection() {
         {config ? (
           <>
             <Row label={t('cloudConnection.fields.configFile')}>
-              <span className="truncate">{config.fileName ?? 'config.yaml'}</span>
+              <span className="ui-flush-text truncate">{config.fileName ?? 'config.yaml'}</span>
             </Row>
             <Row label={t('cloudConnection.fields.agentId')}>
-              <span className="font-mono text-[12px]">{config.agentIdMasked}</span>
+              <span className="ui-flush-text font-mono">{config.agentIdMasked}</span>
             </Row>
             <Row label={t('cloudConnection.fields.server')}>
-              <span className="truncate font-mono text-[12px]">{serverText}</span>
+              <span className="ui-flush-text truncate font-mono">{serverText}</span>
             </Row>
             <Row label={t('cloudConnection.fields.token')}>
-              <span>
+              <span className="ui-flush-text">
                 {config.hasToken
                   ? t('cloudConnection.tokenSaved')
                   : t('cloudConnection.tokenMissing')}
               </span>
             </Row>
             <Row label={t('cloudConnection.fields.autoConnect')}>
-              <Switch
-                size="sm"
-                checked={state.autoConnect}
-                disabled={busy !== null}
-                onCheckedChange={(v) =>
-                  void run('auto', () => cloudConnectionClient.setAutoConnect(v))
-                }
-              />
+              <div className="flex min-h-[35px] items-center px-[10px]">
+                <Switch
+                  size="sm"
+                  checked={state.autoConnect}
+                  disabled={busy !== null}
+                  onCheckedChange={(v) =>
+                    void run('auto', () => cloudConnectionClient.setAutoConnect(v))
+                  }
+                />
+              </div>
             </Row>
             {state.lastError && (
               <Row label={t('cloudConnection.fields.lastError')}>
-                <span className="text-error">{state.lastError}</span>
+                <span className="ui-flush-text text-error">{state.lastError}</span>
               </Row>
             )}
-            <div className="flex items-center justify-end gap-2 px-3 py-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy !== null}
-                onClick={() => void run('clear', cloudConnectionClient.clearConfig)}
-              >
-                {t('cloudConnection.actions.clearConfig')}
-              </Button>
-              <Button
-                size="sm"
-                disabled={busy !== null}
-                onClick={() => void run('import', cloudConnectionClient.importConfig)}
-              >
-                <FileUp className="h-3.5 w-3.5" />
-                {t('cloudConnection.actions.reimportConfig')}
-              </Button>
-              {live ? (
-                <Button
-                  size="sm"
-                  variant="danger-outline"
+            <div className="ui-form-row">
+              <span className="ui-form-label items-center"></span>
+              <div className="ui-form-value !flex-row items-stretch">
+                <button
+                  type="button"
                   disabled={busy !== null}
-                  onClick={() => void run('disconnect', cloudConnectionClient.disconnect)}
+                  className="ui-accent-cell min-w-0 flex-1"
+                  onClick={() => void run('clear', cloudConnectionClient.clearConfig)}
                 >
-                  <Unplug className="h-3.5 w-3.5" />
-                  {t('cloudConnection.actions.disconnect')}
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="primary"
+                  {t('cloudConnection.actions.clearConfig')}
+                </button>
+                <button
+                  type="button"
                   disabled={busy !== null}
-                  loading={busy === 'connect'}
-                  onClick={() => void run('connect', cloudConnectionClient.connect)}
+                  className="ui-accent-cell min-w-0 flex-1 border-l border-border-subtle"
+                  onClick={() => void run('import', cloudConnectionClient.importConfig)}
                 >
-                  <PlugZap className="h-3.5 w-3.5" />
-                  {t('cloudConnection.actions.connect')}
-                </Button>
-              )}
+                  <FileUp className="h-3.5 w-3.5" />
+                  {t('cloudConnection.actions.reimportConfig')}
+                </button>
+                {live ? (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    className="inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+                    onClick={() => void run('disconnect', cloudConnectionClient.disconnect)}
+                  >
+                    <Unplug className="h-3.5 w-3.5" />
+                    {t('cloudConnection.actions.disconnect')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    className="ui-accent-cell min-w-0 flex-1 border-l border-border-subtle"
+                    onClick={() => void run('connect', cloudConnectionClient.connect)}
+                  >
+                    {busy === 'connect' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <PlugZap className="h-3.5 w-3.5" />
+                    )}
+                    {t('cloudConnection.actions.connect')}
+                  </button>
+                )}
+              </div>
             </div>
           </>
         ) : (
-          <div className="flex h-11 items-center justify-between px-3 text-[13px] text-text-muted">
-            <span>{t('cloudConnection.notConfigured')}</span>
-            <Button
-              size="sm"
-              variant="primary"
-              disabled={busy !== null}
-              data-testid="cloud-connection-import"
-              onClick={() => void run('import', cloudConnectionClient.importConfig)}
-            >
-              <FileUp className="h-3.5 w-3.5" />
-              {t('cloudConnection.actions.importConfig')}
-            </Button>
+          <div className="ui-form-row">
+            <span className="ui-form-label items-center">
+              {t('cloudConnection.fields.configFile')}
+            </span>
+            <div className="ui-form-value !flex-row items-stretch">
+              <span className="ui-flush-text min-w-0 flex-1">
+                {t('cloudConnection.notConfigured')}
+              </span>
+              <button
+                type="button"
+                disabled={busy !== null}
+                data-testid="cloud-connection-import"
+                className="ui-accent-cell w-[140px] flex-shrink-0 border-l border-border-subtle"
+                onClick={() => void run('import', cloudConnectionClient.importConfig)}
+              >
+                <FileUp className="h-3.5 w-3.5" />
+                {t('cloudConnection.actions.importConfig')}
+              </button>
+            </div>
           </div>
         )}
       </section>

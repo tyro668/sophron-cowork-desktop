@@ -1,15 +1,13 @@
 import { useTranslation } from 'react-i18next';
 
-import type { CloudConnectionStatus, CloudConnectionTablePreview } from '../../../shared/contracts';
-import {
-  Button,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  type BadgeTone,
-} from '../ui';
+import type {
+  CloudConnectionStatus,
+  CloudConnectionTablePreview,
+  DataRawTablePreview,
+} from '../../../shared/contracts';
+import type { DataFieldType } from '../../../shared/data-field-types';
+import { type BadgeTone } from '../ui';
+import { RawTablePreviewDialog } from './raw-table-preview-dialog';
 
 export const CLOUD_CONNECTION_STATUS_TONE: Record<CloudConnectionStatus, BadgeTone> = {
   idle: 'default',
@@ -21,77 +19,81 @@ export const CLOUD_CONNECTION_STATUS_TONE: Record<CloudConnectionStatus, BadgeTo
   stopped: 'default',
 };
 
-/** 云连接表预览（列、类型、行数与前几行），数据页与设置页共用。 */
+/** Java `ExcelMeta.speType`：NUMBER→5，STRING→6，DATE→9，其它按文本。 */
+const SPE_TYPE_TO_FIELD: Record<number, DataFieldType> = {
+  5: 'float',
+  6: 'text',
+  9: 'date',
+};
+
+/** 把云连接预览结果转成原始表 / 结果表 `GlassDataGridPreview` 使用的 `DataRawTablePreview`。 */
+export function toDataRawTablePreview(preview: CloudConnectionTablePreview): DataRawTablePreview {
+  const columnTypes = preview.columns.map((name, index) => {
+    const type = SPE_TYPE_TO_FIELD[preview.columnTypes[index]] ?? 'text';
+    return { name, type, storageType: type };
+  });
+  const rows = preview.rows.map((row) => {
+    const record: Record<string, string | number | boolean | null> = {};
+    preview.columns.forEach((name, index) => {
+      record[name] = row[index] ?? null;
+    });
+    return record;
+  });
+  return {
+    columns: preview.columns,
+    columnTypes,
+    rows,
+    fileCount: 1,
+    // 云连接一次返回样本行，不分页；limit=行数让页码停在第 1 页。
+    limit: Math.max(preview.rows.length, 1),
+    offset: 0,
+    totalRows: preview.rows.length,
+  };
+}
+
+/** 云连接表预览：复用原始表 / 结果表的 `RawTablePreviewDialog` + `GlassDataGridPreview`。 */
 export function CloudConnectionPreviewDialog({
+  open,
+  title,
   preview,
+  isLoading,
+  error,
+  totalRowCount,
   onClose,
 }: {
-  preview: CloudConnectionTablePreview | null;
+  open: boolean;
+  title?: string;
+  preview: DataRawTablePreview | null;
+  isLoading: boolean;
+  error: string | null;
+  /** 服务端给出的全表行数（可能多于本次预览样本）。 */
+  totalRowCount?: number;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  if (!open) return null;
+  const heading = title
+    ? `${t('cloudConnection.previewTitle')} · ${title}`
+    : t('cloudConnection.previewTitle');
+  const sample = preview?.rows.length ?? 0;
+  const total = totalRowCount ?? preview?.totalRows ?? sample;
+  const subtitle =
+    total > 0
+      ? `${t('cloudConnection.rowCount', { count: total })} · ${t('cloudConnection.previewRows', { count: sample })}`
+      : undefined;
   return (
-    <Dialog
-      open={preview !== null}
-      onOpenChange={(open) => !open && onClose()}
-      className="w-[min(960px,92vw)]"
-      ariaLabel={t('cloudConnection.previewTitle')}
-    >
-      {preview && (
-        <>
-          <DialogHeader>
-            <DialogTitle>
-              {t('cloudConnection.previewTitle')} · {preview.tableName}
-            </DialogTitle>
-          </DialogHeader>
-          <DialogBody className="max-h-[70vh] overflow-auto">
-            <div
-              className="overflow-hidden rounded-md border border-border-subtle"
-              data-testid="cloud-connection-preview"
-            >
-              <div className="flex h-8 items-center gap-3 border-b border-border-subtle bg-surface-muted px-3 text-xs text-text-secondary">
-                <span>{t('cloudConnection.rowCount', { count: preview.rowCount })}</span>
-                <span>{t('cloudConnection.previewRows', { count: preview.rows.length })}</span>
-              </div>
-              <div className="overflow-auto">
-                <table className="min-w-full text-[12px]">
-                  <thead>
-                    <tr className="border-b border-border-subtle bg-surface-muted text-left">
-                      {preview.columns.map((c, i) => (
-                        <th key={`${c}-${i}`} className="whitespace-nowrap px-2 py-1 font-medium">
-                          <div className="text-text-primary">{c}</div>
-                          <div className="text-[11px] font-normal text-text-muted">
-                            {t(`cloudConnection.columnTypes.${preview.columnTypes[i]}`, {
-                              defaultValue: String(preview.columnTypes[i]),
-                            })}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {preview.rows.map((row, r) => (
-                      <tr key={r} className="border-b border-border-subtle last:border-b-0">
-                        {row.map((v, c) => (
-                          <td
-                            key={c}
-                            className="max-w-[240px] truncate whitespace-nowrap px-2 py-1"
-                          >
-                            {v ?? ''}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </DialogBody>
-          <DialogFooter>
-            <Button onClick={onClose}>{t('cloudConnection.actions.close')}</Button>
-          </DialogFooter>
-        </>
-      )}
-    </Dialog>
+    <div data-testid="cloud-connection-preview">
+      <RawTablePreviewDialog
+        tableKind="raw"
+        title={heading}
+        subtitle={subtitle}
+        preview={preview}
+        isLoading={isLoading}
+        error={error}
+        currentPage={1}
+        onPageChange={() => undefined}
+        onClose={onClose}
+      />
+    </div>
   );
 }

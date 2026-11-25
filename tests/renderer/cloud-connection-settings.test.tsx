@@ -132,7 +132,13 @@ describe('数据 → 云连接', () => {
     expect(screen.getByText('本地文件')).toBeTruthy();
     expect(screen.getByText(t('cloudConnection.ds.selectTitle'))).toBeTruthy();
     expect(screen.queryByText('销售合并')).toBeNull();
+    expect(screen.getByTestId('cloud-connection-add-group').textContent).toContain(
+      t('cloudConnection.ds.addGroup')
+    );
+    expect(screen.queryByTestId('cloud-connection-add-table')).toBeNull();
     await openMoreMenu();
+    expect(screen.queryByRole('menuitem', { name: t('cloudConnection.ds.addGroup') })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: t('cloudConnection.ds.addTable') })).toBeNull();
     fireEvent.click(
       await screen.findByRole('menuitem', { name: t('cloudConnection.actions.openSettings') })
     );
@@ -172,12 +178,9 @@ describe('数据 → 云连接', () => {
     expect(input).not.toHaveProperty('hasPassword');
   });
 
-  it('creates a group through 添加数据源', async () => {
+  it('creates a group through 添加目录', async () => {
     render(<CloudConnectionPanel />);
-    await openMoreMenu();
-    fireEvent.click(
-      await screen.findByRole('menuitem', { name: t('cloudConnection.ds.addGroup') })
-    );
+    fireEvent.click(await screen.findByTestId('cloud-connection-add-group'));
     fireEvent.change(screen.getByTestId('cloud-connection-group-name'), {
       target: { value: '新分组' },
     });
@@ -196,6 +199,12 @@ describe('数据 → 云连接', () => {
   it('keeps an existing group name read-only, including while editing', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
+    expect(screen.getByTestId('cloud-connection-add-table').textContent).toContain(
+      t('cloudConnection.ds.addTable')
+    );
+    expect((screen.getByTestId('cloud-connection-add-table') as HTMLButtonElement).disabled).toBe(
+      false
+    );
     const name = (await screen.findByTestId('cloud-connection-group-name')) as HTMLInputElement;
     expect(name.disabled).toBe(true);
     expect(name.value).toBe('本地文件');
@@ -204,6 +213,17 @@ describe('数据 → 云连接', () => {
       true
     );
     expect(screen.getByTitle(t('cloudConnection.ds.groupNameLocked'))).toBeTruthy();
+  });
+
+  it('disables 添加表 when the selected group has no directory', async () => {
+    state = makeState({
+      groups: [{ ...group, directoryPath: '', tables: [], entries: [], entriesStatus: 'ready' }],
+    });
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
+    expect(
+      ((await screen.findByTestId('cloud-connection-add-table')) as HTMLButtonElement).disabled
+    ).toBe(true);
   });
 });
 

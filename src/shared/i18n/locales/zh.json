@@ -4779,7 +4779,7 @@
     "emptyConfigDesc": "导入 config.yaml 后，即可管理本地分组和表，并根据云端请求同步数据。",
     "ds": {
       "title": "数据源",
-      "addGroup": "添加数据源",
+      "addGroup": "添加目录",
       "addTable": "添加表",
       "newGroup": "新建分组",
       "newTable": "新建表",
