@@ -1,21 +1,26 @@
 /**
- * 数据 → 云连接的数据源管理（对应本地宝 agent-ui 的「数据源」页）：左侧分组目录树（分组 → 手动表 / 自动表），
- * 右侧为分组或手动表的配置表单。字段语义与 Java `LocalDatasourceBean` / `ExcelTableBean` 一致。
+ * 数据 → 云连接的数据源管理，布局对齐「云空间」：左侧分组树 + 右侧配置表单。
+ * 字段语义与 Java `LocalDatasourceBean` / `ExcelTableBean` 一致。
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronDown,
   ChevronRight,
   Eye,
   FileSpreadsheet,
   Folder,
   FolderOpen,
+  Loader2,
   Pencil,
   Plus,
+  PlugZap,
   RefreshCw,
+  ScrollText,
+  Settings2,
   Table2,
   Trash2,
+  Unplug,
+  MoreVertical,
 } from 'lucide-react';
 
 import type {
@@ -28,10 +33,15 @@ import type {
   CloudConnectionTablePreview,
 } from '../../../shared/contracts';
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
-import { errorText } from '../../features/cloud-connection/hooks/use-cloud-connection';
+import {
+  errorText,
+  isLiveStatus,
+} from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { showToast } from '../../utils/toast';
+import { GlassDropdownMenu, GlassMenuItem, GlassMenuSeparator } from '../GlassDropdownMenu';
 import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { CloudConnectionPreviewDialog } from './cloud-connection-preview';
+import { EmptyState, fixedTabGroupWidth } from './shared';
 import {
   Badge,
   Button,
@@ -122,17 +132,24 @@ export function DatasourceManager({
   state,
   busy,
   run,
+  statusBadge,
+  onOpenSettings,
+  onOpenLog,
 }: {
   state: CloudConnectionState;
   busy: string | null;
   run: Run;
+  statusBadge: ReactNode;
+  onOpenSettings: () => void;
+  onOpenLog: () => void;
 }) {
   const { t } = useTranslation();
   const confirmDialog = useOptionalConfirmDialog();
-  const [selection, setSelection] = useState<Selection>(() =>
-    state.groups[0] ? { kind: 'group', groupId: state.groups[0].id } : { kind: 'none' }
+  const live = isLiveStatus(state);
+  const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(state.groups.map((g) => g.id))
   );
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<CloudConnectionTablePreview | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
@@ -167,274 +184,357 @@ export function DatasourceManager({
       ? state.groups.find((g) => g.id === selection.groupId)
       : undefined;
 
+  const tableCount = (group: CloudConnectionGroup) =>
+    group.entries.length > 0 ? group.entries.length : group.tables.length;
+
+  const canAddTableTo =
+    selectedGroup && selectedGroup.directoryPath
+      ? selectedGroup
+      : selection.kind !== 'none' && selection.kind !== 'newGroup'
+        ? state.groups.find((g) => g.id === selection.groupId)
+        : undefined;
+
+  const toggleGroup = (groupId: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  };
+
   return (
-    <section
-      className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col bg-surface"
+    <div
+      className="glass-table ui-table-flush flex min-h-0 flex-1 flex-col"
       data-testid="cloud-connection-datasources"
     >
-      <div className="ui-group-title justify-between">
-        <span>{t('cloudConnection.ds.title')}</span>
-        <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy !== null || state.groups.length === 0}
-            onClick={() => void run('refresh', () => cloudConnectionClient.refreshTables())}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t('cloudConnection.actions.refresh')}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-accent"
-            data-testid="cloud-connection-add-group"
-            onClick={() => setSelection({ kind: 'newGroup' })}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('cloudConnection.ds.addGroup')}
-          </Button>
-        </div>
-      </div>
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(180px,34%)_minmax(0,1fr)] overflow-hidden">
-        <div
-          className="min-h-0 min-w-0 overflow-y-auto border-r border-border-subtle py-1"
+      <div className="flex min-h-0 flex-1">
+        <aside
+          className="flex min-h-0 flex-shrink-0 flex-col border-r border-border-subtle"
+          style={{ width: fixedTabGroupWidth(3) }}
           data-testid="cloud-connection-group-tree"
         >
-          {state.groups.length === 0 && (
-            <div className="px-3 py-2 text-[12px] text-text-muted">
-              {t('cloudConnection.ds.emptyGroups')}
-            </div>
-          )}
-          {state.groups.map((group) => {
-            const open = !collapsed.has(group.id);
-            const autoEntries = group.entries.filter((e) => !e.manual);
-            const groupActive = selection.kind === 'group' && selection.groupId === group.id;
-            return (
-              <div key={group.id}>
-                <div
-                  className={cn(
-                    'group flex h-8 cursor-pointer items-center gap-1 pl-1 pr-1 text-[13px] hover:bg-surface-hover/70',
-                    groupActive && 'bg-accent-muted/60 text-accent'
-                  )}
-                  onClick={() => setSelection({ kind: 'group', groupId: group.id })}
+          <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2">
+            <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
+              {t('cloudConnection.title')}
+              {statusBadge}
+            </span>
+            <GlassDropdownMenu
+              align="end"
+              contentClassName="w-44"
+              trigger={
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  aria-label={t('data.actions.more')}
+                  title={t('data.actions.more')}
+                  data-testid="cloud-connection-more"
                 >
-                  <button
-                    type="button"
-                    className="flex h-6 w-5 items-center justify-center text-text-muted"
-                    aria-label={open ? 'collapse' : 'expand'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCollapsed((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(group.id)) next.delete(group.id);
-                        else next.add(group.id);
-                        return next;
-                      });
-                    }}
-                  >
-                    {open ? (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                  <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-                  <span className="min-w-0 flex-1 truncate font-medium" title={group.directoryPath}>
-                    {group.sourceName}
-                  </span>
-                  <button
-                    type="button"
-                    title={t('cloudConnection.ds.addTable')}
-                    aria-label={t('cloudConnection.ds.addTable')}
-                    className="hidden h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-accent group-hover:flex"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelection({ kind: 'newTable', groupId: group.id });
-                    }}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                {open && (
-                  <div className="pb-1">
-                    {group.tables.map((table) => {
-                      const active =
-                        selection.kind === 'table' &&
-                        selection.groupId === group.id &&
-                        selection.tableName === table.tableName;
-                      return (
-                        <div
-                          key={`m-${table.tableName}`}
-                          className={cn(
-                            'flex h-7 cursor-pointer items-center gap-1.5 pl-8 pr-2 text-[12px] hover:bg-surface-hover/70',
-                            active && 'bg-accent-muted/60 text-accent'
-                          )}
-                          onClick={() =>
-                            setSelection({
-                              kind: 'table',
-                              groupId: group.id,
-                              tableName: table.tableName,
-                            })
-                          }
-                        >
-                          <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                          <span className="min-w-0 flex-1 truncate">{table.tableName}</span>
-                          <Badge tone="accent">{t('cloudConnection.ds.manual')}</Badge>
-                        </div>
-                      );
-                    })}
-                    {autoEntries.map((entry) => {
-                      const active =
-                        selection.kind === 'entry' &&
-                        selection.groupId === group.id &&
-                        selection.entryId === entry.id;
-                      return (
-                        <div
-                          key={`a-${entry.id}`}
-                          className={cn(
-                            'flex h-7 cursor-pointer items-center gap-1.5 pl-8 pr-2 text-[12px] text-text-secondary hover:bg-surface-hover/70',
-                            active && 'bg-accent-muted/60 text-accent'
-                          )}
-                          title={entry.id}
-                          onClick={() =>
-                            setSelection({ kind: 'entry', groupId: group.id, entryId: entry.id })
-                          }
-                        >
-                          <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                          <span className="min-w-0 flex-1 truncate">{entry.id}</span>
-                        </div>
-                      );
-                    })}
-                    {group.tables.length === 0 && autoEntries.length === 0 && (
-                      <div className="h-7 pl-8 text-[12px] leading-7 text-text-muted">
-                        {group.entriesStatus === 'pending'
-                          ? t('cloudConnection.fileStatus.parsing')
-                          : t('cloudConnection.ds.emptyTables')}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        <div className="min-h-0 min-w-0 overflow-y-auto">
-          {selection.kind === 'newGroup' && (
-            <GroupForm
-              key="new-group"
-              busy={busy}
-              onCancel={() =>
-                setSelection(
-                  state.groups[0]
-                    ? { kind: 'group', groupId: state.groups[0].id }
-                    : { kind: 'none' }
-                )
+                  {busy === 'refresh' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  )}
+                </button>
               }
-              onSave={async (input) => {
-                const before = new Set(state.groups.map((g) => g.id));
-                let created: string | undefined;
-                const ok = await run('group', async () => {
-                  const result = await cloudConnectionClient.addGroup(input);
-                  created = result.state.groups.find((g) => !before.has(g.id))?.id;
-                  return result;
-                });
-                if (ok && created) setSelection({ kind: 'group', groupId: created });
-                return ok;
-              }}
-            />
-          )}
-          {selection.kind === 'group' && selectedGroup && (
-            <GroupForm
-              key={`group-${selectedGroup.id}`}
-              group={selectedGroup}
-              busy={busy}
-              onAddTable={() => setSelection({ kind: 'newTable', groupId: selectedGroup.id })}
-              onSave={(input) =>
-                run('group', () => cloudConnectionClient.updateGroup(selectedGroup.id, input))
-              }
-              onDelete={async () => {
-                if (await confirm(t('cloudConnection.ds.deleteGroupConfirm')))
-                  await run('group', () => cloudConnectionClient.deleteGroup(selectedGroup.id));
-              }}
-              onRemoveLegacy={async (filePath) => {
-                if (await confirm(t('cloudConnection.removeConfirm')))
-                  await run('legacy', () =>
-                    cloudConnectionClient.removeLegacyFile(selectedGroup.id, filePath)
-                  );
-              }}
-            />
-          )}
-          {(selection.kind === 'newTable' || selection.kind === 'table') && selectedGroup && (
-            <TableForm
-              key={
-                selection.kind === 'table'
-                  ? `table-${selectedGroup.id}-${selection.tableName}`
-                  : `new-table-${selectedGroup.id}`
-              }
-              group={selectedGroup}
-              table={
-                selection.kind === 'table'
-                  ? selectedGroup.tables.find((tb) => tb.tableName === selection.tableName)
-                  : undefined
-              }
-              busy={busy}
-              previewing={previewing}
-              onPreview={(original, input) =>
-                void showPreview(() =>
-                  cloudConnectionClient.previewDraft(selectedGroup.id, original, input)
-                )
-              }
-              onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
-              onSave={async (original, input) => {
-                const ok = await run('table', () =>
-                  cloudConnectionClient.saveTable(selectedGroup.id, original, input)
-                );
-                if (ok)
-                  setSelection({
-                    kind: 'table',
-                    groupId: selectedGroup.id,
-                    tableName: input.tableName.trim(),
-                  });
-                return ok;
-              }}
-              onDelete={async (tableName) => {
-                if (await confirm(t('cloudConnection.ds.deleteTableConfirm')))
-                  await run('table', () =>
-                    cloudConnectionClient.deleteTable(selectedGroup.id, tableName)
-                  );
-              }}
-            />
-          )}
-          {selection.kind === 'entry' && selectedGroup && (
-            <EntryDetail
-              group={selectedGroup}
-              entryId={selection.entryId}
-              previewing={previewing}
-              onPreview={() =>
-                void showPreview(() =>
-                  cloudConnectionClient.previewTable(selectedGroup.id, selection.entryId)
-                )
-              }
-            />
-          )}
-          {selection.kind === 'none' && (
-            <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-3 text-[13px] text-text-muted">
-              <span>{t('cloudConnection.ds.selectHint')}</span>
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() => setSelection({ kind: 'newGroup' })}
+            >
+              <GlassMenuItem icon={<Settings2 className="h-3.5 w-3.5" />} onSelect={onOpenSettings}>
+                {t('cloudConnection.actions.openSettings')}
+              </GlassMenuItem>
+              {live ? (
+                <GlassMenuItem
+                  icon={<Unplug className="h-3.5 w-3.5" />}
+                  disabled={busy !== null}
+                  danger
+                  onSelect={() => void run('disconnect', cloudConnectionClient.disconnect)}
+                >
+                  {t('cloudConnection.actions.disconnect')}
+                </GlassMenuItem>
+              ) : (
+                <GlassMenuItem
+                  icon={<PlugZap className="h-3.5 w-3.5" />}
+                  disabled={busy !== null}
+                  onSelect={() => void run('connect', cloudConnectionClient.connect)}
+                >
+                  {t('cloudConnection.actions.connect')}
+                </GlassMenuItem>
+              )}
+              <GlassMenuSeparator />
+              <GlassMenuItem
+                icon={<RefreshCw className="h-3.5 w-3.5" />}
+                disabled={busy !== null || state.groups.length === 0}
+                onSelect={() => void run('refresh', () => cloudConnectionClient.refreshTables())}
               >
-                <Plus className="h-3.5 w-3.5" />
+                {t('cloudConnection.actions.refresh')}
+              </GlassMenuItem>
+              <GlassMenuItem
+                icon={<Plus className="h-3.5 w-3.5" />}
+                onSelect={() => setSelection({ kind: 'newGroup' })}
+              >
                 {t('cloudConnection.ds.addGroup')}
-              </Button>
+              </GlassMenuItem>
+              <GlassMenuItem
+                icon={<Table2 className="h-3.5 w-3.5" />}
+                disabled={!canAddTableTo?.directoryPath}
+                onSelect={() => {
+                  if (canAddTableTo) setSelection({ kind: 'newTable', groupId: canAddTableTo.id });
+                }}
+              >
+                {t('cloudConnection.ds.addTable')}
+              </GlassMenuItem>
+              <GlassMenuSeparator />
+              <GlassMenuItem icon={<ScrollText className="h-3.5 w-3.5" />} onSelect={onOpenLog}>
+                {t('cloudConnection.actions.activityLog')}
+              </GlassMenuItem>
+            </GlassDropdownMenu>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
+            {state.groups.length === 0 ? (
+              <div className="px-2 py-6 text-[13px] text-text-muted">
+                {t('cloudConnection.ds.emptyGroups')}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {state.groups.map((group) => {
+                  const open = !collapsed.has(group.id);
+                  const autoEntries = group.entries.filter((e) => !e.manual);
+                  const groupActive = selection.kind === 'group' && selection.groupId === group.id;
+                  return (
+                    <section key={group.id} className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelection({ kind: 'group', groupId: group.id });
+                          setCollapsed((prev) => {
+                            const next = new Set(prev);
+                            next.delete(group.id);
+                            return next;
+                          });
+                        }}
+                        className={cn(
+                          'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-surface-hover',
+                          groupActive && 'bg-accent-muted ring-1 ring-inset ring-accent/15'
+                        )}
+                      >
+                        <ChevronRight
+                          className={cn(
+                            'h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform',
+                            open && 'rotate-90'
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleGroup(group.id);
+                          }}
+                        />
+                        <Folder className="h-3.5 w-3.5 flex-shrink-0 text-accent-text" />
+                        <span
+                          className="min-w-0 flex-1 truncate text-[12px] font-semibold text-text-primary"
+                          title={group.directoryPath}
+                        >
+                          {group.sourceName}
+                        </span>
+                        {group.entriesStatus === 'pending' ? (
+                          <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />
+                        ) : (
+                          <span className="flex-shrink-0 text-[11px] font-medium text-text-muted">
+                            {t('cloudConnection.ds.tableCount', { count: tableCount(group) })}
+                          </span>
+                        )}
+                      </button>
+                      {open && (
+                        <div className="ml-[21px] space-y-0.5 border-l border-border-subtle pl-2">
+                          {group.tables.map((table) => {
+                            const active =
+                              selection.kind === 'table' &&
+                              selection.groupId === group.id &&
+                              selection.tableName === table.tableName;
+                            return (
+                              <button
+                                type="button"
+                                key={`m-${table.tableName}`}
+                                className={cn(
+                                  'flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors',
+                                  active
+                                    ? 'bg-accent-muted text-accent-text ring-1 ring-inset ring-accent/15'
+                                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                                )}
+                                onClick={() =>
+                                  setSelection({
+                                    kind: 'table',
+                                    groupId: group.id,
+                                    tableName: table.tableName,
+                                  })
+                                }
+                              >
+                                <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className="min-w-0 flex-1 truncate">{table.tableName}</span>
+                                <Badge tone="accent">{t('cloudConnection.ds.manual')}</Badge>
+                              </button>
+                            );
+                          })}
+                          {autoEntries.map((entry) => {
+                            const active =
+                              selection.kind === 'entry' &&
+                              selection.groupId === group.id &&
+                              selection.entryId === entry.id;
+                            return (
+                              <button
+                                type="button"
+                                key={`a-${entry.id}`}
+                                title={entry.id}
+                                className={cn(
+                                  'flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium transition-colors',
+                                  active
+                                    ? 'bg-accent-muted text-accent-text ring-1 ring-inset ring-accent/15'
+                                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                                )}
+                                onClick={() =>
+                                  setSelection({
+                                    kind: 'entry',
+                                    groupId: group.id,
+                                    entryId: entry.id,
+                                  })
+                                }
+                              >
+                                <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
+                                <span className="min-w-0 flex-1 truncate">{entry.id}</span>
+                              </button>
+                            );
+                          })}
+                          {group.tables.length === 0 && autoEntries.length === 0 && (
+                            <div className="h-8 px-2 py-2 text-[12px] text-text-muted">
+                              {group.entriesStatus === 'pending'
+                                ? t('cloudConnection.fileStatus.parsing')
+                                : t('cloudConnection.ds.emptyTables')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </aside>
+
+        <section className="flex min-w-0 flex-1 flex-col">
+          {selection.kind === 'none' ? (
+            <>
+              <div className="flex h-10 flex-shrink-0 items-center border-b border-border-subtle px-3" />
+              <div className="flex min-h-0 flex-1 flex-col justify-center overflow-auto">
+                <EmptyState
+                  label={t('cloudConnection.ds.selectTitle')}
+                  description={t('cloudConnection.ds.selectDesc')}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {selection.kind === 'newGroup' && (
+                <GroupForm
+                  key="new-group"
+                  busy={busy}
+                  onCancel={() =>
+                    setSelection(
+                      state.groups[0]
+                        ? { kind: 'group', groupId: state.groups[0].id }
+                        : { kind: 'none' }
+                    )
+                  }
+                  onSave={async (input) => {
+                    const before = new Set(state.groups.map((g) => g.id));
+                    let created: string | undefined;
+                    const ok = await run('group', async () => {
+                      const result = await cloudConnectionClient.addGroup(input);
+                      created = result.state.groups.find((g) => !before.has(g.id))?.id;
+                      return result;
+                    });
+                    if (ok && created) setSelection({ kind: 'group', groupId: created });
+                    return ok;
+                  }}
+                />
+              )}
+              {selection.kind === 'group' && selectedGroup && (
+                <GroupForm
+                  key={`group-${selectedGroup.id}`}
+                  group={selectedGroup}
+                  busy={busy}
+                  onAddTable={() => setSelection({ kind: 'newTable', groupId: selectedGroup.id })}
+                  onSave={(input) =>
+                    run('group', () => cloudConnectionClient.updateGroup(selectedGroup.id, input))
+                  }
+                  onDelete={async () => {
+                    if (await confirm(t('cloudConnection.ds.deleteGroupConfirm')))
+                      await run('group', () => cloudConnectionClient.deleteGroup(selectedGroup.id));
+                  }}
+                  onRemoveLegacy={async (filePath) => {
+                    if (await confirm(t('cloudConnection.removeConfirm')))
+                      await run('legacy', () =>
+                        cloudConnectionClient.removeLegacyFile(selectedGroup.id, filePath)
+                      );
+                  }}
+                />
+              )}
+              {(selection.kind === 'newTable' || selection.kind === 'table') && selectedGroup && (
+                <TableForm
+                  key={
+                    selection.kind === 'table'
+                      ? `table-${selectedGroup.id}-${selection.tableName}`
+                      : `new-table-${selectedGroup.id}`
+                  }
+                  group={selectedGroup}
+                  table={
+                    selection.kind === 'table'
+                      ? selectedGroup.tables.find((tb) => tb.tableName === selection.tableName)
+                      : undefined
+                  }
+                  busy={busy}
+                  previewing={previewing}
+                  onPreview={(original, input) =>
+                    void showPreview(() =>
+                      cloudConnectionClient.previewDraft(selectedGroup.id, original, input)
+                    )
+                  }
+                  onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
+                  onSave={async (original, input) => {
+                    const ok = await run('table', () =>
+                      cloudConnectionClient.saveTable(selectedGroup.id, original, input)
+                    );
+                    if (ok)
+                      setSelection({
+                        kind: 'table',
+                        groupId: selectedGroup.id,
+                        tableName: input.tableName.trim(),
+                      });
+                    return ok;
+                  }}
+                  onDelete={async (tableName) => {
+                    if (await confirm(t('cloudConnection.ds.deleteTableConfirm')))
+                      await run('table', () =>
+                        cloudConnectionClient.deleteTable(selectedGroup.id, tableName)
+                      );
+                  }}
+                />
+              )}
+              {selection.kind === 'entry' && selectedGroup && (
+                <EntryDetail
+                  group={selectedGroup}
+                  entryId={selection.entryId}
+                  previewing={previewing}
+                  onPreview={() =>
+                    void showPreview(() =>
+                      cloudConnectionClient.previewTable(selectedGroup.id, selection.entryId)
+                    )
+                  }
+                />
+              )}
             </div>
           )}
-        </div>
+        </section>
       </div>
       <CloudConnectionPreviewDialog preview={preview} onClose={() => setPreview(null)} />
-    </section>
+    </div>
   );
 }
 

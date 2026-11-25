@@ -4720,7 +4720,8 @@
       "reconnecting": "重连中",
       "disconnected": "已断开",
       "offline": "已下线",
-      "stopped": "已断开"
+      "stopped": "已断开",
+      "failed": "连接失败"
     },
     "actions": {
       "connect": "连接",
@@ -4733,7 +4734,8 @@
       "remove": "移除",
       "close": "关闭",
       "goToSettings": "前往设置导入配置",
-      "openSettings": "连接设置"
+      "openSettings": "连接设置",
+      "activityLog": "运行日志"
     },
     "sections": {
       "config": "连接配置",
@@ -4774,6 +4776,7 @@
     },
     "removeConfirm": "移除后云端将无法再读取此文件，确定移除？",
     "emptyConfig": "尚未导入云连接配置",
+    "emptyConfigDesc": "导入 config.yaml 后，即可管理本地分组和表，并根据云端请求同步数据。",
     "ds": {
       "title": "数据源",
       "addGroup": "添加数据源",
@@ -4786,6 +4789,9 @@
       "emptyGroups": "还没有数据源分组",
       "emptyTables": "暂无表",
       "selectHint": "选择左侧分组或表进行配置",
+      "selectTitle": "选择分组或表查看配置",
+      "selectDesc": "在左侧选择分组或表。",
+      "tableCount": "{{count}} 个表",
       "groupName": "分组名",
       "groupNameLocked": "分组名称仅创建时可配置，保存后无法修改",
       "directory": "目录",

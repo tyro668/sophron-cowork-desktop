@@ -108,6 +108,12 @@ afterEach(() => {
   delete (window as unknown as { electronAPI?: unknown }).electronAPI;
 });
 
+const openMoreMenu = async () => {
+  const trigger = await screen.findByTestId('cloud-connection-more');
+  fireEvent.pointerDown(trigger);
+  fireEvent.click(trigger);
+};
+
 describe('数据 → 云连接', () => {
   it('shows one empty-state action that opens Settings → 云连接 when not configured', async () => {
     state = makeState({ configured: false, config: null, groups: [] });
@@ -123,15 +129,20 @@ describe('数据 → 云连接', () => {
   it('shows data-source management and jumps to Settings for connection config', async () => {
     render(<CloudConnectionPanel />);
     await screen.findByTestId('cloud-connection-datasources');
-    expect(screen.getAllByText('销售合并').length).toBeGreaterThan(0);
-    expect(screen.getByText('a.csv')).toBeTruthy();
-    fireEvent.click(screen.getByText(t('cloudConnection.actions.openSettings')));
+    expect(screen.getByText('本地文件')).toBeTruthy();
+    expect(screen.getByText(t('cloudConnection.ds.selectTitle'))).toBeTruthy();
+    expect(screen.queryByText('销售合并')).toBeNull();
+    await openMoreMenu();
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: t('cloudConnection.actions.openSettings') })
+    );
     expect(useAppStore.getState().settingsTab).toBe('cloud-connection');
     expect(useAppStore.getState().showSettings).toBe(true);
   });
 
   it('edits a manual table and keeps the saved password unless changed', async () => {
     render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
     fireEvent.click(await screen.findByText('销售合并'));
     const form = await screen.findByTestId('cloud-connection-table-form');
     expect(form.textContent).toContain(t('cloudConnection.ds.mergeStrategy'));
@@ -163,7 +174,10 @@ describe('数据 → 云连接', () => {
 
   it('creates a group through 添加数据源', async () => {
     render(<CloudConnectionPanel />);
-    fireEvent.click(await screen.findByTestId('cloud-connection-add-group'));
+    await openMoreMenu();
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: t('cloudConnection.ds.addGroup') })
+    );
     fireEvent.change(screen.getByTestId('cloud-connection-group-name'), {
       target: { value: '新分组' },
     });
@@ -181,6 +195,7 @@ describe('数据 → 云连接', () => {
 
   it('keeps an existing group name read-only, including while editing', async () => {
     render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
     const name = (await screen.findByTestId('cloud-connection-group-name')) as HTMLInputElement;
     expect(name.disabled).toBe(true);
     expect(name.value).toBe('本地文件');
@@ -275,7 +290,8 @@ describe('数据页「云连接」tab（在云空间之后）', () => {
     useAppStore.getState().navigateToDataTab('cloud_connection');
     await screen.findByTestId('cloud-connection-datasources');
     expect(screen.getByTestId('cloud-connection-panel')).toBeTruthy();
-    expect(screen.getAllByText('销售合并').length).toBeGreaterThan(0);
+    expect(screen.getByText('本地文件')).toBeTruthy();
+    expect(screen.getByText(t('cloudConnection.ds.selectTitle'))).toBeTruthy();
     const active = document.querySelector('[data-fixed-tab][data-state="active"]');
     expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
     expect(dataTabLabels()).toEqual(expectedDataTabLabels());

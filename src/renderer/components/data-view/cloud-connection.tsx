@@ -1,29 +1,26 @@
 /**
- * 数据 → 云连接：导入配置后在此管理数据源（分组目录树、手动表表单、预览），并查看运行状态与云端请求。
- * 连接配置（导入 config.yaml、连接 / 断开、自动连接）在「设置 → 云连接」；未导入时只显示跳转到设置的空状态。
+ * 数据 → 云连接：布局对齐「云空间」——左侧标题 + 连接状态徽标 + ⋮ 菜单，右侧为选中分组 / 表的配置。
+ * 连接配置在「设置 → 云连接」；未导入配置时显示跳转到设置的空状态。
  */
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link2, Loader2, PlugZap, Settings2, Unplug } from 'lucide-react';
+import { Link2, Loader2, Settings2 } from 'lucide-react';
 
-import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
-import {
-  isLiveStatus,
-  useCloudConnection,
-} from '../../features/cloud-connection/hooks/use-cloud-connection';
+import type { CloudConnectionState, CloudConnectionStatus } from '../../../shared/contracts';
+import { useCloudConnection } from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { useAppStore } from '../../store';
-import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger } from '../ui';
-import { DatasourceManager } from './cloud-connection-datasource';
-import { CLOUD_CONNECTION_STATUS_TONE } from './cloud-connection-preview';
 import {
-  DataToolbarButton,
-  EmptyState,
-  flatToolbarRowClass,
-  formatDateTime,
-  underlineTabBarClass,
-  underlineTabListClass,
-  underlineTabTriggerClass,
-} from './shared';
+  Badge,
+  Button,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  type BadgeTone,
+} from '../ui';
+import { DatasourceManager } from './cloud-connection-datasource';
+import { formatDateTime } from './shared';
 
 export const CLOUD_CONNECTION_SETTINGS_TAB = 'cloud-connection';
 
@@ -46,6 +43,21 @@ function FormRow({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** 标题后的状态徽标：已连接绿、连接中黄、未连接灰、连接失败红，对齐云空间 Badge 样式。 */
+export function connectionStatusBadge(state: CloudConnectionState): {
+  tone: BadgeTone;
+  labelKey: string;
+} {
+  const status: CloudConnectionStatus = state.status;
+  if (status === 'connected') return { tone: 'success', labelKey: 'connected' };
+  if (status === 'connecting') return { tone: 'warning', labelKey: 'connecting' };
+  if (status === 'reconnecting') return { tone: 'warning', labelKey: 'reconnecting' };
+  if (state.lastError || status === 'offline') {
+    return { tone: 'error', labelKey: state.lastError ? 'failed' : 'offline' };
+  }
+  return { tone: 'default', labelKey: 'idle' };
+}
+
 /** 打开「设置 → 云连接」。 */
 export function useOpenCloudConnectionSettings() {
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
@@ -60,7 +72,7 @@ export function CloudConnectionPanel() {
   const { t, i18n } = useTranslation();
   const { state, busy, run } = useCloudConnection();
   const openSettings = useOpenCloudConnectionSettings();
-  const [tab, setTab] = useState('sources');
+  const [logOpen, setLogOpen] = useState(false);
 
   const remoteEnvEntries = useMemo(
     () =>
@@ -82,106 +94,75 @@ export function CloudConnectionPanel() {
 
   if (!state.configured) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-panel">
-        <EmptyState
-          label={t('cloudConnection.emptyConfig')}
-          icon={<Link2 className="h-5 w-5" />}
-          action={
-            <Button
-              size="sm"
-              variant="primary"
-              data-testid="cloud-connection-open-settings"
-              onClick={openSettings}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              {t('cloudConnection.actions.goToSettings')}
-            </Button>
-          }
-        />
+      <div
+        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent"
+        data-testid="cloud-connection-panel"
+      >
+        <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto px-6 py-5">
+          <div className="flex w-full max-w-[340px] flex-col items-center text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
+              <Link2 className="h-6 w-6" />
+            </div>
+            <h3 className="mt-4 text-[16px] font-semibold leading-tight text-text-primary">
+              {t('cloudConnection.emptyConfig')}
+            </h3>
+            <p className="mt-1.5 text-[13px] leading-6 text-text-secondary">
+              {t('cloudConnection.emptyConfigDesc')}
+            </p>
+            <div className="mt-6 flex w-full flex-col gap-2.5">
+              <button
+                type="button"
+                data-testid="cloud-connection-open-settings"
+                onClick={openSettings}
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 text-[13px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover"
+              >
+                <Settings2 className="h-4 w-4" />
+                {t('cloudConnection.actions.goToSettings')}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const live = isLiveStatus(state);
+  const badge = connectionStatusBadge(state);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-panel">
-      <div className={flatToolbarRowClass}>
-        <div className="min-w-0 flex-1 px-3">
-          <div className="flex h-full min-w-0 items-center gap-2">
-            <Link2 className="h-4 w-4 flex-shrink-0 text-accent" />
-            <span className="truncate text-[13px] font-semibold text-text-primary">
-              {t('cloudConnection.title')}
-            </span>
-            <Badge
-              tone={CLOUD_CONNECTION_STATUS_TONE[state.status]}
-              data-testid="cloud-connection-status"
-            >
-              {(state.status === 'connecting' || state.status === 'reconnecting') && (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              )}
-              {t(`cloudConnection.status.${state.status}`)}
-            </Badge>
-          </div>
-        </div>
-        <div className="flex">
-          <DataToolbarButton
-            icon={<Settings2 className="h-3.5 w-3.5" />}
-            label={t('cloudConnection.actions.openSettings')}
-            onClick={openSettings}
-          />
-          {live ? (
-            <DataToolbarButton
-              icon={<Unplug className="h-3.5 w-3.5" />}
-              label={t('cloudConnection.actions.disconnect')}
-              danger
-              disabled={busy !== null}
-              onClick={() => void run('disconnect', cloudConnectionClient.disconnect)}
-            />
-          ) : (
-            <DataToolbarButton
-              icon={<PlugZap className="h-3.5 w-3.5" />}
-              label={t('cloudConnection.actions.connect')}
-              active
-              disabled={busy !== null}
-              onClick={() => void run('connect', cloudConnectionClient.connect)}
-            />
-          )}
-        </div>
-      </div>
+    <div
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-transparent"
+      data-testid="cloud-connection-panel"
+    >
+      <DatasourceManager
+        state={state}
+        busy={busy}
+        run={run}
+        statusBadge={
+          <Badge
+            tone={badge.tone}
+            data-testid="cloud-connection-status"
+            title={state.lastError ?? undefined}
+          >
+            {(state.status === 'connecting' || state.status === 'reconnecting') && (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            )}
+            {t(`cloudConnection.status.${badge.labelKey}`)}
+          </Badge>
+        }
+        onOpenSettings={openSettings}
+        onOpenLog={() => setLogOpen(true)}
+      />
 
-      <Tabs
-        value={tab}
-        onValueChange={setTab}
-        className="flex min-h-0 flex-1 flex-col"
-        data-testid="cloud-connection-tabs"
+      <Dialog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        className="w-[min(640px,92vw)]"
+        ariaLabel={t('cloudConnection.actions.activityLog')}
       >
-        <div className={underlineTabBarClass}>
-          <TabsList className={underlineTabListClass}>
-            <TabsTrigger
-              value="sources"
-              className={underlineTabTriggerClass}
-              data-testid="cloud-connection-tab-sources"
-            >
-              {t('cloudConnection.ds.title')}
-            </TabsTrigger>
-            <TabsTrigger
-              value="runtime"
-              className={underlineTabTriggerClass}
-              data-testid="cloud-connection-tab-runtime"
-            >
-              {t('cloudConnection.sections.runtime')}
-            </TabsTrigger>
-          </TabsList>
-        </div>
-        <TabsContent value="sources" className="mt-0 flex min-h-0 flex-1 flex-col overflow-hidden">
-          <DatasourceManager state={state} busy={busy} run={run} />
-        </TabsContent>
-        <TabsContent
-          value="runtime"
-          className="mt-0 min-h-0 flex-1 overflow-y-auto"
-          data-testid="cloud-connection-runtime"
-        >
+        <DialogHeader>
+          <DialogTitle>{t('cloudConnection.actions.activityLog')}</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="max-h-[70vh] overflow-auto" data-testid="cloud-connection-runtime">
           <section className="ui-group bg-surface">
             <h4 className="ui-group-title">{t('cloudConnection.sections.status')}</h4>
             <FormRow label={t('cloudConnection.fields.agentId')}>
@@ -212,7 +193,6 @@ export function CloudConnectionPanel() {
               </span>
             </FormRow>
           </section>
-
           <section className="ui-group bg-surface" data-testid="cloud-connection-activity">
             <h4 className="ui-group-title">{t('cloudConnection.sections.activity')}</h4>
             {state.activities.length === 0 ? (
@@ -247,8 +227,11 @@ export function CloudConnectionPanel() {
               </ul>
             )}
           </section>
-        </TabsContent>
-      </Tabs>
+        </DialogBody>
+        <DialogFooter>
+          <Button onClick={() => setLogOpen(false)}>{t('cloudConnection.actions.close')}</Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
