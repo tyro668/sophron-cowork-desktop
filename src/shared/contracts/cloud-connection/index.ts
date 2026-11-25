@@ -17,6 +17,15 @@ export function resolveAutoConnect(value: boolean | undefined | null): boolean {
   return value ?? DEFAULT_AUTO_CONNECT;
 }
 
+/** 为新引用生成不与已用名冲突的上报表名（重名时追加 " (2)"、" (3)"…）。 */
+export function suggestReportName(displayName: string, used: Set<string>): string {
+  const base = displayName.trim() || '未命名表';
+  if (!used.has(base)) return base;
+  let i = 2;
+  while (used.has(`${base} (${i})`)) i += 1;
+  return `${base} (${i})`;
+}
+
 /** 未连接 / 连接失败 / 已断开 / 已下线时可点击徽标发起连接。 */
 export function isCloudConnectionBadgeClickable(state: { status: CloudConnectionStatus }): boolean {
   return (

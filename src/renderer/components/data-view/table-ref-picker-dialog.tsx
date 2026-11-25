@@ -24,6 +24,8 @@ export type TableRefKind = 'raw' | 'result';
 export interface TableRefPick {
   kind: TableRefKind;
   tableId: string;
+  displayName?: string;
+  reportName?: string;
 }
 
 export function TableRefPickerDialog({
@@ -176,11 +178,11 @@ export function TableRefPickerDialog({
   const isSearchEmpty = visibleEmpty && query.trim().length > 0;
 
   const handleSave = async () => {
-    const refs: TableRefPick[] = [...picked].map((key) => {
-      const kind = key.startsWith('raw:') ? ('raw' as const) : ('result' as const);
-      const tableId = kind === 'raw' ? key.slice(4) : key.slice(7);
-      return { kind, tableId };
-    });
+    const refs: TableRefPick[] = selectedItems.map((item) => ({
+      kind: item.kind,
+      tableId: item.tableId,
+      displayName: item.name,
+    }));
     if (refs.length === 0) return;
     setSaving(true);
     try {

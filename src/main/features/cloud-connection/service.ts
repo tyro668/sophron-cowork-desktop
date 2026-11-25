@@ -34,6 +34,7 @@ import {
   CLOUD_CONNECT_TIMEOUT_MS,
   DEFAULT_AUTO_CONNECT,
   resolveAutoConnect,
+  suggestReportName,
 } from '../../../shared/contracts';
 import { parseLocalAgentConfig } from '../../local-agent/config';
 import { DEFAULT_AGENT_VERSION } from '../../local-agent/constants';
@@ -244,6 +245,7 @@ const GROUP_ERRORS: Record<string, string> = {
 const TABLE_ERRORS: Record<string, string> = {
   nameRequired: '请输入表名',
   nameDuplicate: '表名请勿重复',
+  nameImmutable: '上报表名确认后不可修改',
 };
 
 interface GroupRuntime {
@@ -669,11 +671,7 @@ export class CloudConnectionService {
   }
 
   private defaultReportName(displayName: string, used: Set<string>): string {
-    const base = displayName.trim() || '未命名表';
-    if (!used.has(base)) return base;
-    let i = 2;
-    while (used.has(`${base} (${i})`)) i += 1;
-    return `${base} (${i})`;
+    return suggestReportName(displayName, used);
   }
 
   async addTableRefs(groupId: string, inputs: CloudConnectionTableRefInput[]): Promise<void> {
@@ -713,17 +711,7 @@ export class CloudConnectionService {
     if (!current) throw new Error('表不存在');
     const nextName = input.reportName.trim();
     if (!nextName) throw new Error(TABLE_ERRORS.nameRequired);
-    if (nextName !== reportName && group.tables.some((table) => table.reportName === nextName)) {
-      throw new Error(TABLE_ERRORS.nameDuplicate);
-    }
-    const runtime = this.ensureRuntime(group);
-    if (nextName !== reportName) runtime.source.versionStore.delete(reportName);
-    await this.applyRefs(
-      group,
-      group.tables.map((table) =>
-        table.reportName === reportName ? { ...table, reportName: nextName } : table
-      )
-    );
+    if (nextName !== reportName) throw new Error(TABLE_ERRORS.nameImmutable);
   }
 
   async deleteTable(groupId: string, reportName: string): Promise<void> {

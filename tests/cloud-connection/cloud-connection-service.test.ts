@@ -312,22 +312,24 @@ describe('CloudConnectionService', () => {
       ['汇总', 'unmaterialized'],
     ]);
 
-    await service.updateTableRef(id, '销售', { reportName: '销售上报' });
-    expect(service.getState().groups[0].tables[0].reportName).toBe('销售上报');
+    await expect(service.updateTableRef(id, '销售', { reportName: '销售上报' })).rejects.toThrow(
+      '上报表名确认后不可修改'
+    );
+    expect(service.getState().groups[0].tables[0].reportName).toBe('销售');
     const stored = (tableStore as { _raws: Map<string, { name: string }> })._raws.get('raw-1');
     if (stored) stored.name = '销售改名';
     await service.refreshTables(id);
     expect(service.getState().groups[0].tables[0]).toMatchObject({
-      reportName: '销售上报',
+      reportName: '销售',
       displayName: '销售改名',
     });
 
-    const preview = await service.previewTable(id, '销售上报');
-    expect(preview.tableName).toBe('销售上报');
+    const preview = await service.previewTable(id, '销售');
+    expect(preview.tableName).toBe('销售');
     expect(preview.columns).toEqual(['a']);
     expect(preview.rowCount).toBe(1);
 
-    await service.deleteTable(id, '销售上报');
+    await service.deleteTable(id, '销售');
     expect(service.getState().groups[0].tables.map((tb) => tb.reportName)).toEqual(['汇总']);
     await service.deleteGroup(id);
     expect(service.getState().groups).toEqual([]);

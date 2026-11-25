@@ -28,7 +28,6 @@ import {
 } from '../../../components/data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
-import { cloudConnectionClient } from '../../cloud-connection/api/cloud-connection-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
 import { useDataDashboard } from '../hooks/use-data-dashboard';
 import { useRawTables } from '../hooks/use-raw-tables';
@@ -319,20 +318,6 @@ export function DataViewPage() {
               const groupId = current?.bindToGroupId;
               if (!groupId) return;
               void (async () => {
-                const refs = result.tables.map((table) => ({
-                  kind: 'raw' as const,
-                  tableId: table.id,
-                }));
-                if (refs.length > 0) {
-                  try {
-                    const bindResult = await cloudConnectionClient.addTableRefs(groupId, refs);
-                    if (!bindResult.success && bindResult.error) {
-                      showToast('error', bindResult.error);
-                    }
-                  } catch (error) {
-                    showToast('error', error instanceof Error ? error.message : String(error));
-                  }
-                }
                 setSourceWizard(null);
                 ui.setActiveTab('cloud_connection');
                 ui.setPendingNavigationTab(null);
@@ -340,7 +325,11 @@ export function DataViewPage() {
                 setCloudFocus({
                   nonce: Date.now(),
                   groupId,
-                  tableId: result.tables[0]?.id,
+                  pendingRefs: result.tables.map((table) => ({
+                    kind: 'raw' as const,
+                    tableId: table.id,
+                    displayName: table.name,
+                  })),
                 });
               })();
             }}
