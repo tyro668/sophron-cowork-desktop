@@ -15,10 +15,11 @@ import type { LocalAgentLogger } from '../logger';
 import { encodeCsvRow, type S3UploadStreamOptions } from '../s3/s3-upload-stream';
 import { errorMessage } from '../transport/agent-socket';
 import type { SocketTaskContext } from '../transport/event-dispatcher';
-import { WriteType, type FetchBean } from '../types';
+import { isPreviewFetch, WriteType, type FetchBean } from '../types';
 import { createS3SourceData, parseFetchBean } from './table-content-s3-dispatch';
 import { toSourceTableJson, type LocalExcelSource } from '../excel/local-excel-source';
 import type { ExcelMetaPayload } from '../excel/analyzer';
+import { javaTrim } from '../excel/field-type';
 
 /** Java `FetchType`。 */
 export const FetchType = {
@@ -110,6 +111,15 @@ function fetchBeanOf(ctx: SocketTaskContext): FetchBean {
   return parseFetchBean(ctx.payload);
 }
 
+const MAX_STRING_LENGTH = 10000;
+
+/** Java `DataStream.trans2OutputType`（字符串部分）：trim，超过 10000 字符置空。 */
+export function transOutputValue(value: string | null): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = javaTrim(value);
+  return trimmed.length > MAX_STRING_LENGTH ? '' : trimmed;
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -131,6 +141,11 @@ export class ExcelSourceHandlers {
     agent.onTask(ReceiveEvent.QUERY_STRUCTURE_OF_TABLE, (ctx) => this.onStructure(ctx));
     agent.onTask(ReceiveEvent.QUERY_ROWCOUNT_OF_TABLE, (ctx) => this.onRowCount(ctx));
     agent.onTask(ReceiveEvent.QUERY_CONTENT_OF_TABLE_S3, (ctx) => this.onPreview(ctx));
+    agent.onTask(ReceiveEvent.QUERY_CDC_OF_TABLE, (ctx) => this.onCdcSync(ctx));
+    agent.onTask(ReceiveEvent.CDC_SWITCH, (ctx) => this.onCdcSwitch(ctx));
+    agent.onTask(ReceiveEvent.QUERY_CONNECTION_DIALECT_METADATA, (ctx) =>
+      this.onConnectionMetadata(ctx)
+    );
     if (this.options.enableSync !== false) {
       for (const source of this.options.registry.all()) this.registerProvider(source);
     }
@@ -156,7 +171,7 @@ export class ExcelSourceHandlers {
         fetchBean.tableMeta = meta;
         s3.type = WriteType.OVERWRITE;
         const rows = await excel.writeFullData(table, meta.tableColumns!.length, (row) =>
-          stream.writeRow(row)
+          stream.writeRow(row.map(transOutputValue))
         );
         this.observe(
           'response',
@@ -354,7 +369,7 @@ export class ExcelSourceHandlers {
   private readError(bean: FetchBean, messageId: string, event: string, error: unknown): void {
     this.logger.error(`${bean.tableName} read error`, error);
     this.observe('error', event, { ...bean, messageId }, messageOf(error));
-    if (bean.preview)
+    if (isPreviewFetch(bean))
       this.agent.socketSender.send(event, errorMessage(messageId, messageOf(error)));
   }
 
@@ -411,18 +426,104 @@ export class ExcelSourceHandlers {
     }
   }
 
+  /**
+   * `TableCdcSyncHandler`：只做 checkSource（不存在时回 table_content_result 错误），
+   * 其余不应答（Java 3.0 里这里就是空实现）。
+   */
+  private onCdcSync(ctx: SocketTaskContext): void {
+    const bean = fetchBeanOf(ctx);
+    this.logger.info(`start sync table cdc records, messageId: ${ctx.messageId}`);
+    this.observe('request', ReceiveEvent.QUERY_CDC_OF_TABLE, { ...bean, messageId: ctx.messageId });
+    this.checkSource(bean, ctx.messageId, SendEvent.SEND_CONTENT_OF_TABLE);
+  }
+
+  /**
+   * `TableCdcSwitchHandler`：checkSource 后，Excel 数据源（LocalClientProxy）不是 Cdcable，
+   * Java 只记错误日志、不回 cdc_switch_result。
+   */
+  private onCdcSwitch(ctx: SocketTaskContext): void {
+    const bean = fetchBeanOf(ctx);
+    this.logger.info(`cdc switch, messageId: ${ctx.messageId}`);
+    this.observe('request', ReceiveEvent.CDC_SWITCH, { ...bean, messageId: ctx.messageId });
+    const source = this.checkSource(bean, ctx.messageId, SendEvent.SEND_CONTENT_OF_TABLE);
+    if (!source) return;
+    this.logger.error(
+      `cdc switch proxy is not Cdcable, sourceName: ${bean.sourceName}, proxy class: LocalExcelSource`
+    );
+    this.observe(
+      'error',
+      ReceiveEvent.CDC_SWITCH,
+      { ...bean, messageId: ctx.messageId },
+      'not Cdcable'
+    );
+  }
+
+  /**
+   * `ConnectionMetadataHandler`：解析失败 → INTERNAL；找不到数据源 → SOURCE_NOT_FOUND；
+   * 非 JDBC（Excel 数据源）→ NON_JDBC。均回 connection_dialect_metadata_result 的 ofError。
+   */
+  private onConnectionMetadata(ctx: SocketTaskContext): void {
+    const event = SendEvent.SEND_CONNECTION_DIALECT_METADATA;
+    let sourceName: string | undefined;
+    try {
+      const raw = ctx.payload;
+      const request = (typeof raw === 'string' ? JSON.parse(raw) : raw) as {
+        sourceName?: unknown;
+      } | null;
+      sourceName =
+        request && typeof request === 'object' && request.sourceName != null
+          ? String(request.sourceName)
+          : undefined;
+    } catch {
+      this.agent.socketSender.send(
+        event,
+        errorMessage(ctx.messageId, 'DIALECT_METADATA_ERROR:INTERNAL')
+      );
+      return;
+    }
+    this.observe('request', ReceiveEvent.QUERY_CONNECTION_DIALECT_METADATA, {
+      sourceName,
+      messageId: ctx.messageId,
+    });
+    const source =
+      sourceName !== undefined && this.allowed(sourceName)
+        ? this.options.registry.get(sourceName)
+        : undefined;
+    if (!source) {
+      if (
+        sourceName !== undefined &&
+        !this.allowed(sourceName) &&
+        this.options.ignoreDisallowedSources
+      )
+        return;
+      this.agent.socketSender.send(
+        event,
+        errorMessage(ctx.messageId, 'DIALECT_METADATA_ERROR:SOURCE_NOT_FOUND')
+      );
+      return;
+    }
+    this.agent.socketSender.send(
+      event,
+      errorMessage(ctx.messageId, 'DIALECT_METADATA_ERROR:NON_JDBC')
+    );
+  }
+
   private async onPreview(ctx: SocketTaskContext): Promise<void> {
     const bean = fetchBeanOf(ctx);
     bean.messageId = ctx.messageId;
     this.logger.info(
-      `start fetch table content s3, table: ${bean.tableName}, messageId: ${ctx.messageId}`
+      `start fetch table content s3, table: ${bean.tableName}, rowSize: ${String(bean.rowSize)}, messageId: ${ctx.messageId}`
     );
     this.observe('request', ReceiveEvent.QUERY_CONTENT_OF_TABLE_S3, bean);
     const event = SendEvent.SEND_CONTENT_OF_TABLE_S3;
     const source = this.checkSource(bean, ctx.messageId, event);
     if (!source) return;
-    if (!bean.preview) {
-      this.logger.error('TableContentS3Handler only support preview table content');
+    if (!isPreviewFetch(bean)) {
+      // Java 抛 IllegalArgumentException，不回任何消息
+      this.logger.error(
+        `TableContentS3Handler only support preview table content (rowSize=${String(bean.rowSize)}, payload keys: ${Object.keys(bean).join(',')})`
+      );
+      this.observe('error', event, bean, `not a preview request (rowSize=${bean.rowSize ?? ''})`);
       return;
     }
     const s3 = createS3SourceData(bean);
@@ -437,7 +538,8 @@ export class ExcelSourceHandlers {
       if (!table) throw new Error(`can not found table ${bean.tableName}`);
       const { meta, rows } = await source.topRows(table, ctx.messageId);
       payload.meta = meta;
-      payload.data = rows;
+      // S3DataSyncStream.row → DataStream.trans2OutputType，preview 时 append 到 source 走 socket
+      payload.data = rows.map((row) => row.map(transOutputValue));
     } catch (error) {
       // Java：flowRead 先回错误消息，随后 DataStream.close() 仍会发出一份空数据
       this.readError(bean, ctx.messageId, event, error);

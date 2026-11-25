@@ -220,3 +220,21 @@ describe('LocalExcelSource over real files', () => {
     expect((await source.queryStructure(table, { update: true }, 'd')).skipSync).toBe(false);
   });
 });
+
+describe('row count (RowCountReader) matches the Java agent', () => {
+  // 期望值由 hihidata-excel 3.0.4 ExcelReader/CsvReader + DefaultExcelHook iterator(5000) 实际运行得到
+  it.each([
+    ['rowcount.xlsx_S1', 3],
+    ['rowcount.xlsx_H', 0],
+    ['rowcount.csv', 2],
+  ])('%s → %i', async (tableId, expected) => {
+    const fx = path.join(__dirname, 'fixtures/java');
+    const source = new LocalExcelSource({
+      sourceName: 's',
+      files: [path.join(fx, 'rowcount.xlsx'), path.join(fx, 'rowcount.csv')],
+    });
+    const table = await source.getTable(tableId);
+    expect(table).toBeDefined();
+    expect(await source.rowCount(table!)).toBe(expected);
+  });
+});

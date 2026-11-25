@@ -79,14 +79,19 @@ export interface FetchBean {
   /** 云端预先创建好的首个 multipart uploadId。 */
   uploadId?: string;
   tableMeta?: SimpleSourceMeta;
-  preview?: boolean;
   queryTimout?: number;
+  /** 预览需要的行数；Java `FetchBean.isPreview()` 就是 `rowSize > 0`（没有单独的 preview 字段）。 */
   rowSize?: number;
   offset?: number;
   sourceTableId?: string;
   forceOverwrite?: boolean;
   update?: boolean;
   [key: string]: unknown;
+}
+
+/** Java `FetchBean.isPreview()`：`rowSize > 0`（`@JsonIgnore`，云端不会下发 preview 字段）。 */
+export function isPreviewFetch(bean: Pick<FetchBean, 'rowSize'>): boolean {
+  return Number(bean.rowSize ?? 0) > 0;
 }
 
 /** 写入方式，对应 Java `WriteType`。 */

@@ -16,6 +16,7 @@ import { LocalExcelSource } from '../../src/main/local-agent/excel/local-excel-s
 import {
   EXCEL_SYNC_STREAM_OPTIONS,
   ExcelSourceHandlers,
+  transOutputValue,
 } from '../../src/main/local-agent/handlers/excel-source-handlers';
 import { LocalAgent } from '../../src/main/local-agent/local-agent';
 import { silentLocalAgentLogger } from '../../src/main/local-agent/logger';
@@ -122,7 +123,16 @@ describe('ExcelSourceHandlers over Socket.IO', () => {
     socketIO: { reconnectionAttempts: 1, reconnectionDelay: 50, timeout: 2000 },
   });
 
+  let logs: string[] = [];
+  const captureLogger = {
+    ...silentLocalAgentLogger,
+    info: (...a: unknown[]) => logs.push(a.map(String).join(' ')),
+    warn: (...a: unknown[]) => logs.push(a.map(String).join(' ')),
+    error: (...a: unknown[]) => logs.push(a.map(String).join(' ')),
+  };
+
   async function connect(enableSync = true) {
+    logs = [];
     const source = new LocalExcelSource({
       sourceName: SOURCE,
       files: [xlsxPath, path.join(dir, 'other.csv')],
@@ -136,7 +146,7 @@ describe('ExcelSourceHandlers over Socket.IO', () => {
     const events: string[] = [];
     const handlers = new ExcelSourceHandlers(agent, {
       registry: { get: (n) => (n === SOURCE ? source : undefined), all: () => [source] },
-      logger: silentLocalAgentLogger,
+      logger: captureLogger,
       enableSync,
       observer: (e) => events.push(`${e.type}:${e.event}`),
     });
@@ -195,7 +205,7 @@ describe('ExcelSourceHandlers over Socket.IO', () => {
     serverSocket!.emit('table_rowcount', JSON.stringify(bean), 'm2');
     serverSocket!.emit(
       'table_content_s3',
-      JSON.stringify({ ...bean, preview: true, groupId: 'g' }),
+      JSON.stringify({ ...bean, rowSize: 100, offset: 0, groupId: 'g' }),
       'm3'
     );
     await until(() => received.length >= 3);
@@ -224,11 +234,221 @@ describe('ExcelSourceHandlers over Socket.IO', () => {
     ]);
   });
 
+  // 云端预览请求的真实形状：Java FetchBean 字段（Jackson 反序列化），预览由 rowSize > 0 决定，
+  // 没有 preview 字段（FetchBean.isPreview() 是 @JsonIgnore 的派生值）。
+  const javaPreviewBean = (tableName: string, extra: Record<string, unknown> = {}) => ({
+    tableName,
+    sourceName: SOURCE,
+    queryTimout: 180000,
+    rowSize: 100,
+    offset: 0,
+    sourceTableId: 'st-1',
+    forceOverwrite: false,
+    update: false,
+    ...extra,
+  });
+
+  it('regression: Java-shaped preview (rowSize>0, no preview flag) answers over socket, no OSS', async () => {
+    const { events } = await connect();
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify(javaPreviewBean('sales.xlsx_S1')),
+      '34f6e6cb080d4b8d'
+    );
+    await until(() => received.some((r) => r.event === 'table_content_s3_result'));
+    const dirName = path.basename(dir);
+    const payload = received.find((r) => r.event === 'table_content_s3_result')!.payload;
+    // S3SourceData 经 Jackson(NON_NULL) toMap 后的完整形状
+    expect(payload).toEqual({
+      messageId: '34f6e6cb080d4b8d',
+      error: false,
+      hasNext: false,
+      sourceName: SOURCE,
+      tableName: 'sales.xlsx_S1',
+      type: 0,
+      skipSync: false,
+      meta: {
+        messageId: '34f6e6cb080d4b8d',
+        error: false,
+        hasNext: false,
+        tableColumns: ['城市', '销量', '文件夹名(系统字段)', '表名(系统字段)', 'sheet名(系统字段)'],
+        tableColumnTypes: [6, 5, 6, 6, 6],
+        skipSync: false,
+      },
+      data: [
+        ['北京', '10', dirName, 'sales.xlsx', 'S1'],
+        ['上海, 浦东', '2.5', dirName, 'sales.xlsx', 'S1'],
+      ],
+    });
+    expect(received.filter((r) => r.event === 'table_content_s3_result')).toHaveLength(1);
+    // 预览走 socket（S3DataSyncStream preview 分支），不申请预签名、不上传、不上报状态
+    expect(sync.calls.filter((c) => c.path !== `/sync${HttpEvent.SOURCE_ALL}`)).toEqual([]);
+    expect(events).not.toContain(`error:table_content_s3_result`);
+  });
+
+  it('regression: rowSize 0 / legacy preview flag is not a preview (Java ignores it) → no reply', async () => {
+    await connect();
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify(javaPreviewBean('sales.xlsx_S1', { rowSize: 0 })),
+      'n1'
+    );
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify({ sourceName: SOURCE, tableName: 'sales.xlsx_S1', preview: true }),
+      'n2'
+    );
+    serverSocket!.emit('table_rowcount', JSON.stringify(javaPreviewBean('sales.xlsx_S1')), 'n3');
+    await until(() => received.some((r) => r.event === 'table_rowcount_result'));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(received.filter((r) => r.event === 'table_content_s3_result')).toEqual([]);
+  });
+
+  it('regression: preview read error → ofError then the (empty) source, like Java flowRead + close', async () => {
+    await connect();
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify(javaPreviewBean('missing.xlsx_S1')),
+      'p-err'
+    );
+    await until(() => received.filter((r) => r.event === 'table_content_s3_result').length >= 2);
+    const [first, second] = received
+      .filter((r) => r.event === 'table_content_s3_result')
+      .map((r) => r.payload);
+    expect(first).toEqual({
+      messageId: 'p-err',
+      error: true,
+      errorMessage: 'can not found table missing.xlsx_S1',
+      hasNext: false,
+    });
+    expect(second).toMatchObject({
+      messageId: 'p-err',
+      error: false,
+      hasNext: false,
+      tableName: 'missing.xlsx_S1',
+      data: [],
+    });
+    expect(second.meta).toBeUndefined();
+  });
+
+  it('regression: server preview flow = table_rowcount then table_content_s3 (Java FetchBean payloads)', async () => {
+    await connect();
+    // 与用户日志一致：先 rowCount，约 3 秒后 table_content_s3（这里不等待）
+    const rowcountBean = {
+      tableName: 'sales.xlsx_S1',
+      sourceName: SOURCE,
+      queryTimout: 180000,
+      rowSize: 0,
+      offset: 0,
+      forceOverwrite: false,
+      update: false,
+    };
+    serverSocket!.emit('table_rowcount', JSON.stringify(rowcountBean), '810430d4a93246d1');
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify(javaPreviewBean('sales.xlsx_S1')),
+      '8bf9ac9531bc406a'
+    );
+    await until(
+      () =>
+        received.some((r) => r.event === 'table_rowcount_result') &&
+        received.some((r) => r.event === 'table_content_s3_result')
+    );
+    // TableRowCountBean（Message + sourceName/tableName/rowCount），Jackson NON_NULL
+    expect(received.find((r) => r.event === 'table_rowcount_result')!.payload).toEqual({
+      messageId: '810430d4a93246d1',
+      error: false,
+      hasNext: false,
+      sourceName: SOURCE,
+      tableName: 'sales.xlsx_S1',
+      rowCount: 2,
+    });
+    const preview = received.find((r) => r.event === 'table_content_s3_result')!.payload;
+    expect(preview).toMatchObject({ messageId: '8bf9ac9531bc406a', error: false, hasNext: false });
+    expect((preview.data as unknown[]).length).toBe(2);
+    // 日志里能看到 rowSize（判定预览的唯一字段）
+    expect(logs.some((l) => l.includes('rowSize: 100') && l.includes('8bf9ac9531bc406a'))).toBe(
+      true
+    );
+    expect(logs.join('\n')).not.toContain('only support preview');
+  });
+
+  it('logs the raw payload keys when a table_content_s3 request is not a preview', async () => {
+    await connect();
+    serverSocket!.emit(
+      'table_content_s3',
+      JSON.stringify({ tableName: 'sales.xlsx_S1', sourceName: SOURCE, preview: true, limit: 100 }),
+      'k1'
+    );
+    await until(() => logs.some((l) => l.includes('only support preview')));
+    const line = logs.find((l) => l.includes('only support preview'))!;
+    expect(line).toContain('rowSize=undefined');
+    expect(line).toContain('payload keys: tableName,sourceName,preview,limit');
+  });
+
+  it('table_cdc_info / cdc_switch: checkSource error for unknown sources, silent for the Excel source', async () => {
+    await connect();
+    serverSocket!.emit(
+      'table_cdc_info',
+      JSON.stringify({ sourceName: 'nope', tableName: 't' }),
+      'c1'
+    );
+    serverSocket!.emit('cdc_switch', JSON.stringify({ sourceName: 'nope', tableName: 't' }), 'c2');
+    serverSocket!.emit(
+      'table_cdc_info',
+      JSON.stringify({ sourceName: SOURCE, tableName: 't' }),
+      'c3'
+    );
+    serverSocket!.emit('cdc_switch', JSON.stringify({ sourceName: SOURCE, tableName: 't' }), 'c4');
+    await until(() => received.filter((r) => r.event === 'table_content_result').length >= 2);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(
+      received.filter((r) => r.event === 'table_content_result').map((r) => r.payload)
+    ).toEqual([
+      {
+        messageId: 'c1',
+        error: true,
+        errorMessage: 'sourceName: nope is not exists',
+        hasNext: false,
+      },
+      {
+        messageId: 'c2',
+        error: true,
+        errorMessage: 'sourceName: nope is not exists',
+        hasNext: false,
+      },
+    ]);
+    expect(received.some((r) => r.event === 'cdc_switch_result')).toBe(false);
+    expect(logs.some((l) => l.includes('not Cdcable'))).toBe(true);
+  });
+
+  it('connection_dialect_metadata: NON_JDBC / SOURCE_NOT_FOUND / INTERNAL like Java', async () => {
+    await connect();
+    serverSocket!.emit('connection_dialect_metadata', JSON.stringify({ sourceName: SOURCE }), 'd1');
+    serverSocket!.emit('connection_dialect_metadata', JSON.stringify({ sourceName: 'nope' }), 'd2');
+    serverSocket!.emit('connection_dialect_metadata', '{not json', 'd3');
+    await until(
+      () => received.filter((r) => r.event === 'connection_dialect_metadata_result').length >= 3
+    );
+    const by = (id: string) =>
+      received.find(
+        (r) => r.event === 'connection_dialect_metadata_result' && r.payload.messageId === id
+      )!.payload;
+    expect(by('d1')).toEqual({
+      messageId: 'd1',
+      error: true,
+      errorMessage: 'DIALECT_METADATA_ERROR:NON_JDBC',
+      hasNext: false,
+    });
+    expect(by('d2').errorMessage).toBe('DIALECT_METADATA_ERROR:SOURCE_NOT_FOUND');
+    expect(by('d3').errorMessage).toBe('DIALECT_METADATA_ERROR:INTERNAL');
+  });
+
   it('returns Java checkSource errors for unknown sources', async () => {
     await connect();
     const bean = { sourceName: 'nope', tableName: 't' };
     serverSocket!.emit('table_structure', JSON.stringify(bean), 'e1');
-    serverSocket!.emit('table_content_s3', JSON.stringify({ ...bean, preview: true }), 'e2');
+    serverSocket!.emit('table_content_s3', JSON.stringify({ ...bean, rowSize: 100 }), 'e2');
     await until(() => received.length >= 2);
     const error = { error: true, errorMessage: 'sourceName: nope is not exists', hasNext: false };
     expect(received.find((r) => r.event === 'table_content_result')!.payload).toEqual({
@@ -282,5 +502,15 @@ describe('ExcelSourceHandlers over Socket.IO', () => {
     expect(sync.webhookCalls(HttpEvent.S3_NOTIFY_SYNC_STATUS)[1].body?.syncStatus).toBe(
       AgentSyncStatus.UPLOAD_FAILED
     );
+  });
+});
+
+describe('transOutputValue (Java DataStream.trans2OutputType)', () => {
+  it('trims ≤ U+0020, blanks values over 10000 chars, keeps null', () => {
+    expect(transOutputValue('  a b\t')).toBe('a b');
+    expect(transOutputValue('\u3000x\u3000')).toBe('\u3000x\u3000');
+    expect(transOutputValue(' ' + 'x'.repeat(10000) + ' ')).toBe('x'.repeat(10000));
+    expect(transOutputValue('x'.repeat(10001))).toBe('');
+    expect(transOutputValue(null)).toBeNull();
   });
 });
