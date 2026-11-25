@@ -215,6 +215,30 @@ describe('数据 → 云连接', () => {
     await waitFor(() => expect(screen.queryByTestId('cloud-connection-table-picker')).toBeNull());
   });
 
+  it('closes the table picker when the header close button is clicked', async () => {
+    const dataApi = {
+      getDashboard: vi.fn(() =>
+        Promise.resolve({
+          rawTables: [{ id: 'raw-2', name: '订单' }],
+          resultTables: [],
+        })
+      ),
+    };
+    (
+      window as unknown as { electronAPI: { cloudConnection: typeof api; data: typeof dataApi } }
+    ).electronAPI = { cloudConnection: api, data: dataApi };
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
+    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
+    await screen.findByTestId('cloud-connection-table-picker');
+    expect(screen.getByTestId('cloud-connection-picker-close')).toBeTruthy();
+    expect(screen.queryByText('引用到分组「本地文件」')).toBeNull();
+    fireEvent.click(screen.getByTestId('cloud-connection-picker-close'));
+    await waitFor(() => expect(screen.queryByTestId('cloud-connection-table-picker')).toBeNull());
+    expect(screen.getByTestId('cloud-connection-group-form')).toBeTruthy();
+    expect(api.addTableRefs).not.toHaveBeenCalled();
+  });
+
   it('shows 新建原始表 in the add-table picker even when the list is empty', async () => {
     const dataApi = {
       getDashboard: vi.fn(() =>

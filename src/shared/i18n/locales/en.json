@@ -4881,7 +4881,6 @@
       "createRawTable": "New raw table",
       "createRawTableHint": "The new table will be referenced in the selected group",
       "pickerSelected": "{{count}} selected",
-      "pickerSubtitle": "Reference in group “{{name}}”",
       "pickerEmptyTitle": "No tables to reference",
       "pickerEmptySearch": "No matching tables",
       "pickerEmptySearchHint": "Try another keyword, or clear the search to browse all groups",

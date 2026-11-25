@@ -203,15 +203,23 @@ export function TableRefPickerDialog({
         className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
         data-testid="cloud-connection-table-picker"
       >
-        <DialogHeader className="flex flex-shrink-0 flex-col items-start gap-4 border-b border-border-subtle px-6 pb-4 pt-5">
-          <div className="space-y-1">
-            <DialogTitle className="text-[17px] font-semibold tracking-tight">
-              {t('cloudConnection.ds.pickerTitle')}
-            </DialogTitle>
-            <p className="text-[13px] text-text-muted">
-              {t('cloudConnection.ds.pickerSubtitle', { name: group.sourceName })}
-            </p>
-          </div>
+        <DialogHeader className="flex h-12 flex-shrink-0 flex-row items-center justify-between border-b border-border-subtle px-4 py-0">
+          <DialogTitle className="text-[14px] font-semibold text-text-primary">
+            {t('cloudConnection.ds.pickerTitle')}
+          </DialogTitle>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            className="text-text-muted hover:bg-accent-muted hover:text-accent"
+            title={t('common.close')}
+            aria-label={t('common.close')}
+            data-testid="cloud-connection-picker-close"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </DialogHeader>
+        <div className="flex flex-shrink-0 flex-col gap-3 border-b border-border-subtle px-6 py-3">
           <div
             className="grid h-10 w-full grid-cols-2 border border-border-subtle bg-surface-muted"
             role="tablist"
@@ -262,7 +270,8 @@ export function TableRefPickerDialog({
               data-testid="cloud-connection-picker-search"
             />
           </div>
-        </DialogHeader>
+        </div>
+
         <DialogBody className="min-h-0 flex-1 overflow-y-auto bg-surface p-0">
           {loading ? (
             <div className="flex h-full items-center justify-center gap-2 text-[13px] text-text-muted">
