@@ -7,6 +7,8 @@
  * - 分组 / 手动表变化时按 Java `ConfigStorage.compareAndInit` 的规则上报：
  *   新增分组 → source/single `addSource`；删除 → `sourceDelete`（空表列表）；目录或策略变化 →
  *   `updateSingle`；只改手动表时仅当表 id 集合变化才 `updateSingle`（`LocalClientProxy.updateTables`）；
+ *   分组名仅创建时可配置（与 Java 界面一致，服务端靠名字识别），`updateGroup` 拒绝改名，不会走
+ *   `sourceDelete` + `addSource`；
  * - 状态变化通过 `notify` 推给渲染进程。
  *
  * 本文件不依赖 electron，便于单测；electron 相关的存储与对话框在 store.ts / ipc.ts。
@@ -182,6 +184,8 @@ const GROUP_ERRORS: Record<string, string> = {
   required: '分组名不能为空',
   ampersand: '分组名称不能出现&',
   duplicate: '分组名称请勿重复',
+  /** 与 Java agent-ui 文案一致：分组名称仅创建时可配置，保存后无法修改。 */
+  immutable: '分组名称仅创建时可配置，保存后无法修改',
 };
 
 const TABLE_ERRORS: Record<string, string> = {
@@ -531,13 +535,9 @@ export class CloudConnectionService {
     const groups = this.groups();
     const current = this.findGroup(id);
     const name = input.sourceName.trim();
-    const renamed = name !== current.sourceName;
-    if (renamed) {
-      const error = validateGroupName(
-        name,
-        groups.filter((g) => g.id !== id).map((g) => g.sourceName)
-      );
-      if (error) throw new Error(GROUP_ERRORS[error]);
+    // Java 界面：分组名仅创建时可配置；服务端靠 sourceName 识别数据源，禁止改名。
+    if (name !== current.sourceName) {
+      throw new Error(GROUP_ERRORS.immutable);
     }
     const directoryPath =
       input.directoryPath || !current.directoryPath
@@ -547,47 +547,21 @@ export class CloudConnectionService {
         : current.directoryPath;
     const next: StoredGroup = {
       ...current,
-      sourceName: name,
+      sourceName: current.sourceName,
       directoryPath,
       strategy: input.strategy,
     };
     const recreate = directoryPath !== current.directoryPath || input.strategy !== current.strategy;
-    if (!renamed && !recreate) return;
-    const runtime = this.ensureRuntime(current);
-    const oldName = current.sourceName;
-    if (renamed) {
-      const all = this.deps.store.read().versions ?? {};
-      const versions = { ...all };
-      if (versions[oldName]) {
-        versions[name] = versions[oldName];
-        delete versions[oldName];
-      }
-      this.deps.store.write({ versions });
-    }
+    if (!recreate) return;
     this.writeGroups(groups.map((g) => (g.id === id ? next : g)));
-    runtime.source.sourceName = name;
+    const runtime = this.ensureRuntime(current);
     runtime.source.configure({ directoryPath, strategy: input.strategy });
     await this.refreshTables(id);
-    if (renamed) {
-      // 改名在 Java 配置里等价于删除旧数据源 + 新增数据源
-      await this.report(() => {
-        this.handlers!.unregisterProvider(oldName);
-        return this.handlers!.reportSingleSource(
-          new LocalExcelSource({ sourceName: oldName }),
-          FetchType.SOURCE_DELETE
-        );
-      }, 'report source delete');
-      await this.report(() => {
-        this.handlers!.registerProvider(runtime.source);
-        return this.handlers!.reportSingleSource(runtime.source, FetchType.ADD_SOURCE);
-      }, 'report source add');
-    } else {
-      // RECREATE → fetchSingleTables(UPDATE_SINGLE)
-      await this.report(
-        () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
-        'report source update'
-      );
-    }
+    // RECREATE → fetchSingleTables(UPDATE_SINGLE)
+    await this.report(
+      () => this.handlers!.reportSingleSource(runtime.source, FetchType.UPDATE_SINGLE),
+      'report source update'
+    );
   }
 
   async deleteGroup(id: string): Promise<void> {

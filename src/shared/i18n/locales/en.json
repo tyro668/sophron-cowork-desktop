@@ -4787,6 +4787,7 @@
       "emptyTables": "No tables",
       "selectHint": "Select a group or table to configure",
       "groupName": "Group name",
+      "groupNameLocked": "The group name can only be set when creating and cannot be changed later",
       "directory": "Directory",
       "strategy": "Auto tables",
       "groupStrategy": {

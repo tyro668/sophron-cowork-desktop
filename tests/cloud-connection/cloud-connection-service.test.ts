@@ -185,6 +185,10 @@ describe('CloudConnectionService', () => {
     await expect(
       service.addGroup({ sourceName: '本地', directoryPath: dir, strategy: 1 })
     ).rejects.toThrow('分组名称请勿重复');
+    await expect(
+      service.updateGroup(id, { sourceName: '别的名字', directoryPath: dir, strategy: 1 })
+    ).rejects.toThrow('分组名称仅创建时可配置，保存后无法修改');
+    expect(service.getState().groups[0].sourceName).toBe('本地');
     let group = service.getState().groups[0];
     expect(group.entries.map((e) => e.id)).toEqual(['list.csv', 'report.xlsx_Data']);
 
@@ -328,16 +332,18 @@ describe('CloudConnectionService', () => {
       await service.updateGroup(id2, { sourceName: '子目录', directoryPath: sub, strategy: 0 });
       expect(singles()[2]).toMatchObject({ changeType: 'updateSingle', sourceName: '子目录' });
       expect(singles()[2].agentBasicTableList).toEqual([]);
-      // 改名 → 删除旧数据源 + 新增
-      await service.updateGroup(id2, { sourceName: '改名', directoryPath: sub, strategy: 1 });
-      expect(singles()[3]).toMatchObject({ changeType: 'sourceDelete', sourceName: '子目录' });
-      expect(singles()[3].agentBasicTableList).toEqual([]);
-      expect(singles()[4]).toMatchObject({ changeType: 'addSource', sourceName: '改名' });
+      // 改名被拒绝：不改存储、不上报 sourceDelete/addSource（服务端靠名字识别）
+      const reported = singles().length;
+      await expect(
+        service.updateGroup(id2, { sourceName: '改名', directoryPath: sub, strategy: 0 })
+      ).rejects.toThrow('分组名称仅创建时可配置，保存后无法修改');
+      expect(service.getState().groups.find((g) => g.id === id2)?.sourceName).toBe('子目录');
+      expect(singles()).toHaveLength(reported);
       // 删除分组 → sourceDelete，空表列表
       await service.deleteGroup(id2);
-      expect(singles()[5]).toMatchObject({
+      expect(singles()[reported]).toMatchObject({
         changeType: 'sourceDelete',
-        sourceName: '改名',
+        sourceName: '子目录',
         agentBasicTableList: [],
       });
 

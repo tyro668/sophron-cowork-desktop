@@ -178,6 +178,18 @@ describe('数据 → 云连接', () => {
       })
     );
   });
+
+  it('keeps an existing group name read-only, including while editing', async () => {
+    render(<CloudConnectionPanel />);
+    const name = (await screen.findByTestId('cloud-connection-group-name')) as HTMLInputElement;
+    expect(name.disabled).toBe(true);
+    expect(name.value).toBe('本地文件');
+    fireEvent.click(screen.getByTestId('cloud-connection-group-edit'));
+    expect((screen.getByTestId('cloud-connection-group-name') as HTMLInputElement).disabled).toBe(
+      true
+    );
+    expect(screen.getByTitle(t('cloudConnection.ds.groupNameLocked'))).toBeTruthy();
+  });
 });
 
 describe('设置 → 云连接', () => {

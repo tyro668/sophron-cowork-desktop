@@ -497,7 +497,12 @@ function GroupForm({
               <Plus className="h-3.5 w-3.5" />
               {t('cloudConnection.ds.addTable')}
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
+            <Button
+              size="sm"
+              variant="ghost"
+              data-testid="cloud-connection-group-edit"
+              onClick={() => setEditing(true)}
+            >
               <Pencil className="h-3.5 w-3.5" />
               {t('cloudConnection.ds.edit')}
             </Button>
@@ -510,8 +515,10 @@ function GroupForm({
       <Row label={t('cloudConnection.ds.groupName')}>
         <Input
           value={form.sourceName}
-          disabled={!editing}
+          disabled={!editing || Boolean(group)}
           maxLength={100}
+          placeholder={t('cloudConnection.ds.groupNameLocked')}
+          title={group ? t('cloudConnection.ds.groupNameLocked') : undefined}
           onChange={(e) => setForm({ ...form, sourceName: e.target.value })}
           data-testid="cloud-connection-group-name"
         />

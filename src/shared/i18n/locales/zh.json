@@ -4787,6 +4787,7 @@
       "emptyTables": "暂无表",
       "selectHint": "选择左侧分组或表进行配置",
       "groupName": "分组名",
+      "groupNameLocked": "分组名称仅创建时可配置，保存后无法修改",
       "directory": "目录",
       "strategy": "策略",
       "groupStrategy": {
