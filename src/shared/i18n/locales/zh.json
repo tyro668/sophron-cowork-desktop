@@ -4903,14 +4903,14 @@
       "openSource": "查看原表",
       "deleteRef": "移除引用",
       "deleteRefConfirm": "只从云连接中移除引用，不会删除原始表或结果表。",
-      "confirmNameTitle": "确认上报表名",
-      "confirmNameDesc": "此名称用于向云端上报，确认后不可修改。如需改名，请移除引用后重新添加。",
-      "confirmNameSubmit": "确认添加",
       "sourceTableName": "引用表名",
       "locateTable": "定位到该表",
       "refConfig": "引用配置",
       "nameRequired": "请输入表名",
-      "nameDuplicate": "表名请勿重复"
+      "nameDuplicate": "表名请勿重复",
+      "namePending": "未完成",
+      "confirmReportName": "确认",
+      "confirmNameHint": "确认后上报表名不可修改，并会同步到云端。"
     }
   }
 }

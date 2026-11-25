@@ -5,6 +5,7 @@ import type {
   CloudConnectionTablePreview,
   CloudConnectionTableRef,
 } from '../../../shared/contracts';
+import { isCloudConnectionRefNameConfirmed } from '../../../shared/contracts';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import type { ExcelMetaPayload } from '../../local-agent/excel/analyzer';
 import type { ExcelTableInfo, TableRows } from '../../local-agent/excel/local-excel-source';
@@ -85,7 +86,10 @@ export function createCloudTableStoreAdapter(
   };
 }
 
-export type StoredTableRef = Pick<CloudConnectionTableRef, 'reportName' | 'kind' | 'tableId'>;
+export type StoredTableRef = Pick<
+  CloudConnectionTableRef,
+  'reportName' | 'kind' | 'tableId' | 'nameConfirmed'
+>;
 
 export async function resolveTableRef(
   store: CloudTableStorePort,
@@ -188,16 +192,24 @@ export class ReferencedTableSource {
     return this.store;
   }
 
-  private refOf(tableId: string): { ref: StoredTableRef; index: number } {
+  private refOf(
+    tableId: string,
+    options?: { includePending?: boolean }
+  ): { ref: StoredTableRef; index: number } {
     const index = this.refs.findIndex((item) => item.reportName === tableId);
     if (index < 0) throw new Error(`can not found table ${tableId}`);
-    return { ref: this.refs[index], index };
+    const ref = this.refs[index];
+    if (!options?.includePending && !isCloudConnectionRefNameConfirmed(ref)) {
+      throw new Error(`can not found table ${tableId}`);
+    }
+    return { ref, index };
   }
 
   async listTables(errors?: Map<string, string>): Promise<ExcelTableInfo[]> {
     if (!this.store) return [];
     const out: ExcelTableInfo[] = [];
     for (const [index, ref] of this.refs.entries()) {
+      if (!isCloudConnectionRefNameConfirmed(ref)) continue;
       const resolved = await resolveTableRef(this.store, ref);
       if (resolved.status === 'ok') {
         out.push(infoOf(ref, index));
@@ -208,13 +220,18 @@ export class ReferencedTableSource {
     return out;
   }
 
-  async getTable(tableId: string): Promise<ExcelTableInfo | undefined> {
+  async getTable(
+    tableId: string,
+    options?: { includePending?: boolean }
+  ): Promise<ExcelTableInfo | undefined> {
     const index = this.refs.findIndex((item) => item.reportName === tableId);
     if (index < 0) return undefined;
-    if (!this.store) return infoOf(this.refs[index], index);
-    const resolved = await resolveTableRef(this.store, this.refs[index]);
+    const ref = this.refs[index];
+    if (!options?.includePending && !isCloudConnectionRefNameConfirmed(ref)) return undefined;
+    if (!this.store) return infoOf(ref, index);
+    const resolved = await resolveTableRef(this.store, ref);
     if (resolved.status === 'missing') return undefined;
-    return infoOf(this.refs[index], index);
+    return infoOf(ref, index);
   }
 
   private async load(ref: StoredTableRef, refresh = true) {
@@ -294,9 +311,10 @@ export class ReferencedTableSource {
   async topRows(
     table: ExcelTableInfo,
     messageId?: string,
-    limit = 100
+    limit = 100,
+    options?: { includePending?: boolean }
   ): Promise<{ meta: ExcelMetaPayload; rows: (string | null)[][] }> {
-    const { ref } = this.refOf(table.id);
+    const { ref } = this.refOf(table.id, options);
     const store = this.requireStore();
     if (ref.kind === 'raw') {
       try {
@@ -362,8 +380,8 @@ export class ReferencedTableSource {
     table: ExcelTableInfo,
     sampleSize = 50
   ): Promise<Omit<CloudConnectionTablePreview, 'tableName'>> {
-    const top = await this.topRows(table, undefined, sampleSize);
-    const { ref } = this.refOf(table.id);
+    const top = await this.topRows(table, undefined, sampleSize, { includePending: true });
+    const { ref } = this.refOf(table.id, { includePending: true });
     const snapshot = await this.load(ref, false);
     return {
       columns: top.meta.tableColumns ?? [],

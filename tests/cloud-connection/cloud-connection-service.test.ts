@@ -16,8 +16,10 @@ import {
   DEFAULT_AUTO_CONNECT,
   MemoryCloudConnectionStore,
   maskAgentId,
+  migrateConfirmedRefNames,
   resolveAutoConnect,
 } from '../../src/main/features/cloud-connection/service';
+import { ReferencedTableSource } from '../../src/main/features/cloud-connection/referenced-source';
 import type { LocalAgent } from '../../src/main/local-agent/local-agent';
 import { HttpEvent } from '../../src/main/local-agent/constants';
 import { silentLocalAgentLogger, type LocalAgentLogger } from '../../src/main/local-agent/logger';
@@ -251,7 +253,7 @@ describe('CloudConnectionService', () => {
     } as never);
     service = new CloudConnectionService({ store, logger });
     const data = store.read();
-    expect(data.schemaVersion).toBe(2);
+    expect(data.schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
     expect(data.groups).toEqual([
       expect.objectContaining({
         sourceName: '我的本地文件',
@@ -272,7 +274,7 @@ describe('CloudConnectionService', () => {
     const store = new MemoryCloudConnectionStore({ sourceName: 'x', files: [] } as never);
     service = new CloudConnectionService({ store, logger });
     expect(store.read().groups).toEqual([]);
-    expect(store.read().schemaVersion).toBe(2);
+    expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
   });
 
   it('manages logical groups and table references', async () => {
@@ -300,6 +302,7 @@ describe('CloudConnectionService', () => {
         kind: 'raw',
         tableId: 'raw-1',
         status: 'ok',
+        nameConfirmed: false,
       }),
     ]);
     await expect(
@@ -307,29 +310,33 @@ describe('CloudConnectionService', () => {
     ).rejects.toThrow('表名请勿重复');
     await service.addTableRefs(id, [{ kind: 'result', tableId: 'out-1' }]);
     group = service.getState().groups[0];
-    expect(group.tables.map((tb) => [tb.reportName, tb.status])).toEqual([
-      ['销售', 'ok'],
-      ['汇总', 'unmaterialized'],
+    expect(group.tables.map((tb) => [tb.reportName, tb.status, tb.nameConfirmed])).toEqual([
+      ['销售', 'ok', false],
+      ['汇总', 'unmaterialized', false],
     ]);
 
-    await expect(service.updateTableRef(id, '销售', { reportName: '销售上报' })).rejects.toThrow(
+    await service.updateTableRef(id, '销售', { reportName: '销售上报' });
+    expect(service.getState().groups[0].tables[0]).toMatchObject({
+      reportName: '销售上报',
+      nameConfirmed: true,
+    });
+    await expect(service.updateTableRef(id, '销售上报', { reportName: '再改名' })).rejects.toThrow(
       '上报表名确认后不可修改'
     );
-    expect(service.getState().groups[0].tables[0].reportName).toBe('销售');
     const stored = (tableStore as { _raws: Map<string, { name: string }> })._raws.get('raw-1');
     if (stored) stored.name = '销售改名';
     await service.refreshTables(id);
     expect(service.getState().groups[0].tables[0]).toMatchObject({
-      reportName: '销售',
+      reportName: '销售上报',
       displayName: '销售改名',
     });
 
-    const preview = await service.previewTable(id, '销售');
-    expect(preview.tableName).toBe('销售');
+    const preview = await service.previewTable(id, '销售上报');
+    expect(preview.tableName).toBe('销售上报');
     expect(preview.columns).toEqual(['a']);
     expect(preview.rowCount).toBe(1);
 
-    await service.deleteTable(id, '销售');
+    await service.deleteTable(id, '销售上报');
     expect(service.getState().groups[0].tables.map((tb) => tb.reportName)).toEqual(['汇总']);
     await service.deleteGroup(id);
     expect(service.getState().groups).toEqual([]);
@@ -366,10 +373,58 @@ describe('CloudConnectionService', () => {
     await service.migrateLegacyGroups();
     const group = service.getState().groups[0];
     expect(group.tables).toEqual([
-      expect.objectContaining({ reportName: '合并表', kind: 'raw', status: 'ok' }),
+      expect.objectContaining({
+        reportName: '合并表',
+        kind: 'raw',
+        status: 'ok',
+        nameConfirmed: true,
+      }),
     ]);
     expect(store.read().groups[0].legacyTables).toBeUndefined();
     expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
+  });
+
+  it('treats existing refs as confirmed and excludes pending refs from server lists', async () => {
+    const tableStore = memoryTables([
+      { id: 'raw-1', name: '销售' },
+      { id: 'raw-2', name: '订单' },
+    ]);
+    const store = new MemoryCloudConnectionStore({
+      schemaVersion: 3,
+      groups: [
+        {
+          id: 'g1',
+          sourceName: '本地',
+          tables: [{ reportName: '旧表', kind: 'raw', tableId: 'raw-1' }],
+        },
+      ],
+    } as never);
+    expect(migrateConfirmedRefNames(store.read())?.schemaVersion).toBe(4);
+    service = new CloudConnectionService({ store, logger, tableStore });
+    expect(store.read().schemaVersion).toBe(CLOUD_CONNECTION_SCHEMA_VERSION);
+    expect(service.getState().groups[0].tables[0].nameConfirmed).toBe(true);
+
+    const id = service.getState().groups[0].id;
+    await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-2' }]);
+    const refs = store.read().groups[0].tables;
+    const source = new ReferencedTableSource('本地', refs, tableStore);
+    const listed = await source.listTables();
+    expect(listed.map((table) => table.id)).toEqual(['旧表']);
+    expect(await source.getTable('订单')).toBeUndefined();
+    expect(await source.getTable('旧表')).toMatchObject({ id: '旧表' });
+    expect(await source.getTable('订单', { includePending: true })).toMatchObject({ id: '订单' });
+    await expect(source.rowCount({ id: '订单' } as never)).rejects.toThrow(/can not found table/);
+
+    await service.updateTableRef(id, '订单', { reportName: '订单上报' });
+    expect(service.getState().groups[0].tables[1]).toMatchObject({
+      reportName: '订单上报',
+      nameConfirmed: true,
+    });
+    const published = new ReferencedTableSource('本地', store.read().groups[0].tables, tableStore);
+    expect((await published.listTables()).map((table) => table.id).sort()).toEqual([
+      '旧表',
+      '订单上报',
+    ]);
   });
 
   class FakeAgent extends EventEmitter {
@@ -527,6 +582,7 @@ describe('CloudConnectionService', () => {
       service.importConfigText(yaml(port));
       const id = await service.addGroup({ sourceName: '我的本地文件' });
       await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-1' }]);
+      await service.updateTableRef(id, '销售', { reportName: '销售' });
       service.connect();
       await until(() => sync.webhookCalls(HttpEvent.SOURCE_ALL).length > 0);
       await until(() => service!.getState().status === 'connected');
@@ -541,6 +597,8 @@ describe('CloudConnectionService', () => {
 
       const singles = () => sync.webhookCalls(HttpEvent.SOURCE_SINGLE).map((c) => c.body!);
       await service.addTableRefs(id, [{ kind: 'raw', tableId: 'raw-2' }]);
+      expect(singles()).toHaveLength(0);
+      await service.updateTableRef(id, '订单', { reportName: '订单' });
       expect(singles()).toHaveLength(1);
       expect(singles()[0]).toMatchObject({
         changeType: 'updateSingle',

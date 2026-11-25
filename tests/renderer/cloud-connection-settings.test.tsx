@@ -29,6 +29,7 @@ const group: CloudConnectionGroup = {
       tableId: 'raw-1',
       displayName: '销售原始表',
       status: 'ok',
+      nameConfirmed: true,
       rowCount: 10,
       columnCount: 3,
     },
@@ -75,7 +76,9 @@ const api = {
   updateGroup: vi.fn(ok),
   deleteGroup: vi.fn(ok),
   addTableRefs: vi.fn((_groupId?: string, _refs?: unknown) => ok()),
-  updateTableRef: vi.fn(ok),
+  updateTableRef: vi.fn((_groupId?: string, _previous?: string, _input?: { reportName: string }) =>
+    ok()
+  ),
   deleteTable: vi.fn(ok),
   refreshTables: vi.fn(ok),
   previewTable: vi.fn(),
@@ -210,49 +213,87 @@ describe('数据 → 云连接', () => {
     fireEvent.click(screen.getByTestId('table-ref-picker-tab-raw'));
     fireEvent.click(screen.getByText('订单'));
     fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
-    await screen.findByTestId('cloud-connection-confirm-name');
-    expect(
-      (screen.getByTestId('cloud-connection-confirm-name-input-0') as HTMLInputElement).value
-    ).toBe('订单');
-    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name-submit'));
     await waitFor(() =>
       expect(api.addTableRefs).toHaveBeenCalledWith('g1', [
-        expect.objectContaining({ kind: 'raw', tableId: 'raw-2', reportName: '订单' }),
+        expect.objectContaining({ kind: 'raw', tableId: 'raw-2' }),
       ])
     );
+    expect(screen.queryByTestId('cloud-connection-confirm-name-input-0')).toBeNull();
     await waitFor(() => expect(screen.queryByTestId('cloud-connection-table-picker')).toBeNull());
-    await waitFor(() => expect(screen.queryByTestId('cloud-connection-confirm-name')).toBeNull());
   });
 
-  it('validates confirmed names as required and unique within the group', async () => {
-    const dataApi = {
-      getDashboard: vi.fn(() =>
-        Promise.resolve({
-          rawTables: [{ id: 'raw-2', name: '订单' }],
-          resultTables: [],
-        })
-      ),
-    };
-    (
-      window as unknown as { electronAPI: { cloudConnection: typeof api; data: typeof dataApi } }
-    ).electronAPI = { cloudConnection: api, data: dataApi };
+  it('marks a new ref as 未完成, allows editing the name, then locks it after confirm', async () => {
+    state = makeState({
+      groups: [
+        {
+          ...group,
+          tables: [
+            ...group.tables,
+            {
+              reportName: '订单',
+              kind: 'raw',
+              tableId: 'raw-2',
+              displayName: '订单明细',
+              status: 'ok',
+              nameConfirmed: false,
+            },
+          ],
+          entries: [
+            ...group.entries,
+            { id: '订单', kind: 'raw', tableId: 'raw-2', displayName: '订单明细', status: 'ok' },
+          ],
+        },
+      ],
+    });
+    api.updateTableRef.mockImplementation(
+      async (_groupId?: string, previous?: string, input?: { reportName: string }) => {
+        const current = state.groups[0]!;
+        const nextName = input?.reportName ?? previous ?? '';
+        const tables = current.tables.map((table) =>
+          table.reportName === previous
+            ? { ...table, reportName: nextName, nameConfirmed: true }
+            : table
+        );
+        state = makeState({
+          groups: [
+            {
+              ...current,
+              tables,
+              entries: tables.map((table) => ({
+                id: table.reportName,
+                kind: table.kind,
+                tableId: table.tableId,
+                displayName: table.displayName,
+                status: table.status,
+              })),
+            },
+          ],
+        });
+        return { success: true, state };
+      }
+    );
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
-    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
-    await screen.findByTestId('cloud-connection-table-picker');
-    fireEvent.click(await screen.findByText('订单'));
-    fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
-    const input = (await screen.findByTestId(
-      'cloud-connection-confirm-name-input-0'
-    )) as HTMLInputElement;
+    expect(screen.getByText(t('cloudConnection.ds.namePending'))).toBeTruthy();
+    fireEvent.click(screen.getByText('订单'));
+    const input = (await screen.findByTestId('cloud-connection-report-name')) as HTMLInputElement;
+    expect(input.value).toBe('订单');
     fireEvent.change(input, { target: { value: '   ' } });
-    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name-submit'));
+    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name'));
     expect(await screen.findByText(t('cloudConnection.ds.nameRequired'))).toBeTruthy();
-    expect(api.addTableRefs).not.toHaveBeenCalled();
+    expect(api.updateTableRef).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: '销售合并' } });
-    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name-submit'));
+    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name'));
     expect(await screen.findByText(t('cloudConnection.ds.nameDuplicate'))).toBeTruthy();
-    expect(api.addTableRefs).not.toHaveBeenCalled();
+    expect(api.updateTableRef).not.toHaveBeenCalled();
+    fireEvent.change(input, { target: { value: '订单上报' } });
+    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name'));
+    await waitFor(() =>
+      expect(api.updateTableRef).toHaveBeenCalledWith('g1', '订单', { reportName: '订单上报' })
+    );
+    await waitFor(() => expect(screen.queryByTestId('cloud-connection-report-name')).toBeNull());
+    expect(screen.queryByText(t('cloudConnection.ds.namePending'))).toBeNull();
+    expect(screen.getByText('订单上报')).toBeTruthy();
   });
 
   it('closes the table picker when the header close button is clicked', async () => {
@@ -488,6 +529,15 @@ describe('云连接：新建原始表并自动引用', () => {
         has: () => true,
       }
     );
+    const listeners: Array<(next: CloudConnectionState) => void> = [];
+    api.onState.mockImplementation((cb?: (next: CloudConnectionState) => void) => {
+      if (cb) listeners.push(cb);
+      return () => {
+        if (!cb) return;
+        const index = listeners.indexOf(cb);
+        if (index >= 0) listeners.splice(index, 1);
+      };
+    });
     api.addTableRefs.mockImplementation(async (_groupId?: string, _refs?: unknown) => {
       const table = {
         reportName: createdTable.name,
@@ -495,6 +545,7 @@ describe('云连接：新建原始表并自动引用', () => {
         tableId: (Array.isArray(_refs) ? _refs[0]?.tableId : undefined) ?? createdTable.id,
         displayName: createdTable.name,
         status: 'ok' as const,
+        nameConfirmed: false,
         rowCount: 30,
         columnCount: 3,
       };
@@ -517,6 +568,7 @@ describe('云连接：新建原始表并自动引用', () => {
           },
         ],
       });
+      listeners.forEach((cb) => cb(state));
       return { success: true, state };
     });
     (window as unknown as { electronAPI: unknown }).electronAPI = {
@@ -562,25 +614,17 @@ describe('云连接：新建原始表并自动引用', () => {
     fireEvent.click(screen.getByTestId('raw-source-next'));
     fireEvent.click(await screen.findByTestId('raw-source-create'));
     await waitFor(() => expect(createRawSource).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(api.addTableRefs).toHaveBeenCalledWith('g1', [{ kind: 'raw', tableId: 'raw-new' }])
+    );
     await screen.findByTestId('cloud-connection-panel');
     expect(screen.queryByTestId('raw-source-wizard')).toBeNull();
+    await screen.findByTestId('cloud-connection-table-form');
     const nameInput = (await screen.findByTestId(
-      'cloud-connection-confirm-name-input-0'
+      'cloud-connection-report-name'
     )) as HTMLInputElement;
     expect(nameInput.value).toBe('销售日报（合并）');
-    expect(api.addTableRefs).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name-submit'));
-    await waitFor(() =>
-      expect(api.addTableRefs).toHaveBeenCalledWith('g1', [
-        expect.objectContaining({
-          kind: 'raw',
-          tableId: 'raw-new',
-          reportName: '销售日报（合并）',
-        }),
-      ])
-    );
-    await screen.findByTestId('cloud-connection-table-form');
-    expect(screen.queryByTestId('cloud-connection-report-name')).toBeNull();
+    expect(screen.getByText(t('cloudConnection.ds.namePending'))).toBeTruthy();
     expect(screen.getAllByText('销售日报（合并）').length).toBeGreaterThan(0);
     const active = document.querySelector('[data-fixed-tab][data-state="active"]');
     expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
@@ -696,18 +740,15 @@ describe('云连接：引用表弹窗分组与已引用', () => {
     expect(screen.queryByTestId('raw-table-tree-row')).toBeNull();
     fireEvent.click(screen.getByText('汇总'));
     fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
-    await screen.findByTestId('cloud-connection-confirm-name');
-    fireEvent.click(screen.getByTestId('cloud-connection-confirm-name-submit'));
     await waitFor(() => expect(api.addTableRefs).toHaveBeenCalled());
     const refs = api.addTableRefs.mock.calls[0][1] as Array<{
       kind: string;
       tableId: string;
-      reportName: string;
     }>;
     expect(refs).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: 'raw', tableId: 'raw-2', reportName: '订单' }),
-        expect.objectContaining({ kind: 'result', tableId: 'out-1', reportName: '汇总' }),
+        expect.objectContaining({ kind: 'raw', tableId: 'raw-2' }),
+        expect.objectContaining({ kind: 'result', tableId: 'out-1' }),
       ])
     );
     expect(refs).toHaveLength(2);

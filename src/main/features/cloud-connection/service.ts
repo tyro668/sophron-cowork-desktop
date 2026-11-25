@@ -35,6 +35,7 @@ import {
   DEFAULT_AUTO_CONNECT,
   resolveAutoConnect,
   suggestReportName,
+  isCloudConnectionRefNameConfirmed,
 } from '../../../shared/contracts';
 import { parseLocalAgentConfig } from '../../local-agent/config';
 import { DEFAULT_AGENT_VERSION } from '../../local-agent/constants';
@@ -66,7 +67,7 @@ import type { LocalAgentLogger } from '../../local-agent/logger';
 import type { LocalAgentConfig } from '../../local-agent/types';
 
 export const DEFAULT_SOURCE_NAME = '九思助理本地文件';
-export const CLOUD_CONNECTION_SCHEMA_VERSION = 3;
+export const CLOUD_CONNECTION_SCHEMA_VERSION = 4;
 const MAX_ACTIVITIES = 50;
 
 export {
@@ -186,6 +187,24 @@ export function migrateCloudConnectionData(
   return { groups, versions, schemaVersion: 2 };
 }
 
+/**
+ * v3 → v4：为已有引用补上 `nameConfirmed: true`（未完成是新行为，旧数据视为已确认）。
+ */
+export function migrateConfirmedRefNames(
+  data: CloudConnectionPersisted
+): Partial<CloudConnectionPersisted> | null {
+  if ((data.schemaVersion ?? 0) >= 4) return null;
+  const groups = (Array.isArray(data.groups) ? data.groups : []).map((group) => ({
+    ...group,
+    tables: (group.tables ?? []).map((table) =>
+      isCloudConnectionRefNameConfirmed(table) && table.nameConfirmed !== undefined
+        ? table
+        : { ...table, nameConfirmed: table.nameConfirmed !== false }
+    ),
+  }));
+  return { groups, schemaVersion: 4 };
+}
+
 export type AgentFactory = (config: LocalAgentConfig, options: LocalAgentOptions) => LocalAgent;
 
 export interface CloudConnectionServiceDeps {
@@ -277,6 +296,8 @@ export class CloudConnectionService {
         );
       }
     }
+    const nameMigration = migrateConfirmedRefNames(deps.store.read());
+    if (nameMigration) deps.store.write(nameMigration);
     const groups = (this.deps.store.read().groups ?? []).map(normalizeStoredGroup);
     if (JSON.stringify(groups) !== JSON.stringify(this.deps.store.read().groups ?? [])) {
       this.deps.store.write({ groups });
@@ -620,7 +641,10 @@ export class CloudConnectionService {
   }
 
   private async tableIds(group: StoredGroup): Promise<string[]> {
-    return group.tables.map((table) => table.reportName).sort();
+    return group.tables
+      .filter((table) => isCloudConnectionRefNameConfirmed(table))
+      .map((table) => table.reportName)
+      .sort();
   }
 
   async addGroup(input: CloudConnectionGroupInput): Promise<string> {
@@ -696,7 +720,7 @@ export class CloudConnectionService {
         this.defaultReportName(resolved.displayName || '未命名表', used);
       if (used.has(reportName)) throw new Error(TABLE_ERRORS.nameDuplicate);
       used.add(reportName);
-      next.push({ reportName, kind: input.kind, tableId: input.tableId });
+      next.push({ reportName, kind: input.kind, tableId: input.tableId, nameConfirmed: false });
     }
     await this.applyRefs(group, next);
   }
@@ -711,7 +735,23 @@ export class CloudConnectionService {
     if (!current) throw new Error('表不存在');
     const nextName = input.reportName.trim();
     if (!nextName) throw new Error(TABLE_ERRORS.nameRequired);
-    if (nextName !== reportName) throw new Error(TABLE_ERRORS.nameImmutable);
+    if (isCloudConnectionRefNameConfirmed(current)) {
+      if (nextName !== reportName) throw new Error(TABLE_ERRORS.nameImmutable);
+      return;
+    }
+    if (nextName !== reportName && group.tables.some((table) => table.reportName === nextName)) {
+      throw new Error(TABLE_ERRORS.nameDuplicate);
+    }
+    const runtime = this.ensureRuntime(group);
+    if (nextName !== reportName) runtime.source.versionStore.delete(reportName);
+    await this.applyRefs(
+      group,
+      group.tables.map((table) =>
+        table.reportName === reportName
+          ? { ...table, reportName: nextName, nameConfirmed: true }
+          : table
+      )
+    );
   }
 
   async deleteTable(groupId: string, reportName: string): Promise<void> {
@@ -754,7 +794,7 @@ export class CloudConnectionService {
   async previewTable(groupId: string, reportName: string): Promise<CloudConnectionTablePreview> {
     const group = this.findGroup(groupId);
     const source = this.ensureRuntime(group).source;
-    const table = await source.getTable(reportName);
+    const table = await source.getTable(reportName, { includePending: true });
     if (!table) throw new Error(`can not found table ${reportName}`);
     return { tableName: reportName, ...(await source.previewTable(table)) };
   }
@@ -817,7 +857,7 @@ export class CloudConnectionService {
         const created = await store.importRawTable(input);
         const reportName = legacy.tableName;
         used.add(reportName);
-        tables.push({ reportName, kind: 'raw', tableId: created.id });
+        tables.push({ reportName, kind: 'raw', tableId: created.id, nameConfirmed: true });
       } catch (error) {
         errors.push(`${legacy.tableName}: ${messageOf(error)}`);
       }
@@ -834,7 +874,12 @@ export class CloudConnectionService {
         try {
           const created = await store.importRawTable(auto.input);
           used.add(auto.reportName);
-          tables.push({ reportName: auto.reportName, kind: 'raw', tableId: created.id });
+          tables.push({
+            reportName: auto.reportName,
+            kind: 'raw',
+            tableId: created.id,
+            nameConfirmed: true,
+          });
         } catch (error) {
           errors.push(`${auto.reportName}: ${messageOf(error)}`);
         }

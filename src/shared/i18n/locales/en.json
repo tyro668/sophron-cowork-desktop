@@ -4903,14 +4903,14 @@
       "openSource": "Open source table",
       "deleteRef": "Remove reference",
       "deleteRefConfirm": "This only removes the cloud-connection reference. The raw or result table is not deleted.",
-      "confirmNameTitle": "Confirm table names",
-      "confirmNameDesc": "This name is reported to the cloud and cannot be changed after confirmation. To rename, remove the reference and add it again.",
-      "confirmNameSubmit": "Confirm",
       "sourceTableName": "Source table",
       "locateTable": "Locate this table",
       "refConfig": "Reference",
       "nameRequired": "Enter a table name",
-      "nameDuplicate": "Table name must be unique in this group"
+      "nameDuplicate": "Table name must be unique in this group",
+      "namePending": "Incomplete",
+      "confirmReportName": "Confirm",
+      "confirmNameHint": "After confirmation the reported name cannot be changed and will be synced to the cloud."
     }
   }
 }

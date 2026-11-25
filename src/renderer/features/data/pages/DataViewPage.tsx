@@ -8,6 +8,7 @@ import { useDataWorkspaceActivation } from '../hooks/use-data-workspace-activati
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
+import { cloudConnectionClient } from '../../cloud-connection/api/cloud-connection-client';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
 import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
 import { CloudConnectionPanel } from '../../../components/data-view/cloud-connection';
@@ -318,6 +319,20 @@ export function DataViewPage() {
               const groupId = current?.bindToGroupId;
               if (!groupId) return;
               void (async () => {
+                const refs = result.tables.map((table) => ({
+                  kind: 'raw' as const,
+                  tableId: table.id,
+                }));
+                if (refs.length > 0) {
+                  try {
+                    const bindResult = await cloudConnectionClient.addTableRefs(groupId, refs);
+                    if (!bindResult.success && bindResult.error) {
+                      showToast('error', bindResult.error);
+                    }
+                  } catch (error) {
+                    showToast('error', error instanceof Error ? error.message : String(error));
+                  }
+                }
                 setSourceWizard(null);
                 ui.setActiveTab('cloud_connection');
                 ui.setPendingNavigationTab(null);
@@ -325,11 +340,7 @@ export function DataViewPage() {
                 setCloudFocus({
                   nonce: Date.now(),
                   groupId,
-                  pendingRefs: result.tables.map((table) => ({
-                    kind: 'raw' as const,
-                    tableId: table.id,
-                    displayName: table.name,
-                  })),
+                  tableId: result.tables[0]?.id,
                 });
               })();
             }}

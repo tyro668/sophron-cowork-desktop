@@ -26,6 +26,11 @@ export function suggestReportName(displayName: string, used: Set<string>): strin
   return `${base} (${i})`;
 }
 
+/** 旧数据缺省该字段，视为已确认。 */
+export function isCloudConnectionRefNameConfirmed(ref: { nameConfirmed?: boolean }): boolean {
+  return ref.nameConfirmed !== false;
+}
+
 /** 未连接 / 连接失败 / 已断开 / 已下线时可点击徽标发起连接。 */
 export function isCloudConnectionBadgeClickable(state: { status: CloudConnectionStatus }): boolean {
   return (
@@ -49,7 +54,7 @@ export interface CloudConnectionConfigSummary {
 
 /**
  * 云连接中的一张表：只能引用已有原始表或结果表，自身不再保存目录或文件读取配置。
- * `reportName` 是上报给云端的 tableName，绑定时冻结。
+ * `reportName` 是上报给云端的 tableName；确认后冻结。未确认（未完成）的引用不上报云端。
  */
 export type CloudConnectionRefKind = 'raw' | 'result';
 
@@ -67,6 +72,11 @@ export interface CloudConnectionTableRef {
   tableId: string;
   /** 被引用表当前显示名；删除后为空。 */
   displayName?: string;
+  /**
+   * 上报表名是否已确认。缺省（旧数据）视为已确认。
+   * `false` 表示未完成：可改名，且不会出现在上报给云端的表列表里。
+   */
+  nameConfirmed?: boolean;
   status: CloudConnectionRefStatus;
   /** 状态说明（缺失、尚未物化、数据异常原因）。 */
   statusReason?: string;

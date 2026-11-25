@@ -31,6 +31,7 @@ import type {
   CloudConnectionTableRef,
   DataRawTablePreview,
 } from '../../../shared/contracts';
+import { isCloudConnectionRefNameConfirmed } from '../../../shared/contracts';
 import { cloudConnectionClient } from '../../features/cloud-connection/api/cloud-connection-client';
 import {
   errorText,
@@ -40,8 +41,7 @@ import { showToast } from '../../utils/toast';
 import { GlassDropdownMenu, GlassMenuItem, GlassMenuSeparator } from '../GlassDropdownMenu';
 import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { CloudConnectionPreviewDialog, toDataRawTablePreview } from './cloud-connection-preview';
-import { TableRefPickerDialog, type TableRefPick } from './table-ref-picker-dialog';
-import { TableRefNameDialog, type TableRefNameDraft } from './table-ref-name-dialog';
+import { TableRefPickerDialog } from './table-ref-picker-dialog';
 import { EmptyState, fixedTabGroupWidth } from './shared';
 import { Badge, Button, cn } from '../ui';
 import { useAppStore } from '../../store';
@@ -59,8 +59,6 @@ export type CloudConnectionFocus = {
   groupId: string;
   tableId?: string;
   showPicker?: boolean;
-  /** After the raw-source wizard, confirm reported names before adding refs. */
-  pendingRefs?: TableRefNameDraft[];
 };
 
 type Run = (key: string, action: () => Promise<CloudConnectionActionResult>) => Promise<boolean>;
@@ -152,7 +150,6 @@ export function DatasourceManager({
   const [previewTotalRows, setPreviewTotalRows] = useState<number | undefined>(undefined);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
-  const [pendingPicks, setPendingPicks] = useState<TableRefNameDraft[] | null>(null);
 
   const appliedFocus = useRef<number | null>(null);
   useEffect(() => {
@@ -165,12 +162,6 @@ export function DatasourceManager({
       next.delete(group.id);
       return next;
     });
-    if (initialFocus.pendingRefs && initialFocus.pendingRefs.length > 0) {
-      appliedFocus.current = initialFocus.nonce;
-      setSelection({ kind: 'group', groupId: group.id });
-      setPendingPicks(initialFocus.pendingRefs);
-      return;
-    }
     if (initialFocus.tableId) {
       const table = group.tables.find(
         (tb) => tb.kind === 'raw' && tb.tableId === initialFocus.tableId
@@ -401,9 +392,15 @@ export function DatasourceManager({
                               >
                                 <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
                                 <span className="min-w-0 flex-1 truncate">{table.reportName}</span>
-                                <Badge tone={statusTone(table.status)}>
-                                  {statusLabel(t, table.status)}
-                                </Badge>
+                                {isCloudConnectionRefNameConfirmed(table) ? (
+                                  <Badge tone={statusTone(table.status)}>
+                                    {statusLabel(t, table.status)}
+                                  </Badge>
+                                ) : (
+                                  <Badge tone="warning" data-testid="cloud-connection-ref-pending">
+                                    {t('cloudConnection.ds.namePending')}
+                                  </Badge>
+                                )}
                               </button>
                             );
                           })}
@@ -479,14 +476,39 @@ export function DatasourceManager({
                 group={selectedGroup}
                 busy={busy === 'add-refs'}
                 onOpenChange={(open) => {
-                  if (!open) setSelection({ kind: 'group', groupId: selectedGroup.id });
+                  if (!open) {
+                    setSelection((current) =>
+                      current.kind === 'newTable' && current.groupId === selectedGroup.id
+                        ? { kind: 'group', groupId: selectedGroup.id }
+                        : current
+                    );
+                  }
                 }}
                 onCreateRawTable={
                   onCreateRawTable ? () => onCreateRawTable(selectedGroup.id) : undefined
                 }
                 onSave={async (refs) => {
-                  setPendingPicks(refs);
-                  return false;
+                  const ok = await run('add-refs', () =>
+                    cloudConnectionClient.addTableRefs(selectedGroup.id, refs)
+                  );
+                  if (ok) {
+                    const latest = await cloudConnectionClient.getState();
+                    const group = latest.groups.find((item) => item.id === selectedGroup.id);
+                    const added = group?.tables.find((table) =>
+                      refs.some(
+                        (ref) =>
+                          ref.kind === table.kind &&
+                          ref.tableId === table.tableId &&
+                          !isCloudConnectionRefNameConfirmed(table)
+                      )
+                    );
+                    setSelection(
+                      added
+                        ? { kind: 'table', groupId: selectedGroup.id, reportName: added.reportName }
+                        : { kind: 'group', groupId: selectedGroup.id }
+                    );
+                  }
+                  return ok;
                 }}
               />
             </>
@@ -501,6 +523,21 @@ export function DatasourceManager({
                   cloudConnectionClient.previewTable(selectedGroup.id, selection.reportName)
                 )
               }
+              onConfirmName={async (reportName) => {
+                const ok = await run('confirm-ref', () =>
+                  cloudConnectionClient.updateTableRef(selectedGroup.id, selection.reportName, {
+                    reportName,
+                  })
+                );
+                if (ok) {
+                  setSelection({
+                    kind: 'table',
+                    groupId: selectedGroup.id,
+                    reportName,
+                  });
+                }
+                return ok;
+              }}
               onDelete={async () => {
                 if (!(await confirm(t('cloudConnection.ds.deleteRefConfirm')))) return;
                 const ok = await run('delete-table', () =>
@@ -512,38 +549,6 @@ export function DatasourceManager({
           )}
         </section>
       </div>
-      {pendingPicks && pendingPicks.length > 0 && selectedGroup && (
-        <TableRefNameDialog
-          open
-          group={selectedGroup}
-          picks={pendingPicks}
-          busy={busy === 'add-refs'}
-          onOpenChange={(open) => {
-            if (!open) setPendingPicks(null);
-          }}
-          onConfirm={async (refs) => {
-            const payload: TableRefPick[] = refs.map((ref) => ({
-              kind: ref.kind,
-              tableId: ref.tableId,
-              reportName: ref.reportName,
-              displayName: ref.displayName,
-            }));
-            const ok = await run('add-refs', () =>
-              cloudConnectionClient.addTableRefs(selectedGroup.id, payload)
-            );
-            if (ok) {
-              setPendingPicks(null);
-              const firstName = payload[0]?.reportName;
-              setSelection(
-                firstName
-                  ? { kind: 'table', groupId: selectedGroup.id, reportName: firstName }
-                  : { kind: 'group', groupId: selectedGroup.id }
-              );
-            }
-            return ok;
-          }}
-        />
-      )}
       <CloudConnectionPreviewDialog
         open={previewOpen}
         title={previewTitle}
@@ -662,20 +667,47 @@ function GroupForm({
 }
 
 function TableRefForm({
+  group,
   table,
+  busy,
   onPreview,
+  onConfirmName,
   onDelete,
 }: {
   group: CloudConnectionGroup;
   table?: CloudConnectionTableRef;
   busy: string | null;
   onPreview: () => void;
+  onConfirmName: (reportName: string) => Promise<boolean>;
   onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const navigateToDataElement = useAppStore((s) => s.navigateToDataElement);
+  const [reportName, setReportName] = useState(table?.reportName ?? '');
+  const [nameError, setNameError] = useState<string | null>(null);
+  useEffect(() => {
+    setReportName(table?.reportName ?? '');
+    setNameError(null);
+  }, [table?.reportName]);
   if (!table) return null;
+  const pending = !isCloudConnectionRefNameConfirmed(table);
   const canLocate = table.status !== 'missing';
+
+  const validateName = (value: string): string | null => {
+    const name = value.trim();
+    if (!name) return t('cloudConnection.ds.nameRequired');
+    if (name !== table.reportName && group.tables.some((item) => item.reportName === name)) {
+      return t('cloudConnection.ds.nameDuplicate');
+    }
+    return null;
+  };
+
+  const handleConfirm = async () => {
+    const error = validateName(reportName);
+    setNameError(error);
+    if (error) return;
+    await onConfirmName(reportName.trim());
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-form">
@@ -684,6 +716,15 @@ function TableRefForm({
           <Eye className="h-3.5 w-3.5" />
           {t('cloudConnection.actions.preview')}
         </HeaderAction>
+        {pending && (
+          <HeaderAction
+            testId="cloud-connection-confirm-name"
+            loading={busy === 'confirm-ref'}
+            onClick={() => void handleConfirm()}
+          >
+            {t('cloudConnection.ds.confirmReportName')}
+          </HeaderAction>
+        )}
         <HeaderAction danger testId="cloud-connection-delete-table" onClick={() => void onDelete()}>
           <Trash2 className="h-3.5 w-3.5" />
           {t('cloudConnection.ds.deleteRef')}
@@ -723,6 +764,29 @@ function TableRefForm({
               </Button>
             </div>
           </Row>
+          {pending && (
+            <>
+              <Row label={t('cloudConnection.ds.reportName')}>
+                <input
+                  value={reportName}
+                  onChange={(event) => {
+                    setReportName(event.target.value);
+                    setNameError(null);
+                  }}
+                  className={cn('ui-flush-text', flushInputClass)}
+                  data-testid="cloud-connection-report-name"
+                />
+              </Row>
+              {nameError && (
+                <div className="px-3 py-1 text-[12px] text-error" role="alert">
+                  {nameError}
+                </div>
+              )}
+              <div className="px-3 py-2 text-[12px] text-text-muted">
+                {t('cloudConnection.ds.confirmNameHint')}
+              </div>
+            </>
+          )}
         </section>
       </div>
     </div>
