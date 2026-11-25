@@ -4910,7 +4910,7 @@
       "nameDuplicate": "Table name must be unique in this group",
       "namePending": "Incomplete",
       "confirmReportName": "Confirm",
-      "confirmNameHint": "After confirmation the reported name cannot be changed and will be synced to the cloud."
+      "confirmNameHint": "Edit the reported name and click Confirm. It will not be sent to the server until then."
     }
   }
 }

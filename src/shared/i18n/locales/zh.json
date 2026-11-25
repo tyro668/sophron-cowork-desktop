@@ -4910,7 +4910,7 @@
       "nameDuplicate": "表名请勿重复",
       "namePending": "未完成",
       "confirmReportName": "确认",
-      "confirmNameHint": "确认后上报表名不可修改，并会同步到云端。"
+      "confirmNameHint": "请修改上报表名后点击确认，确认前不会推送到服务端。"
     }
   }
 }

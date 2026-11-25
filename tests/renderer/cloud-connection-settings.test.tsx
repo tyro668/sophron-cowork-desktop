@@ -151,6 +151,7 @@ describe('数据 → 云连接', () => {
     expect(form.textContent).toContain('销售原始表');
     expect(screen.queryByTestId('cloud-connection-report-name')).toBeNull();
     expect(form.textContent).not.toContain(t('cloudConnection.ds.reportNameHint'));
+    expect(form.textContent).not.toContain(t('cloudConnection.ds.confirmNameHint'));
     fireEvent.click(screen.getByTestId('cloud-connection-locate-table'));
     expect(useAppStore.getState().pendingDataNavigation).toMatchObject({
       kind: 'raw_table',
@@ -278,6 +279,14 @@ describe('数据 → 云连接', () => {
     fireEvent.click(screen.getByText('订单'));
     const input = (await screen.findByTestId('cloud-connection-report-name')) as HTMLInputElement;
     expect(input.value).toBe('订单');
+    expect(input.className).toContain('cloud-connection-pending-name');
+    expect(input.className).toContain('border-dashed');
+    expect(input.className).toContain('border-error');
+    expect(input.getAttribute('aria-describedby')).toContain('cloud-connection-report-name-hint');
+    const hint = screen.getByTestId('cloud-connection-pending-name-hint');
+    expect(hint.textContent).toBe(t('cloudConnection.ds.confirmNameHint'));
+    expect(hint.className).toContain('text-error');
+    expect(hint.id).toBe('cloud-connection-report-name-hint');
     fireEvent.change(input, { target: { value: '   ' } });
     fireEvent.click(screen.getByTestId('cloud-connection-confirm-name'));
     expect(await screen.findByText(t('cloudConnection.ds.nameRequired'))).toBeTruthy();
@@ -292,6 +301,7 @@ describe('数据 → 云连接', () => {
       expect(api.updateTableRef).toHaveBeenCalledWith('g1', '订单', { reportName: '订单上报' })
     );
     await waitFor(() => expect(screen.queryByTestId('cloud-connection-report-name')).toBeNull());
+    expect(screen.queryByTestId('cloud-connection-pending-name-hint')).toBeNull();
     expect(screen.queryByText(t('cloudConnection.ds.namePending'))).toBeNull();
     expect(screen.getByText('订单上报')).toBeTruthy();
   });

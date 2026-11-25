@@ -767,22 +767,42 @@ function TableRefForm({
           {pending && (
             <>
               <Row label={t('cloudConnection.ds.reportName')}>
-                <input
-                  value={reportName}
-                  onChange={(event) => {
-                    setReportName(event.target.value);
-                    setNameError(null);
-                  }}
-                  className={cn('ui-flush-text', flushInputClass)}
-                  data-testid="cloud-connection-report-name"
-                />
+                <div className="flex min-h-[35px] items-center px-1.5 py-1">
+                  <input
+                    value={reportName}
+                    onChange={(event) => {
+                      setReportName(event.target.value);
+                      setNameError(null);
+                    }}
+                    className={cn(
+                      flushInputClass,
+                      'cloud-connection-pending-name min-h-[27px] w-full rounded-sm border border-dashed border-error bg-transparent px-2 text-[12.5px] text-text-primary',
+                      'focus:border-error focus:outline-none focus:ring-2 focus:ring-error/40'
+                    )}
+                    aria-invalid={nameError ? true : undefined}
+                    aria-describedby={
+                      nameError
+                        ? 'cloud-connection-report-name-error cloud-connection-report-name-hint'
+                        : 'cloud-connection-report-name-hint'
+                    }
+                    data-testid="cloud-connection-report-name"
+                  />
+                </div>
               </Row>
               {nameError && (
-                <div className="px-3 py-1 text-[12px] text-error" role="alert">
+                <div
+                  id="cloud-connection-report-name-error"
+                  className="px-3 py-1 text-[12px] text-error"
+                  role="alert"
+                >
                   {nameError}
                 </div>
               )}
-              <div className="px-3 py-2 text-[12px] text-text-muted">
+              <div
+                id="cloud-connection-report-name-hint"
+                data-testid="cloud-connection-pending-name-hint"
+                className="px-3 py-2 text-[12px] text-error"
+              >
                 {t('cloudConnection.ds.confirmNameHint')}
               </div>
             </>
