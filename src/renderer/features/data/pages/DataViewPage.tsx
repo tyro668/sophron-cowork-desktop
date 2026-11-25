@@ -5,12 +5,13 @@ import { useDataWorkspaceActivation } from '../hooks/use-data-workspace-activati
  * renders the tabbed workspace. Components below only receive state and
  * action callbacks; every IPC call lives in `features/data/api/data-client`.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showToast } from '../../../utils/toast';
 import { useConfirmDialog } from '../../../components/ConfirmDialog';
 import { CloudAnalysisPanel } from '../../../components/data-view/cloud-analysis';
 import { CloudConnectionPanel } from '../../../components/data-view/cloud-connection';
+import type { CloudConnectionFocus } from '../../../components/data-view/cloud-connection-datasource';
 import { PipelineEditor, PipelinesPanel } from '../../../components/data-view/data-pipelines';
 import {
   RawTableEditor,
@@ -27,6 +28,7 @@ import {
 } from '../../../components/data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../components/ui/tabs';
 import { dataClient } from '../api/data-client';
+import { cloudConnectionClient } from '../../cloud-connection/api/cloud-connection-client';
 import { useDataViewUi } from '../hooks/use-data-view-ui';
 import { useDataDashboard } from '../hooks/use-data-dashboard';
 import { useRawTables } from '../hooks/use-raw-tables';
@@ -104,7 +106,11 @@ export function DataViewPage() {
   const navigateToAutomation = useAppStore((state) => state.navigateToTableAutomation);
   const [sourceWizard, setSourceWizard] = useState<{
     rebuild?: { source: DataRawSource; buildMode: DataRawSourceBuildMode };
+    bindToGroupId?: string;
   } | null>(null);
+  const sourceWizardRef = useRef(sourceWizard);
+  sourceWizardRef.current = sourceWizard;
+  const [cloudFocus, setCloudFocus] = useState<CloudConnectionFocus | null>(null);
   const [rawSources, setRawSources] = useState<DataRawSource[]>([]);
   const [openSourceId, setOpenSourceId] = useState<string | null>(null);
   const [openSourceTableId, setOpenSourceTableId] = useState<string | null>(null);
@@ -287,21 +293,59 @@ export function DataViewPage() {
           <RawSourceWizard
             key={sourceWizard.rebuild ? `rebuild:${sourceWizard.rebuild.source.id}` : 'new'}
             rebuild={sourceWizard.rebuild}
-            onBack={() => setSourceWizard(null)}
+            onBack={() => {
+              const groupId = sourceWizardRef.current?.bindToGroupId;
+              setSourceWizard(null);
+              if (groupId) {
+                ui.setActiveTab('cloud_connection');
+                ui.setPendingNavigationTab(null);
+                ui.setLoadingTab(null);
+                setCloudFocus({ nonce: Date.now(), groupId, showPicker: true });
+              }
+            }}
             onOpenCloud={() => {
               setSourceWizard(null);
               navigateToAutomation({ newRawTableName: '' });
             }}
-            onCreated={() => {
+            onCreated={(result: DataRawSourceCreateResult) => {
+              const current = sourceWizardRef.current;
               // A rebuild deletes the tables that were open behind the wizard.
-              if (sourceWizard.rebuild) {
+              if (current?.rebuild) {
                 editors.setEditingRawTableId(null);
                 setOpenSourceId(null);
               }
               void loadRawTables({ preserveError: true });
               void loadRawSources();
+              const groupId = current?.bindToGroupId;
+              if (!groupId) return;
+              void (async () => {
+                const refs = result.tables.map((table) => ({
+                  kind: 'raw' as const,
+                  tableId: table.id,
+                }));
+                if (refs.length > 0) {
+                  try {
+                    const bindResult = await cloudConnectionClient.addTableRefs(groupId, refs);
+                    if (!bindResult.success && bindResult.error) {
+                      showToast('error', bindResult.error);
+                    }
+                  } catch (error) {
+                    showToast('error', error instanceof Error ? error.message : String(error));
+                  }
+                }
+                setSourceWizard(null);
+                ui.setActiveTab('cloud_connection');
+                ui.setPendingNavigationTab(null);
+                ui.setLoadingTab(null);
+                setCloudFocus({
+                  nonce: Date.now(),
+                  groupId,
+                  tableId: result.tables[0]?.id,
+                });
+              })();
             }}
             onOpenData={(tableId) => {
+              if (sourceWizardRef.current?.bindToGroupId) return;
               void dataClient.getRawTable(tableId).then((table) => {
                 setSourceWizard(null);
                 setOpenSourceId(null);
@@ -530,7 +574,10 @@ export function DataViewPage() {
                     value="cloud_connection"
                     className="flex min-h-0 flex-1 flex-col bg-transparent"
                   >
-                    <CloudConnectionPanel />
+                    <CloudConnectionPanel
+                      onCreateRawTable={(groupId) => setSourceWizard({ bindToGroupId: groupId })}
+                      initialFocus={cloudFocus}
+                    />
                   </TabsContent>
                 </Tabs>
               </tabBarAction.Provider>

@@ -1,7 +1,7 @@
 /**
  * 数据 → 云连接：左侧逻辑分组 + 右侧引用原始表 / 结果表。
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ChevronRight,
@@ -52,6 +52,13 @@ type Selection =
   | { kind: 'group'; groupId: string }
   | { kind: 'newTable'; groupId: string }
   | { kind: 'table'; groupId: string; reportName: string };
+
+export type CloudConnectionFocus = {
+  nonce: number;
+  groupId: string;
+  tableId?: string;
+  showPicker?: boolean;
+};
 
 type Run = (key: string, action: () => Promise<CloudConnectionActionResult>) => Promise<boolean>;
 
@@ -117,6 +124,8 @@ export function DatasourceManager({
   statusBadge,
   onOpenSettings,
   onOpenLog,
+  onCreateRawTable,
+  initialFocus,
 }: {
   state: CloudConnectionState;
   busy: string | null;
@@ -124,6 +133,8 @@ export function DatasourceManager({
   statusBadge: ReactNode;
   onOpenSettings: () => void;
   onOpenLog: () => void;
+  onCreateRawTable?: (groupId: string) => void;
+  initialFocus?: CloudConnectionFocus | null;
 }) {
   const { t } = useTranslation();
   const confirmDialog = useOptionalConfirmDialog();
@@ -138,6 +149,34 @@ export function DatasourceManager({
   const [previewTotalRows, setPreviewTotalRows] = useState<number | undefined>(undefined);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+
+  const appliedFocus = useRef<number | null>(null);
+  useEffect(() => {
+    if (!initialFocus || appliedFocus.current === initialFocus.nonce) return;
+    const group = state.groups.find((g) => g.id === initialFocus.groupId);
+    if (!group) return;
+    setCollapsed((current) => {
+      if (!current.has(group.id)) return current;
+      const next = new Set(current);
+      next.delete(group.id);
+      return next;
+    });
+    if (initialFocus.tableId) {
+      const table = group.tables.find(
+        (tb) => tb.kind === 'raw' && tb.tableId === initialFocus.tableId
+      );
+      if (!table) return;
+      appliedFocus.current = initialFocus.nonce;
+      setSelection({ kind: 'table', groupId: group.id, reportName: table.reportName });
+      return;
+    }
+    appliedFocus.current = initialFocus.nonce;
+    setSelection(
+      initialFocus.showPicker
+        ? { kind: 'newTable', groupId: group.id }
+        : { kind: 'group', groupId: group.id }
+    );
+  }, [initialFocus, state.groups]);
 
   useEffect(() => {
     if (selection.kind === 'none' || selection.kind === 'newGroup') return;
@@ -412,6 +451,9 @@ export function DatasourceManager({
             <TablePicker
               group={selectedGroup}
               busy={busy}
+              onCreateRawTable={
+                onCreateRawTable ? () => onCreateRawTable(selectedGroup.id) : undefined
+              }
               onCancel={() => setSelection({ kind: 'group', groupId: selectedGroup.id })}
               onSave={async (refs) => {
                 const ok = await run('add-refs', () =>
@@ -572,11 +614,13 @@ function TablePicker({
   busy,
   onCancel,
   onSave,
+  onCreateRawTable,
 }: {
   group: CloudConnectionGroup;
   busy: string | null;
   onCancel: () => void;
   onSave: (refs: Array<{ kind: 'raw' | 'result'; tableId: string }>) => Promise<boolean>;
+  onCreateRawTable?: () => void;
 }) {
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
@@ -635,6 +679,13 @@ function TablePicker({
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="cloud-connection-table-picker">
       <PaneHeader title={t('cloudConnection.ds.pickerTitle')}>
+        <HeaderAction
+          testId="cloud-connection-create-raw-table"
+          onClick={onCreateRawTable}
+          disabled={!onCreateRawTable}
+        >
+          {t('cloudConnection.ds.createRawTable')}
+        </HeaderAction>
         <HeaderAction onClick={onCancel}>{t('common.cancel')}</HeaderAction>
         <HeaderAction
           testId="cloud-connection-save-table"
@@ -667,7 +718,21 @@ function TablePicker({
         ) : error ? (
           <p className="text-[13px] text-error">{error}</p>
         ) : raws.length === 0 && results.length === 0 ? (
-          <p className="text-[13px] text-text-muted">{t('cloudConnection.ds.pickerEmpty')}</p>
+          <div
+            className="flex flex-col items-start gap-3"
+            data-testid="cloud-connection-picker-empty"
+          >
+            <p className="text-[13px] text-text-muted">{t('cloudConnection.ds.pickerEmpty')}</p>
+            <button
+              type="button"
+              data-testid="cloud-connection-create-raw-table-empty"
+              onClick={onCreateRawTable}
+              disabled={!onCreateRawTable}
+              className="inline-flex h-8 items-center gap-1.5 border border-border-subtle bg-surface px-3 text-[13px] font-medium text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('cloudConnection.ds.createRawTable')}
+            </button>
+          </div>
         ) : (
           <div className="space-y-4" data-testid="cloud-connection-picker-list">
             <PickerSection

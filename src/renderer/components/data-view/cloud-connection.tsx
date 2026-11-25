@@ -10,7 +10,7 @@ import type { CloudConnectionState, CloudConnectionStatus } from '../../../share
 import { useCloudConnection } from '../../features/cloud-connection/hooks/use-cloud-connection';
 import { useAppStore } from '../../store';
 import { Badge, Dialog, DialogBody, DialogTitle, type BadgeTone } from '../ui';
-import { DatasourceManager } from './cloud-connection-datasource';
+import { DatasourceManager, type CloudConnectionFocus } from './cloud-connection-datasource';
 import { formatDateTime } from './shared';
 
 export const CLOUD_CONNECTION_SETTINGS_TAB = 'cloud-connection';
@@ -59,7 +59,13 @@ export function useOpenCloudConnectionSettings() {
   }, [setSettingsTab, setShowSettings]);
 }
 
-export function CloudConnectionPanel() {
+export function CloudConnectionPanel({
+  onCreateRawTable,
+  initialFocus,
+}: {
+  onCreateRawTable?: (groupId: string) => void;
+  initialFocus?: CloudConnectionFocus | null;
+} = {}) {
   const { t, i18n } = useTranslation();
   const { state, busy, run } = useCloudConnection();
   const openSettings = useOpenCloudConnectionSettings();
@@ -142,6 +148,8 @@ export function CloudConnectionPanel() {
         }
         onOpenSettings={openSettings}
         onOpenLog={() => setLogOpen(true)}
+        onCreateRawTable={onCreateRawTable}
+        initialFocus={initialFocus}
       />
 
       <Dialog

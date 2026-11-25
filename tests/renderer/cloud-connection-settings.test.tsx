@@ -74,7 +74,7 @@ const api = {
   addGroup: vi.fn(ok),
   updateGroup: vi.fn(ok),
   deleteGroup: vi.fn(ok),
-  addTableRefs: vi.fn(ok),
+  addTableRefs: vi.fn((_groupId?: string, _refs?: unknown) => ok()),
   updateTableRef: vi.fn(ok),
   deleteTable: vi.fn(ok),
   refreshTables: vi.fn(ok),
@@ -198,11 +198,38 @@ describe('数据 → 云连接', () => {
     await screen.findByTestId('cloud-connection-picker-list');
     expect(screen.getByText('订单')).toBeTruthy();
     expect(screen.getByText('汇总')).toBeTruthy();
+    expect(screen.getByTestId('cloud-connection-create-raw-table').textContent).toContain(
+      t('cloudConnection.ds.createRawTable')
+    );
     fireEvent.click(screen.getByText('订单'));
     fireEvent.click(screen.getByTestId('cloud-connection-save-table'));
     await waitFor(() =>
       expect(api.addTableRefs).toHaveBeenCalledWith('g1', [{ kind: 'raw', tableId: 'raw-2' }])
     );
+  });
+
+  it('shows 新建原始表 in the add-table picker even when the list is empty', async () => {
+    const dataApi = {
+      getDashboard: vi.fn(() =>
+        Promise.resolve({
+          rawTables: [],
+          resultTables: [],
+        })
+      ),
+    };
+    (
+      window as unknown as { electronAPI: { cloudConnection: typeof api; data: typeof dataApi } }
+    ).electronAPI = { cloudConnection: api, data: dataApi };
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
+    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
+    await screen.findByTestId('cloud-connection-table-picker');
+    await screen.findByTestId('cloud-connection-picker-empty');
+    expect(screen.getByTestId('cloud-connection-create-raw-table')).toBeTruthy();
+    expect(screen.getByTestId('cloud-connection-create-raw-table-empty').textContent).toContain(
+      t('cloudConnection.ds.createRawTable')
+    );
+    expect(screen.getByText(t('cloudConnection.ds.pickerEmpty'))).toBeTruthy();
   });
 });
 
@@ -308,6 +335,171 @@ describe('数据页「云连接」tab（在云空间之后）', () => {
     await screen.findByTestId('cloud-connection-open-settings');
     expect(dataTabLabels()).toEqual(expectedDataTabLabels());
     expect(screen.getByText(t('cloudConnection.emptyConfig'))).toBeTruthy();
+    const active = document.querySelector('[data-fixed-tab][data-state="active"]');
+    expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
+  });
+});
+
+describe('云连接：新建原始表并自动引用', () => {
+  const createdTable = {
+    id: 'raw-new',
+    name: '销售日报（合并）',
+    groupId: null,
+    sourcePath: '/tmp/销售日报',
+    sourceKind: 'folder' as const,
+    inputConfig: { sourceKind: 'folder' as const },
+    fileCount: 1,
+    relatedPipelineNames: [],
+    tableName: 'tbl_raw-new',
+    rowCount: 30,
+    columnCount: 3,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const folderScan = {
+    sourcePath: '/tmp/销售日报',
+    kind: 'folder' as const,
+    name: '销售日报',
+    sizeBytes: 100,
+    sheets: [],
+    files: [
+      {
+        path: '/tmp/销售日报/1月.csv',
+        relativePath: '1月.csv',
+        kind: 'csv' as const,
+        status: 'ready' as const,
+        sheetNames: [],
+        usedSheet: null,
+        rowCount: 30,
+        columns: ['门店', '日期', '销售额'],
+      },
+    ],
+    merge: {
+      fileCount: 1,
+      rowCount: 30,
+      filledColumns: [{ name: '门店', missingInFiles: [] as string[] }],
+    },
+  };
+
+  function setupWizardBridge() {
+    const createRawSource = vi.fn(async () => ({
+      source: {
+        id: 'src-new',
+        name: '销售日报',
+        sourcePath: '/tmp/销售日报',
+        sourceKind: 'folder' as const,
+        buildMode: 'folder_merge' as const,
+        config: { autoInclude: true },
+        memberIds: [createdTable.id],
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      tables: [createdTable],
+      skipped: [],
+    }));
+    const data = new Proxy(
+      {},
+      {
+        get: (_target, prop: string) => {
+          if (prop === 'getDashboard') {
+            return vi.fn(async () => ({
+              ...EMPTY_DASHBOARD,
+              rawTables: [{ id: 'raw-1', name: '销售原始表' }],
+              resultTables: [],
+            }));
+          }
+          if (prop === 'getAppConfig') return vi.fn(async () => ({}));
+          if (prop === 'scanRawSource') return vi.fn(async () => folderScan);
+          if (prop === 'createRawSource') return createRawSource;
+          if (prop === 'listRawSources') return vi.fn(async () => []);
+          return vi.fn(async () => []);
+        },
+        has: () => true,
+      }
+    );
+    api.addTableRefs.mockImplementation(async (_groupId?: string, _refs?: unknown) => {
+      const table = {
+        reportName: createdTable.name,
+        kind: 'raw' as const,
+        tableId: (Array.isArray(_refs) ? _refs[0]?.tableId : undefined) ?? createdTable.id,
+        displayName: createdTable.name,
+        status: 'ok' as const,
+        rowCount: 30,
+        columnCount: 3,
+      };
+      const current = state.groups[0]!;
+      state = makeState({
+        groups: [
+          {
+            ...current,
+            tables: [...current.tables, table],
+            entries: [
+              ...current.entries,
+              {
+                id: table.reportName,
+                kind: 'raw',
+                tableId: table.tableId,
+                displayName: table.displayName,
+                status: 'ok',
+              },
+            ],
+          },
+        ],
+      });
+      return { success: true, state };
+    });
+    (window as unknown as { electronAPI: unknown }).electronAPI = {
+      data,
+      selectRawTableSource: async () => ({ path: folderScan.sourcePath, kind: 'folder' }),
+      cloudConnection: api,
+    };
+    return { createRawSource };
+  }
+
+  async function openCreateRawWizard() {
+    render(
+      <ConfirmDialogProvider>
+        <DataViewPage />
+      </ConfirmDialogProvider>
+    );
+    useAppStore.getState().navigateToDataTab('cloud_connection');
+    await screen.findByTestId('cloud-connection-datasources');
+    fireEvent.click(await screen.findByText('本地文件'));
+    fireEvent.click(screen.getByTestId('cloud-connection-add-table'));
+    await screen.findByTestId('cloud-connection-table-picker');
+    fireEvent.click(screen.getByTestId('cloud-connection-create-raw-table'));
+    await screen.findByTestId('raw-source-wizard');
+  }
+
+  it('opens the raw-source wizard from 云连接 and returns to the picker on cancel', async () => {
+    setupWizardBridge();
+    await openCreateRawWizard();
+    expect(screen.queryByTestId('cloud-connection-panel')).toBeNull();
+    fireEvent.click(screen.getByText(t('data.rawSources.back')));
+    await screen.findByTestId('cloud-connection-panel');
+    await screen.findByTestId('cloud-connection-table-picker');
+    expect(api.addTableRefs).not.toHaveBeenCalled();
+    const active = document.querySelector('[data-fixed-tab][data-state="active"]');
+    expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
+  });
+
+  it('binds the created raw table to the selected group and returns to 云连接', async () => {
+    const { createRawSource } = setupWizardBridge();
+    await openCreateRawWizard();
+    fireEvent.click(screen.getByTestId('raw-source-pick-folder'));
+    await screen.findByTestId('raw-source-mode-folder_merge');
+    fireEvent.click(screen.getByTestId('raw-source-next'));
+    fireEvent.click(await screen.findByTestId('raw-source-create'));
+    await waitFor(() => expect(createRawSource).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(api.addTableRefs).toHaveBeenCalledWith('g1', [{ kind: 'raw', tableId: 'raw-new' }])
+    );
+    await screen.findByTestId('cloud-connection-panel');
+    expect(screen.queryByTestId('raw-source-wizard')).toBeNull();
+    await screen.findByTestId('cloud-connection-report-name');
+    const name = screen.getByTestId('cloud-connection-report-name') as HTMLInputElement;
+    expect(name.value).toBe('销售日报（合并）');
+    expect(screen.getAllByText('销售日报（合并）').length).toBeGreaterThan(0);
     const active = document.querySelector('[data-fixed-tab][data-state="active"]');
     expect(active?.textContent).toContain(t('data.tabs.cloudConnection'));
   });
