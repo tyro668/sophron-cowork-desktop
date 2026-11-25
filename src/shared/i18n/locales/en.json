@@ -129,7 +129,8 @@
       "pipelines": "Data pipelines",
       "rawTables": "Raw tables",
       "resultTables": "Result tables",
-      "cloudAnalysis": "Cloud space"
+      "cloudAnalysis": "Cloud space",
+      "cloudConnection": "Cloud link"
     },
     "columns": {
       "pipelineName": "Pipeline name",
@@ -4704,5 +4705,78 @@
     "reviewConfirm": "Save as secrets and continue",
     "nameInvalid": "Use upper-case letters, digits and underscores, starting with a letter",
     "saved": "Saved"
+  },
+  "cloudConnection": {
+    "title": "Cloud connection",
+    "status": {
+      "idle": "Not connected",
+      "connecting": "Connecting",
+      "connected": "Connected",
+      "reconnecting": "Reconnecting",
+      "disconnected": "Disconnected",
+      "offline": "Offline",
+      "stopped": "Disconnected"
+    },
+    "actions": {
+      "connect": "Connect",
+      "disconnect": "Disconnect",
+      "importConfig": "Import config.yaml",
+      "reimportConfig": "Re-import",
+      "clearConfig": "Clear config",
+      "addFiles": "Add files",
+      "refresh": "Refresh",
+      "preview": "Preview",
+      "remove": "Remove",
+      "close": "Close"
+    },
+    "sections": {
+      "config": "Connection config",
+      "status": "Connection status",
+      "files": "Local files",
+      "activity": "Cloud requests"
+    },
+    "fields": {
+      "configFile": "Config file",
+      "agentId": "agentId",
+      "server": "Server",
+      "token": "Token",
+      "autoConnect": "Auto connect",
+      "state": "State",
+      "connectedAt": "Connected at",
+      "remoteEnv": "Environment",
+      "lastError": "Last error",
+      "sourceName": "Source name"
+    },
+    "tokenSaved": "Saved (encrypted)",
+    "tokenMissing": "Not set",
+    "notConfigured": "No config.yaml imported yet",
+    "none": "None",
+    "fileColumns": {
+      "name": "File",
+      "status": "Parse status",
+      "tables": "Tables",
+      "rows": "Rows",
+      "columns": "Columns",
+      "actions": "Actions"
+    },
+    "fileStatus": {
+      "pending": "Pending",
+      "parsing": "Parsing",
+      "ready": "Parsed",
+      "error": "Failed"
+    },
+    "emptyFiles": "No local Excel / CSV files added yet",
+    "emptyActivity": "No cloud requests yet",
+    "previewTitle": "File preview",
+    "previewRows": "First {{count}} rows",
+    "sheet": "Sheet",
+    "rowCount": "{{count}} rows",
+    "columnTypes": {
+      "5": "Number",
+      "6": "Text",
+      "9": "Date"
+    },
+    "sourceNameLocked": "Disconnect to rename",
+    "removeConfirm": "The cloud will no longer be able to read this file. Remove it?"
   }
 }

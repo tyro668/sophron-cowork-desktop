@@ -61,11 +61,15 @@ export class HttpMessageSender {
     };
   }
 
+  /** 最近一次请求的 HTTP 状态码（仅用于日志 / UI 诊断，不改变 Java 的"只取响应文本"语义）。 */
+  lastStatus: number | null = null;
+
   private async execute(url: string, init: RequestInit): Promise<string> {
     const response = await this.fetchImpl(url, {
       ...init,
       signal: AbortSignal.timeout(this.timeoutMs),
     });
+    this.lastStatus = response.status;
     return response.text();
   }
 

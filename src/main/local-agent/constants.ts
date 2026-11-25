@@ -15,6 +15,9 @@ export const WS = {
 /** Java `ProductVersion` 当前的 DEFAULT_API_LEVEL。 */
 export const DEFAULT_API_LEVEL = '5';
 
+/** 未在 config.yaml 指定 server.version 时上报的本地宝版本号（与冒烟测试一致）。 */
+export const DEFAULT_AGENT_VERSION = '4.0';
+
 /** Java `VerifyUtil.DEMO_ID`：示例配置，不连接云端。 */
 export const DEMO_AGENT_ID = 'DEMO_AGENTID';
 

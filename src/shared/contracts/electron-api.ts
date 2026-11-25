@@ -164,6 +164,11 @@ import type {
   RemoteSessionMapping,
 } from './index';
 import type { WorkflowPlanDiagnostic } from '../workflow-plan';
+import type {
+  CloudConnectionActionResult,
+  CloudConnectionFilePreview,
+  CloudConnectionState,
+} from './cloud-connection';
 
 export interface ElectronApi {
   send: (event: ClientEvent) => void;
@@ -660,5 +665,19 @@ export interface ElectronApi {
     ) => Promise<MemoryInspectSessionResult | null>;
     listInjections: (limit?: number) => Promise<MemoryInjectionRecord[]>;
     setEnabled: (enabled: boolean) => Promise<{ success: boolean; enabled: boolean }>;
+  };
+  cloudConnection: {
+    getState: () => Promise<CloudConnectionState>;
+    importConfig: () => Promise<CloudConnectionActionResult>;
+    clearConfig: () => Promise<CloudConnectionActionResult>;
+    connect: () => Promise<CloudConnectionActionResult>;
+    disconnect: () => Promise<CloudConnectionActionResult>;
+    setAutoConnect: (enabled: boolean) => Promise<CloudConnectionActionResult>;
+    setSourceName: (name: string) => Promise<CloudConnectionActionResult>;
+    addFiles: () => Promise<CloudConnectionActionResult>;
+    removeFile: (filePath: string) => Promise<CloudConnectionActionResult>;
+    refreshFiles: () => Promise<CloudConnectionActionResult>;
+    previewFile: (filePath: string) => Promise<CloudConnectionFilePreview>;
+    onState: (callback: (state: CloudConnectionState) => void) => () => void;
   };
 }

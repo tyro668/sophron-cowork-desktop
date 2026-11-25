@@ -22,6 +22,7 @@ import { registerAutomationIpc } from './automation/ipc';
 import { registerScriptPackageIpc } from './automation/script-ipc';
 import { registerScheduleIpc } from './schedule/ipc';
 import { registerMemoryIpc } from './memory/ipc';
+import { registerCloudConnectionIpc } from './cloud-connection/ipc';
 
 export function registerAllIpc(): void {
   registerSessionIpc();
@@ -41,4 +42,5 @@ export function registerAllIpc(): void {
   registerScriptPackageIpc();
   registerScheduleIpc();
   registerMemoryIpc();
+  registerCloudConnectionIpc();
 }

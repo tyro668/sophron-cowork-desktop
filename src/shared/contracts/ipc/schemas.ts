@@ -672,6 +672,18 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   'schedule.delete': [str],
   'schedule.toggle': [str, bool],
   'schedule.runNow': [str],
+  // cloud connection（云连接 / 本地宝）
+  'cloudConnection.getState': [],
+  'cloudConnection.importConfig': [],
+  'cloudConnection.clearConfig': [],
+  'cloudConnection.connect': [],
+  'cloudConnection.disconnect': [],
+  'cloudConnection.setAutoConnect': [bool],
+  'cloudConnection.setSourceName': [z.string().trim().min(1).max(100)],
+  'cloudConnection.addFiles': [],
+  'cloudConnection.removeFile': [z.string().min(1)],
+  'cloudConnection.refreshFiles': [],
+  'cloudConnection.previewFile': [z.string().min(1)],
   // memory
   'memory.getOverview': [strOpt],
   'memory.search': [

@@ -11,7 +11,7 @@ import { EventEmitter } from 'node:events';
 
 import { loadLocalAgentConfig } from './config';
 import { LocalAgentConnection, type IoFactory } from './connection';
-import { ReceiveEvent } from './constants';
+import { DEFAULT_API_LEVEL, ReceiveEvent } from './constants';
 import {
   createTableContentS3DispatchHandler,
   type TableContentProvider,
@@ -61,6 +61,9 @@ export class LocalAgent extends EventEmitter<LocalAgentEvents> {
   readonly syncDispatcher: SyncTaskDispatcher;
   private readonly providers = new Map<string, TableContentProvider>();
   private readonly logger: LocalAgentLogger;
+  /** 上报给云端的版本号（Java `ProductVersion.getVersion()`，即 jarVersion）。 */
+  readonly version: string;
+  readonly apiLevel: string;
 
   static async fromConfigFile(configPath: string, options: LocalAgentOptions): Promise<LocalAgent> {
     return new LocalAgent(await loadLocalAgentConfig(configPath), options);
@@ -71,6 +74,8 @@ export class LocalAgent extends EventEmitter<LocalAgentEvents> {
     options: LocalAgentOptions
   ) {
     super();
+    this.version = options.version;
+    this.apiLevel = options.apiLevel ?? DEFAULT_API_LEVEL;
     this.logger = options.logger ?? consoleLocalAgentLogger;
     this.events = new SocketEventDispatcher(this.logger);
     this.connection = new LocalAgentConnection({

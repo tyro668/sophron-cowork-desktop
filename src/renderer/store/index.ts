@@ -53,7 +53,8 @@ export interface ScriptEditorTarget {
 let scriptEditorSeq = 0;
 
 export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';
-export type DataWorkspaceTab = 'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis';
+export type DataWorkspaceTab =
+  'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis' | 'cloud_connection';
 
 export interface PendingDataNavigation extends DataResourceTarget {
   nonce: number;

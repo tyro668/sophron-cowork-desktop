@@ -129,7 +129,8 @@
       "pipelines": "数据加工",
       "rawTables": "原始表",
       "resultTables": "结果表",
-      "cloudAnalysis": "云空间"
+      "cloudAnalysis": "云空间",
+      "cloudConnection": "云连接"
     },
     "columns": {
       "pipelineName": "加工名称",
@@ -4704,5 +4705,78 @@
     "reviewConfirm": "保存为密钥并继续",
     "nameInvalid": "名称只能用大写字母、数字和下划线，以字母开头",
     "saved": "已保存"
+  },
+  "cloudConnection": {
+    "title": "云连接",
+    "status": {
+      "idle": "未连接",
+      "connecting": "连接中",
+      "connected": "已连接",
+      "reconnecting": "重连中",
+      "disconnected": "已断开",
+      "offline": "已下线",
+      "stopped": "已断开"
+    },
+    "actions": {
+      "connect": "连接",
+      "disconnect": "断开",
+      "importConfig": "导入 config.yaml",
+      "reimportConfig": "重新导入",
+      "clearConfig": "清除配置",
+      "addFiles": "添加文件",
+      "refresh": "刷新",
+      "preview": "预览",
+      "remove": "移除",
+      "close": "关闭"
+    },
+    "sections": {
+      "config": "连接配置",
+      "status": "连接状态",
+      "files": "本地文件",
+      "activity": "云端请求"
+    },
+    "fields": {
+      "configFile": "配置文件",
+      "agentId": "agentId",
+      "server": "服务地址",
+      "token": "Token",
+      "autoConnect": "自动连接",
+      "state": "状态",
+      "connectedAt": "连接时间",
+      "remoteEnv": "环境参数",
+      "lastError": "最近错误",
+      "sourceName": "数据源名称"
+    },
+    "tokenSaved": "已加密保存",
+    "tokenMissing": "未设置",
+    "notConfigured": "尚未导入 config.yaml",
+    "none": "无",
+    "fileColumns": {
+      "name": "文件",
+      "status": "解析状态",
+      "tables": "表",
+      "rows": "行数",
+      "columns": "列数",
+      "actions": "操作"
+    },
+    "fileStatus": {
+      "pending": "待解析",
+      "parsing": "解析中",
+      "ready": "已解析",
+      "error": "解析失败"
+    },
+    "emptyFiles": "还没有添加本地 Excel / CSV 文件",
+    "emptyActivity": "暂无云端请求",
+    "previewTitle": "文件预览",
+    "previewRows": "前 {{count}} 行",
+    "sheet": "Sheet",
+    "rowCount": "共 {{count}} 行",
+    "columnTypes": {
+      "5": "数值",
+      "6": "文本",
+      "9": "日期"
+    },
+    "sourceNameLocked": "断开连接后才能修改",
+    "removeConfirm": "移除后云端将无法再读取此文件，确定移除？"
   }
 }

@@ -14,3 +14,4 @@ export * from './memory';
 export * from './schedule';
 export * from './update';
 export * from './automation';
+export * from './cloud-connection';

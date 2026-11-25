@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 本地宝云端连接冒烟测试。先用 esbuild 把 src/main/local-agent/cli/smoke.ts 打包到 node_modules/.cache，再运行。
- * 用法：node scripts/local-agent-smoke.mjs <config.yaml> [seconds<=30]
+ * 用法：node scripts/local-agent-smoke.mjs [--excel <样例.xlsx>] <config.yaml> [seconds<=30，--excel 时<=60]
  * token 可用环境变量 LOCAL_AGENT_TOKEN 覆盖；输出会对 token/agentId 打码。
  */
 import { build } from 'esbuild';

@@ -1,0 +1,13 @@
+[
+  ["a,b", "q\"x", null, "3"],
+  ["", "x"],
+  [null, "y"],
+  ["#hash", "ok"],
+  [" lead", "trail "],
+  ["line\nbreak", "cr\rx"],
+  ["中文", "Ünï"],
+  ["!bang", "$d"],
+  ["", ""],
+  ["plain", "tab\tin"],
+  ["-1", "2.50"]
+]
