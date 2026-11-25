@@ -540,19 +540,6 @@ function renderPickerTableRow(
     ) : (
       <Table2 className="h-4 w-4 flex-shrink-0 text-accent" />
     );
-  const typeLabel = ctx.t(getRawTableSourceMeta(sourceKind).labelKey);
-  const fileName = fileBaseName(table.sourcePath);
-  const meta = [
-    typeLabel,
-    fileName && fileName !== name ? fileName : null,
-    typeof table.rowCount === 'number'
-      ? ctx.t('cloudConnection.ds.pickerRows', {
-          count: Number(table.rowCount).toLocaleString(),
-        })
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
   return (
     <tr
       key={row.id}
@@ -586,10 +573,7 @@ function renderPickerTableRow(
             )}
             {typeIcon}
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-medium text-text-primary">{name}</div>
-            {meta ? <div className="truncate text-[12px] text-text-muted">{meta}</div> : null}
-          </div>
+          <div className="min-w-0 flex-1 truncate font-medium text-text-primary">{name}</div>
           {isDisabled && (
             <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
               {ctx.t('cloudConnection.ds.pickerReferenced')}
@@ -896,37 +880,19 @@ function rawPickerIcon(sourceKind: string | undefined) {
   return <Table2 className="h-4 w-4 text-accent" />;
 }
 
-function fileBaseName(path?: string | null): string {
-  if (!path) return '';
-  return (path.split(/[\\/]/).pop() ?? '').trim();
-}
-
 function rawPickerTableNode(
   table: DataRawTable,
   disabled: Set<string>,
-  t: (key: string, options?: Record<string, unknown>) => string,
   sourceName?: string
 ): TablePickerTreeNode {
   const kind = table.sourceKind ?? 'excel';
-  const typeLabel = t(getRawTableSourceMeta(kind).labelKey);
-  const fileName = fileBaseName(table.sourcePath);
   const name = sourceName ? childDisplayName(table, sourceName) : table.name;
-  const meta = [
-    typeLabel,
-    !sourceName && fileName && fileName !== name ? fileName : null,
-    typeof table.rowCount === 'number'
-      ? t('cloudConnection.ds.pickerRows', { count: Number(table.rowCount).toLocaleString() })
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
   const isDisabled = disabled.has(table.id);
   return {
     id: table.id,
     kind: 'table',
     tableId: table.id,
     name,
-    meta,
     icon: rawPickerIcon(kind),
     disabled: isDisabled,
     referenced: isDisabled,
@@ -953,11 +919,11 @@ function buildRawPickerNodes(
           name: row.source.name,
           icon: rawPickerIcon(sourceKind),
           children: row.members.map((table) =>
-            rawPickerTableNode(table, disabled, t, row.source.name)
+            rawPickerTableNode(table, disabled, row.source.name)
           ),
         });
       } else if (row.kind === 'rawTable' && !row.child) {
-        children.push(rawPickerTableNode(row.rawTable, disabled, t));
+        children.push(rawPickerTableNode(row.rawTable, disabled));
       }
     }
     return {

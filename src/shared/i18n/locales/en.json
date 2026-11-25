@@ -4884,7 +4884,6 @@
       "pickerEmptyTitle": "No tables to reference",
       "pickerEmptySearch": "No matching tables",
       "pickerEmptySearchHint": "Try another keyword, or clear the search to browse all groups",
-      "pickerRows": "{{count}} rows",
       "refKind": "Reference type",
       "refKindRaw": "Raw table",
       "refKindResult": "Result table",

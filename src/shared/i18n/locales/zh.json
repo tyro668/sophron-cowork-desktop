@@ -4884,7 +4884,6 @@
       "pickerEmptyTitle": "没有可引用的表",
       "pickerEmptySearch": "没有找到匹配的表",
       "pickerEmptySearchHint": "试试其他关键词，或清除搜索后浏览全部分组",
-      "pickerRows": "{{count}} 行",
       "refKind": "引用类型",
       "refKindRaw": "原始表",
       "refKindResult": "结果表",

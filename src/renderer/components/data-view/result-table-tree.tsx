@@ -105,16 +105,6 @@ export function ResultTableTree({
     if (isPicker) {
       const isDisabled = disabled.has(resultTable.id);
       const isSelected = selected.has(resultTable.id);
-      const meta = [
-        typeof resultTable.rowCount === 'number'
-          ? t('cloudConnection.ds.pickerRows', {
-              count: Number(resultTable.rowCount).toLocaleString(),
-            })
-          : null,
-        resultTable.updatedAt ? formatDateTime(resultTable.updatedAt) : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
       return (
         <tr
           key={resultTable.id}
@@ -142,9 +132,8 @@ export function ResultTableTree({
               <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center bg-surface-muted text-accent">
                 <UploadCloud className="h-4 w-4" />
               </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-medium text-text-primary">{resultTable.name}</div>
-                {meta ? <div className="truncate text-[12px] text-text-muted">{meta}</div> : null}
+              <div className="min-w-0 flex-1 truncate font-medium text-text-primary">
+                {resultTable.name}
               </div>
               {isDisabled && (
                 <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
@@ -276,22 +265,11 @@ function buildResultPickerNodes(
     icon: <Folder className="h-4 w-4" />,
     children: section.rows.map((table) => {
       const isDisabled = disabled.has(table.id);
-      const meta = [
-        typeof table.rowCount === 'number'
-          ? t('cloudConnection.ds.pickerRows', {
-              count: Number(table.rowCount).toLocaleString(),
-            })
-          : null,
-        table.updatedAt ? formatDateTime(table.updatedAt) : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
       return {
         id: table.id,
         kind: 'table' as const,
         tableId: table.id,
         name: table.name,
-        meta,
         icon: <UploadCloud className="h-4 w-4 text-accent" />,
         disabled: isDisabled,
         referenced: isDisabled,

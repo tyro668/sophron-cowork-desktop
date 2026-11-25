@@ -14,7 +14,6 @@ export interface TablePickerTreeNode {
   id: string;
   kind: TablePickerNodeKind;
   name: string;
-  meta?: string;
   icon: ReactNode;
   disabled?: boolean;
   referenced?: boolean;
@@ -132,7 +131,7 @@ export function TablePickerTree({
             data-table-id={node.tableId}
             tabIndex={(focusedId ?? visible[0]?.node.id) === node.id ? 0 : -1}
             className={cn(
-              'relative flex h-11 cursor-pointer items-center gap-2 pr-4 text-[13px] outline-none transition-colors',
+              'relative flex h-9 cursor-pointer items-center gap-2 pr-4 text-[13px] outline-none transition-colors',
               isSelected && !node.disabled && 'bg-accent-muted',
               !isSelected && 'hover:bg-surface-hover',
               node.kind === 'group' && !isSelected && 'bg-surface-muted/70',
@@ -191,18 +190,13 @@ export function TablePickerTree({
             >
               {node.icon}
             </span>
-            <div className="min-w-0 flex-1">
-              <div
-                className={cn(
-                  'truncate text-text-primary',
-                  node.kind === 'table' ? 'font-medium' : 'font-semibold'
-                )}
-              >
-                {node.name}
-              </div>
-              {node.meta ? (
-                <div className="truncate text-[12px] text-text-muted">{node.meta}</div>
-              ) : null}
+            <div
+              className={cn(
+                'min-w-0 flex-1 truncate text-text-primary',
+                node.kind === 'table' ? 'font-medium' : 'font-semibold'
+              )}
+            >
+              {node.name}
             </div>
             {node.referenced && (
               <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
