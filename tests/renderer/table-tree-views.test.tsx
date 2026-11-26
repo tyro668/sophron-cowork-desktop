@@ -193,16 +193,15 @@ describe('reusable table trees in existing views', () => {
       renderRawTablesPanel({ onCreate });
       const addButton = screen.getByTestId('raw-table-add-button');
       expect(addButton.textContent).toContain('Add raw table');
-      expect(screen.getByTestId('raw-table-add-menu-trigger').getAttribute('aria-haspopup')).toBe(
-        'menu'
-      );
+      const trigger = screen.getByTestId('raw-table-add-menu-trigger');
+      expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+      expect(trigger.className.split(/\s+/)).toContain('w-10');
       expect(screen.queryByRole('menuitem', { name: 'Add from cloud' })).toBeNull();
       await act(async () => {
         fireEvent.click(addButton);
       });
       expect(onCreate).toHaveBeenCalledTimes(1);
 
-      const trigger = screen.getByTestId('raw-table-add-menu-trigger');
       await act(async () => {
         fireEvent.keyDown(trigger, { key: 'Enter' });
       });

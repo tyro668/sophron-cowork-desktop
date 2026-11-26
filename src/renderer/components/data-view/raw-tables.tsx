@@ -31,6 +31,7 @@ import { RawTableAutomations } from './table-automations';
 import {
   TabBarAction,
   tabBarNewCellClass,
+  toolbarEndControlWidthClass,
   DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
@@ -91,7 +92,10 @@ function RawTableAddSplitButton({
             data-testid="raw-table-add-menu-trigger"
             disabled={disabled}
             aria-label={t('data.rawTables.addMenu')}
-            className="inline-flex h-full w-8 flex-shrink-0 items-center justify-center border-l border-border-subtle text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
+            className={cn(
+              'inline-flex h-full flex-shrink-0 items-center justify-center border-l border-border-subtle text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:opacity-50',
+              toolbarEndControlWidthClass
+            )}
           >
             <ChevronDown className="h-3.5 w-3.5" />
           </button>

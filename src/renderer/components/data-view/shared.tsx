@@ -199,7 +199,7 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
         <Button
           variant="secondary"
           size="icon"
-          className="h-full w-10 rounded-none border-0 border-l border-border-subtle bg-transparent text-text-secondary shadow-none hover:bg-accent-muted hover:text-accent"
+          className={`h-full ${toolbarEndControlWidthClass} rounded-none border-0 border-l border-border-subtle bg-transparent text-text-secondary shadow-none hover:bg-accent-muted hover:text-accent`}
           title={t('data.actions.more')}
           aria-label={t('data.actions.more')}
         >
@@ -675,6 +675,9 @@ export function TabBarAction({ children }: { children: ReactNode }) {
   const slot = useContext(TabBarActionContext);
   return slot ? createPortal(children, slot) : <>{children}</>;
 }
+
+/** Width of the trailing icon cell (toolbar ⋯ and the tab-bar split-button arrow). */
+export const toolbarEndControlWidthClass = 'w-10';
 
 /** Compact flush "+ 新建…" cell at the right end of the tab bar: accent text, hover tint. */
 export const tabBarNewCellClass =
