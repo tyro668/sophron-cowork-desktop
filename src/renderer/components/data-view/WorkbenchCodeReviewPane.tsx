@@ -1,41 +1,49 @@
 import { Check, Copy, FileCode2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { DataNormalizerProjectFile } from '../../../types';
-import { GlassSelect } from '../../GlassSelect';
-import { CodeDiffView, fileDiffStats } from '../code-diff-view';
-import { CodePreview, getCodePreviewLanguageLabel } from '../raw-table-code-preview';
-import { getNormalizerChangeMarkers } from '../raw-table-normalizer-utils';
-import { NormalizerProjectTree } from '../raw-table-version-history';
+import type { DataNormalizerProjectFile } from '../../types';
+import { GlassSelect } from '../GlassSelect';
+import { CodeDiffView, fileDiffStats } from './code-diff-view';
+import { CodePreview, getCodePreviewLanguageLabel } from './raw-table-code-preview';
+import { getNormalizerChangeMarkers } from './raw-table-normalizer-utils';
+import { NormalizerProjectTree } from './raw-table-version-history';
 
-interface CustomizeReviewCodePaneProps {
+interface WorkbenchCodeReviewPaneProps {
   files: DataNormalizerProjectFile[];
   selectedFile?: DataNormalizerProjectFile;
   selectedFilePath: string;
   showingFix: boolean;
-  fixBaseFiles?: DataNormalizerProjectFile[];
+  diffBaseContent?: string;
   codeView: 'diff' | 'full';
   codeCopied: boolean;
   focusLine: { path: string; line: number } | null;
   changeMarkers: ReturnType<typeof getNormalizerChangeMarkers>;
+  testId?: string;
+  copyButtonTestId?: string;
+  emptySubtitle?: string;
+  treeWidth?: 'narrow' | 'wide';
   onCodeViewChange: (view: 'diff' | 'full') => void;
   onCopyCode: () => void;
   onSelectFilePath: (path: string) => void;
 }
 
-export function CustomizeReviewCodePane({
+export function WorkbenchCodeReviewPane({
   files,
   selectedFile,
   selectedFilePath,
   showingFix,
-  fixBaseFiles,
+  diffBaseContent,
   codeView,
   codeCopied,
   focusLine,
   changeMarkers,
+  testId,
+  copyButtonTestId,
+  emptySubtitle,
+  treeWidth = 'wide',
   onCodeViewChange,
   onCopyCode,
   onSelectFilePath,
-}: CustomizeReviewCodePaneProps) {
+}: WorkbenchCodeReviewPaneProps) {
   const { t } = useTranslation();
 
   if (files.length === 0) {
@@ -46,22 +54,25 @@ export function CustomizeReviewCodePane({
           <span className="text-[13px] font-medium text-text-secondary">
             {t('data.rawTables.editor.noProjectFiles')}
           </span>
-          <span className="text-xs text-text-muted">
-            {t('data.rawTables.editor.selectedFileEmpty')}
-          </span>
+          {emptySubtitle ? <span className="text-xs text-text-muted">{emptySubtitle}</span> : null}
         </div>
       </div>
     );
   }
 
+  const gridColumnsClass =
+    treeWidth === 'narrow'
+      ? showingFix
+        ? 'grid-cols-[minmax(0,1fr)_150px_92px_200px_40px]'
+        : 'grid-cols-[minmax(0,1fr)_92px_200px_40px]'
+      : showingFix
+        ? 'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'
+        : 'grid-cols-[minmax(0,1fr)_92px_240px_40px]';
+
   return (
     <div
-      className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${
-        showingFix
-          ? 'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'
-          : 'grid-cols-[minmax(0,1fr)_92px_240px_40px]'
-      }`}
-      data-testid="raw-customize-review"
+      className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${gridColumnsClass}`}
+      data-testid={testId}
     >
       <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
         <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
@@ -75,10 +86,7 @@ export function CustomizeReviewCodePane({
           <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
             {showingFix && codeView === 'diff'
               ? (() => {
-                  const stats = fileDiffStats(
-                    fixBaseFiles?.find((file) => file.path === selectedFile.path)?.content,
-                    selectedFile.content
-                  );
+                  const stats = fileDiffStats(diffBaseContent, selectedFile.content);
                   return `+${stats.added} −${stats.removed} · ${getCodePreviewLanguageLabel(selectedFile.path)}`;
                 })()
               : t('data.rawTables.editor.codeFileMeta', {
@@ -106,7 +114,7 @@ export function CustomizeReviewCodePane({
       <button
         type="button"
         disabled={!selectedFile}
-        data-testid="raw-customize-copy-code"
+        data-testid={copyButtonTestId}
         onClick={onCopyCode}
         className={`inline-flex items-center justify-center gap-1.5 border-b border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-40 ${
           codeCopied ? 'text-success' : 'text-text-secondary hover:text-accent'
@@ -128,11 +136,7 @@ export function CustomizeReviewCodePane({
         className={`${showingFix ? 'col-span-3' : 'col-span-2'} flex min-h-0 min-w-0 flex-col overflow-hidden`}
       >
         {showingFix && codeView === 'diff' && selectedFile ? (
-          <CodeDiffView
-            before={fixBaseFiles?.find((file) => file.path === selectedFile.path)?.content}
-            after={selectedFile.content}
-            t={t}
-          />
+          <CodeDiffView before={diffBaseContent} after={selectedFile.content} t={t} />
         ) : (
           <CodePreview
             file={selectedFile}

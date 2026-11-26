@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const src = readFileSync('src/renderer/components/data-view/result-tables.tsx', 'utf8');
+const src = readFileSync(
+  'src/renderer/components/data-view/result-tables/ResultTableEditor.tsx',
+  'utf8'
+);
 
 describe('result table editor matches config design c09–c12', () => {
   it('重新运行 is a tool cell, not a solid primary button', () => {

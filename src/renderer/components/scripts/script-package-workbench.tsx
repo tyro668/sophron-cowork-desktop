@@ -4,22 +4,15 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
-  Copy,
   Eye,
   FileCode2,
-  Folder,
-  FolderOpen,
   CalendarClock,
   History,
-  MessageSquare,
   PencilLine,
   Play,
-  Plus,
   RefreshCw,
   Sparkles,
   Upload,
-  Wand2,
-  X,
   XCircle,
   Trash2,
 } from 'lucide-react';
@@ -38,27 +31,21 @@ import { SCRIPT_SOURCE_KEYS } from './labels';
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from '../../../shared/automation/script-package';
 import type { Automation, DataRawTablePreview } from '../../types';
 import { useAppStore, type ScriptEditorTarget } from '../../store';
-import { GlassSelect } from '../GlassSelect';
-import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
+import { getAgentModelLabel } from '../AgentModelSelector';
 import {
   FixContinueActionCells,
   GenerateActionCells,
   WorkbenchStepBreadcrumb,
 } from '../data-view/WorkbenchActionBarCells';
+import { WorkbenchCodeReviewPane } from '../data-view/WorkbenchCodeReviewPane';
+import { WorkbenchVersionsDialog } from '../data-view/WorkbenchVersionsDialog';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
-import { Dialog } from '../ui/dialog';
-import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
+import { useSecretReview } from '../secrets/secrets-ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { CodePreview, getCodePreviewLanguageLabel } from '../data-view/raw-table-code-preview';
 import { RawTableGenerationConsole } from '../data-view/raw-table-generation-console';
-import {
-  NormalizerProjectTree,
-  RawTableVersionHistoryPanel,
-  type HistoryVersionDiff,
-} from '../data-view/raw-table-version-history';
+import type { HistoryVersionDiff } from '../data-view/raw-table-version-history';
 import { RawTablePreviewDialog } from '../data-view/raw-table-preview-dialog';
 import { FixErrorPanel, type AutoFixRounds } from '../data-view/fix-error-panel';
-import { CodeDiffView, fileDiffStats } from '../data-view/code-diff-view';
 import {
   createFixLog,
   failureHistoryItem,
@@ -75,7 +62,7 @@ import {
   predictFixDraft,
   type FixErrorReport,
 } from '../../../shared/fix-error';
-import { RawTableConfigRow } from '../data-view/raw-table-editor-workbench';
+import { RawTableConfigRow } from '../data-view/ColumnTypeOverridesEditor';
 import {
   applyNormalizerGenerationProgress,
   createNormalizerGenerationProgressId,
@@ -92,17 +79,12 @@ import {
   DataMoreMenu,
   RawTableStatusBadge,
 } from '../data-view/shared';
+import { ScriptMetadataSection } from './ScriptMetadataSection';
+import { ScriptResultPane } from './ScriptResultPane';
+import { ScriptRulesStep } from './ScriptRulesStep';
 
 type Step = 'rules' | 'generate' | 'review';
 type HistoryVersion = ScriptPackageVersion & { id: string };
-
-const EXAMPLE_KEYS = [
-  'examplePaging',
-  'exampleApiAuth',
-  'exampleDedupe',
-  'exampleRetry',
-  'exampleIncremental',
-] as const;
 
 function shortTime(timestamp: number | undefined): string {
   return timestamp ? formatDateTime(timestamp).replace(/^\d{4}-/, '') : '';
@@ -1406,89 +1388,22 @@ export function ScriptPackageWorkbench({
           value="config"
           className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
         >
-          <section className="ui-group ui-form-flush flex-shrink-0 bg-surface">
-            <div className="ui-group-title">{t('schedule.script.package')}</div>
-            <RawTableConfigRow label={t('scripts.editor.folder')}>
-              <div className="flex min-h-[35px] min-w-0 flex-1 items-stretch">
-                <div className="flex min-w-0 flex-1 items-center gap-2 px-[10px]">
-                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent">
-                    <Folder className="h-3.5 w-3.5" />
-                  </span>
-                  <div
-                    className="min-w-0 truncate font-mono text-[12px] text-text-primary"
-                    title={summary?.dir}
-                  >
-                    {summary?.dir.replace(
-                      /^\/home\/[^/]+|^\/Users\/[^/]+|^[A-Z]:\\Users\\[^\\]+/,
-                      '~'
-                    ) ?? t('scripts.editor.folderPending')}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  disabled={!packageId}
-                  onClick={() => packageId && void api.open(packageId)}
-                  className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle"
-                >
-                  <FolderOpen className="h-3.5 w-3.5" />
-                  {t('scripts.editor.openFolder')}
-                </button>
-              </div>
-            </RawTableConfigRow>
-            <RawTableConfigRow label={t('schedule.script.entry')}>
-              <span className="ui-flush-text text-text-muted">
-                {summary
-                  ? [
-                      summary.entry,
-                      summary.runtimeVersion ?? runtimeLabel(summary.runtime),
-                      summary.depsReady
-                        ? t('schedule.script.depsReady')
-                        : t('schedule.script.depsOnFirstRun'),
-                    ].join(' · ')
-                  : '—'}
-              </span>
-            </RawTableConfigRow>
-            <RawTableConfigRow label={t('secrets.label')}>
-              <SecretsEditor
-                kind="script"
-                ownerId={packageId}
-                refreshKey={secretsKey}
-                disabled={generating}
-              />
-            </RawTableConfigRow>
-            {origin && (
-              <RawTableConfigRow label={t('chatScript.sourceLabel')}>
-                <div
-                  className="flex min-h-[35px] min-w-0 flex-1 items-stretch"
-                  data-testid="script-origin"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-2 px-[10px] text-[12px] text-text-muted">
-                    <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="truncate">
-                      {originSessionExists
-                        ? t('chatScript.sourceValue', {
-                            title: origin.sessionTitle,
-                            turn: origin.turn,
-                          })
-                        : t('chatScript.sourceDeleted', { title: origin.sessionTitle })}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!originSessionExists}
-                    onClick={() => {
-                      onClose();
-                      setActiveSession(origin.sessionId);
-                    }}
-                    data-testid="script-origin-open"
-                    className="ui-accent-cell w-[120px] flex-shrink-0 border-l border-border-subtle disabled:opacity-40"
-                  >
-                    {t('chatScript.openConversation')}
-                  </button>
-                </div>
-              </RawTableConfigRow>
-            )}
-          </section>
+          <ScriptMetadataSection
+            packageId={packageId}
+            summary={summary}
+            secretsKey={secretsKey}
+            generating={generating}
+            origin={origin}
+            originSessionExists={originSessionExists}
+            runtimeLabel={runtimeLabel}
+            onOpenFolder={() => {
+              if (packageId) void api.open(packageId);
+            }}
+            onOpenOriginSession={(sessionId) => {
+              onClose();
+              setActiveSession(sessionId);
+            }}
+          />
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <section className="ui-group ui-form-flush flex-shrink-0 bg-surface">
@@ -1504,98 +1419,28 @@ export function ScriptPackageWorkbench({
 
             <section className="ui-group ui-form-flush flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
               {step === 'rules' ? (
-                <>
-                  <div className="ui-form-row min-h-0 flex-1">
-                    <div className="ui-form-label items-start pt-2.5">
-                      {t('scripts.editor.ruleLabel')}
-                      <span className="ml-0.5 text-error">*</span>
-                    </div>
-                    <div className="ui-form-value relative min-h-0">
-                      <textarea
-                        value={rulePrompt}
-                        onChange={(event) => setRulePrompt(event.target.value.slice(0, 4000))}
-                        placeholder={t('scripts.editor.rulePlaceholder')}
-                        disabled={generating}
-                        data-testid="script-rule-prompt"
-                        className="h-full min-h-[120px] w-full resize-none border-0 bg-transparent px-2.5 py-2 pb-6 text-[13px] leading-6 text-text-primary outline-none placeholder:text-text-muted"
-                      />
-                      <span className="pointer-events-none absolute bottom-2 right-2.5 text-[11px] tabular-nums text-text-muted">
-                        {rulePrompt.length} / 4000
-                      </span>
-                    </div>
-                  </div>
-                  <RawTableConfigRow label={t('scripts.editor.base')}>
-                    <GlassSelect
-                      ariaLabel={t('scripts.editor.base')}
-                      value={baseVersion != null && packageId ? String(baseVersion) : 'scratch'}
-                      onValueChange={(value) =>
-                        setBaseVersion(value === 'scratch' ? null : Number(value))
-                      }
-                      options={baseOptions}
-                      disabled={generating || !packageId}
-                      triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
-                      contentClassName="w-[var(--radix-select-trigger-width)]"
-                    />
-                  </RawTableConfigRow>
-                  <RawTableConfigRow label={t('scripts.editor.language')}>
-                    <GlassSelect
-                      ariaLabel={t('scripts.editor.language')}
-                      value={runtime}
-                      onValueChange={(value) => setRuntime(value as ScriptRuntime)}
-                      options={[
-                        {
-                          value: 'python',
-                          label:
-                            summary?.runtime === 'python' && summary.runtimeVersion
-                              ? summary.runtimeVersion
-                              : 'Python 3',
-                        },
-                        { value: 'node', label: 'Node.js' },
-                      ]}
-                      disabled={generating}
-                      triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
-                      contentClassName="w-[var(--radix-select-trigger-width)]"
-                    />
-                  </RawTableConfigRow>
-                  <RawTableConfigRow label={t('data.rawTables.editor.customizeModelLabel')}>
-                    <AgentModelSelector
-                      open={modelMenuOpen}
-                      onOpenChange={setModelMenuOpen}
-                      appConfig={appConfig}
-                      selectedConfigSetId={modelConfigSetId ?? appConfig?.activeConfigSetId ?? ''}
-                      fallbackLabel={t('chat.noModel')}
-                      disabled={generating}
-                      align="start"
-                      triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"
-                      onSelect={(configSetId) => setModelConfigSetId(configSetId)}
-                    />
-                  </RawTableConfigRow>
-                  <RawTableConfigRow label={t('data.rawTables.editor.examplesLabel')}>
-                    <div className="flex min-h-[35px] flex-wrap items-center gap-1.5 px-2.5 py-1.5">
-                      {EXAMPLE_KEYS.map((key) => {
-                        const example = t(`scripts.editor.${key}`);
-                        return (
-                          <button
-                            key={key}
-                            type="button"
-                            disabled={generating}
-                            onClick={() =>
-                              setRulePrompt((current) =>
-                                current.trim()
-                                  ? `${current.replace(/\s+$/, '')}\n${example}`
-                                  : example
-                              )
-                            }
-                            className="inline-flex h-6 items-center gap-1 rounded border border-accent/25 bg-surface px-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <Plus className="h-3 w-3" />
-                            {t(`scripts.editor.${key}Label`)}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </RawTableConfigRow>
-                </>
+                <ScriptRulesStep
+                  rulePrompt={rulePrompt}
+                  generating={generating}
+                  packageId={packageId}
+                  baseVersion={baseVersion}
+                  baseOptions={baseOptions}
+                  runtime={runtime}
+                  summary={summary}
+                  appConfig={appConfig}
+                  modelMenuOpen={modelMenuOpen}
+                  modelConfigSetId={modelConfigSetId}
+                  onRulePromptChange={setRulePrompt}
+                  onAppendRuleExample={(example) =>
+                    setRulePrompt((current) =>
+                      current.trim() ? `${current.replace(/\s+$/, '')}\n${example}` : example
+                    )
+                  }
+                  onBaseVersionChange={setBaseVersion}
+                  onRuntimeChange={setRuntime}
+                  onModelMenuOpenChange={setModelMenuOpen}
+                  onModelConfigSetSelect={setModelConfigSetId}
+                />
               ) : null}
 
               {step === 'generate' ? (
@@ -1615,202 +1460,38 @@ export function ScriptPackageWorkbench({
               ) : null}
 
               {step === 'review' && reviewView === 'result' ? (
-                <div
-                  className="flex min-h-0 flex-1 flex-col overflow-hidden"
-                  data-testid="script-result"
-                >
-                  <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border-subtle px-2.5 text-[12.5px]">
-                    {testing || !trial ? (
-                      <span className="inline-flex items-center gap-1.5 text-text-muted">
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        {t('data.rawTables.editor.resultRunning')}
-                      </span>
-                    ) : trialFailedHere && trialReport ? (
-                      <>
-                        <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-error" />
-                        <span
-                          className="min-w-0 flex-1 truncate text-error"
-                          title={trialReport.message}
-                        >
-                          {t('fixError.trialFailed', { reason: trialReport.message })}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setTrialOpen(true)}
-                          data-testid="script-result-fix"
-                          className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 px-2.5 text-[12px] font-medium text-error hover:bg-error/10"
-                        >
-                          <Wand2 className="h-3.5 w-3.5" />
-                          {t('data.rawTables.editor.abnormalFix')}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
-                        <span
-                          className="min-w-0 flex-1 truncate text-text-primary"
-                          data-testid="script-result-explain"
-                          title={trial.warnings?.join('；')}
-                        >
-                          {showingFix && fixInfo
-                            ? fixInfo.text
-                            : t('scripts.editor.resultExplain', {
-                                rows: trial.rows ?? 0,
-                                cols: trial.columns?.length ?? 0,
-                                seconds: (trial.durationMs / 1000).toFixed(1),
-                              })}
-                          {trial.warnings?.length ? (
-                            <span className="ml-2 text-warning">⚠ {trial.warnings.join('；')}</span>
-                          ) : null}
-                        </span>
-                        <span className="flex-shrink-0 font-medium text-text-secondary">
-                          {t('data.rawTables.editor.resultLooksRight')}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={openUserFix}
-                          data-testid="script-result-wrong"
-                          className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-border-subtle px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
-                        >
-                          <Wand2 className="h-3.5 w-3.5" />
-                          {t('data.rawTables.editor.resultWrong')}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
-                    <GlassDataGridPreview
-                      preview={trialFailedHere ? null : trialPreview}
-                      isLoading={testing}
-                      error={null}
-                      currentPage={1}
-                      onPageChange={() => undefined}
-                      edgeToEdge
-                      labels={{
-                        loading: t('data.rawTables.editor.previewLoading'),
-                        empty: t('scripts.editor.noOutput'),
-                        total: (count) => t('data.rawTables.editor.previewTotal', { count }),
-                        pageSize: (count) => t('data.rawTables.editor.previewPageSize', { count }),
-                      }}
-                    />
-                  </div>
-                </div>
+                <ScriptResultPane
+                  testing={testing}
+                  trial={trial}
+                  trialFailedHere={trialFailedHere}
+                  trialReport={trialReport}
+                  trialPreview={trialPreview}
+                  fixInfoText={showingFix && fixInfo ? fixInfo.text : undefined}
+                  onOpenTrialFixDialog={() => setTrialOpen(true)}
+                  onOpenUserFix={openUserFix}
+                />
               ) : step === 'review' ? (
-                files.length === 0 ? (
-                  <div className="flex min-h-0 flex-1 items-center justify-center bg-surface">
-                    <div className="flex flex-col items-center gap-2 px-6 text-center">
-                      <FileCode2 className="h-6 w-6 text-text-muted" />
-                      <span className="text-[13px] font-medium text-text-secondary">
-                        {t('data.rawTables.editor.noProjectFiles')}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div
-                    className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${
-                      showingFix
-                        ? 'grid-cols-[minmax(0,1fr)_150px_92px_200px_40px]'
-                        : 'grid-cols-[minmax(0,1fr)_92px_200px_40px]'
-                    }`}
-                    data-testid="script-review"
-                  >
-                    <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
-                      <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                      <span className="min-w-0 truncate font-mono text-xs font-medium text-text-primary">
-                        {selectedFile?.path}
-                      </span>
-                      {selectedFile ? (
-                        <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
-                          {showingFix && codeView === 'diff'
-                            ? (() => {
-                                const stats = fileDiffStats(
-                                  diffBaseFile?.content,
-                                  selectedFile.content
-                                );
-                                return `+${stats.added} −${stats.removed} · ${getCodePreviewLanguageLabel(selectedFile.path)}`;
-                              })()
-                            : t('data.rawTables.editor.codeFileMeta', {
-                                lines: selectedFile.content.split('\n').length,
-                                language: getCodePreviewLanguageLabel(selectedFile.path),
-                              })}
-                        </span>
-                      ) : null}
-                    </div>
-                    {showingFix ? (
-                      <div className="flex border-b border-l border-border-subtle">
-                        <GlassSelect
-                          ariaLabel={t('fixError.viewDiff')}
-                          value={codeView}
-                          onValueChange={(value) => setCodeView(value as 'diff' | 'full')}
-                          options={[
-                            { value: 'diff', label: t('fixError.viewDiff') },
-                            { value: 'full', label: t('fixError.viewFull') },
-                          ]}
-                          triggerClassName="h-full w-full justify-between rounded-none border-0 bg-transparent px-2.5 text-xs text-text-primary shadow-none"
-                          contentClassName="w-[var(--radix-select-trigger-width)]"
-                        />
-                      </div>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={!selectedFile}
-                      onClick={() => {
-                        if (!selectedFile) return;
-                        void navigator.clipboard?.writeText(selectedFile.content);
-                        setCopied(true);
-                        window.setTimeout(() => setCopied(false), 1500);
-                      }}
-                      className={`inline-flex items-center justify-center gap-1.5 border-b border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted ${
-                        copied ? 'text-success' : 'text-text-secondary hover:text-accent'
-                      }`}
-                    >
-                      {copied ? (
-                        <Check className="h-3.5 w-3.5" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                      {copied
-                        ? t('data.rawTables.editor.copiedShort')
-                        : t('data.rawTables.editor.copyShort')}
-                    </button>
-                    <div className="flex items-center border-b border-l border-border-subtle px-2.5 text-xs font-semibold text-text-primary">
-                      {t('data.rawTables.editor.projectStructure')}
-                    </div>
-                    <div className="flex items-center justify-center border-b border-border-subtle text-xs tabular-nums text-text-muted">
-                      {files.length}
-                    </div>
-                    <div
-                      className={`${showingFix ? 'col-span-3' : 'col-span-2'} flex min-h-0 min-w-0 flex-col overflow-hidden`}
-                    >
-                      {showingFix && codeView === 'diff' && selectedFile ? (
-                        <CodeDiffView
-                          before={diffBaseFile?.content}
-                          after={selectedFile.content}
-                          t={t}
-                        />
-                      ) : (
-                        <CodePreview
-                          file={selectedFile}
-                          t={t}
-                          focusLine={
-                            focusLine && focusLine.path === selectedFile?.path
-                              ? focusLine.line
-                              : undefined
-                          }
-                        />
-                      )}
-                    </div>
-                    <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
-                      <NormalizerProjectTree
-                        files={files}
-                        selectedPath={selectedFile?.path ?? ''}
-                        onSelect={setSelectedPath}
-                        markers={markers}
-                        t={t}
-                      />
-                    </div>
-                  </div>
-                )
+                <WorkbenchCodeReviewPane
+                  files={files}
+                  selectedFile={selectedFile}
+                  selectedFilePath={selectedPath}
+                  showingFix={showingFix}
+                  diffBaseContent={diffBaseFile?.content}
+                  codeView={codeView}
+                  codeCopied={copied}
+                  focusLine={focusLine}
+                  changeMarkers={markers}
+                  testId="script-review"
+                  treeWidth="narrow"
+                  onCodeViewChange={setCodeView}
+                  onCopyCode={() => {
+                    if (!selectedFile) return;
+                    void navigator.clipboard?.writeText(selectedFile.content);
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 1500);
+                  }}
+                  onSelectFilePath={setSelectedPath}
+                />
               ) : null}
             </section>
 
@@ -1885,62 +1566,27 @@ export function ScriptPackageWorkbench({
         </div>
       </Tabs>
 
-      <Dialog
+      <WorkbenchVersionsDialog<HistoryVersion>
         open={versionsOpen}
         onOpenChange={setVersionsOpen}
-        ariaLabel={t('data.rawTables.editor.versionHistory')}
-        className="w-full max-w-[820px] overflow-hidden !p-0"
-      >
-        <div className="grid h-10 grid-cols-[minmax(0,1fr)_92px_40px] border-b border-border-subtle">
-          <div className="flex min-w-0 items-baseline gap-2 self-center px-3">
-            <span className="text-[14px] font-semibold text-text-primary">
-              {t('data.rawTables.editor.versionHistory')}
-            </span>
-            {versions.length > 0 ? (
-              <span className="text-xs text-text-muted">
-                {t('data.rawTables.editor.versionsCount', { count: versions.length })}
-              </span>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            disabled={versionsLoading}
-            onClick={() => void refresh()}
-            className="inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${versionsLoading ? 'animate-spin' : ''}`} />
-            {t('common.refresh')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setVersionsOpen(false)}
-            className="inline-flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
-            aria-label={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <RawTableVersionHistoryPanel<HistoryVersion>
-          currentVersion={currentHistory}
-          currentVersionId={viewVersion != null ? String(viewVersion) : undefined}
-          deletingVersionId={deletingVersion != null ? String(deletingVersion) : null}
-          embedded
-          loading={versionsLoading}
-          onRefresh={() => void refresh()}
-          onDelete={(version) => void deleteVersion(version.version)}
-          onPublish={(version) => void publish(version.version)}
-          publishingVersionId={busyVersion != null ? String(busyVersion) : null}
-          t={t}
-          versions={historyVersions}
-          sourceOf={(version) => t(SCRIPT_SOURCE_KEYS[version.source])}
-          diffOf={(version) => versionDiff(version)}
-          onOpen={(version) => {
-            setViewVersion(version.version);
-            setStep('review');
-            setVersionsOpen(false);
-          }}
-        />
-      </Dialog>
+        versions={historyVersions}
+        currentVersion={currentHistory}
+        currentVersionId={viewVersion != null ? String(viewVersion) : undefined}
+        loading={versionsLoading}
+        deletingVersionId={deletingVersion != null ? String(deletingVersion) : null}
+        publishingVersionId={busyVersion != null ? String(busyVersion) : null}
+        maxWidthClassName="max-w-[820px]"
+        onRefresh={() => void refresh()}
+        onDelete={(version) => void deleteVersion(version.version)}
+        onPublish={(version) => void publish(version.version)}
+        sourceOf={(version) => t(SCRIPT_SOURCE_KEYS[version.source])}
+        diffOf={(version) => versionDiff(version)}
+        onOpen={(version) => {
+          setViewVersion(version.version);
+          setStep('review');
+          setVersionsOpen(false);
+        }}
+      />
       {secretReview.dialog}
 
       {trialOpen ? (

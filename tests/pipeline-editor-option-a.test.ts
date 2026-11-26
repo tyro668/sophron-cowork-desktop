@@ -6,12 +6,13 @@ const read = (p: string) => readFileSync(p, 'utf8');
 
 describe('pipeline editor option A', () => {
   it('header: back cell = palette width 232px; 保存并运行 is an accent text cell; running state', () => {
-    const s = read(W + 'PipelineEditor.tsx');
-    expect(s).toContain('grid-cols-[232px_minmax(0,1fr)]');
-    expect(s).toContain('w-[232px]');
-    expect(s).not.toMatch(/variant="primary"\s+onClick=\{\(\) => void handleSaveAndRun\(\)\}/);
-    expect(s).toContain('text-accent shadow-none hover:bg-accent-muted/60');
-    expect(s).toContain("t('data.workflow.runningShort')");
+    const editor = read(W + 'PipelineEditor.tsx');
+    const header = read(W + 'PipelineHeader.tsx');
+    expect(editor).toContain('grid-cols-[232px_minmax(0,1fr)]');
+    expect(header).toContain('w-[232px]');
+    expect(header).not.toMatch(/variant="primary"\s+onClick=\{onSaveAndRun\}/);
+    expect(header).toContain('text-accent shadow-none hover:bg-accent-muted/60');
+    expect(header).toContain("t('data.workflow.runningShort')");
   });
   it('canvas toolbar: 40px flush row with zoom/fit/minimap icon cells; no floating Controls', () => {
     const s = read(W + 'WorkflowCanvas.tsx');

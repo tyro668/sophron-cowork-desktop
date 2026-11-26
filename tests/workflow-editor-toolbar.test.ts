@@ -30,10 +30,18 @@ const enLocale = JSON.parse(
   fs.readFileSync(path.resolve(process.cwd(), 'src/shared/i18n/locales/en.json'), 'utf8')
 );
 
+const editorHeaderSource = fs.readFileSync(
+  path.resolve(
+    process.cwd(),
+    'src/renderer/components/data-view/data-pipelines/workflow/PipelineHeader.tsx'
+  ),
+  'utf8'
+);
+
 describe('workflow editor toolbar', () => {
   it('disables the save button until the workflow has unsaved changes', () => {
     expect(editorSource).toContain('isWorkflowDirty');
-    expect(editorSource).toContain('disabled={isBusy || !workflow || !isWorkflowDirty}');
+    expect(editorHeaderSource).toContain('disabled={isBusy || !hasWorkflow || !isWorkflowDirty}');
   });
 
   it('keeps the selection actions always visible without a collapse toggle', () => {

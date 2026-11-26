@@ -4,12 +4,8 @@ import { describe, expect, it } from 'vitest';
 const read = (p: string) => readFileSync(p, 'utf8');
 const workbench = read('src/renderer/components/data-view/raw-table-editor-workbench.tsx');
 const rulesStep = read('src/renderer/components/data-view/raw-table-editor/CustomizeRulesStep.tsx');
-const reviewCode = read(
-  'src/renderer/components/data-view/raw-table-editor/CustomizeReviewCodePane.tsx'
-);
-const versionsDialog = read(
-  'src/renderer/components/data-view/raw-table-editor/NormalizerVersionsDialog.tsx'
-);
+const reviewCode = read('src/renderer/components/data-view/WorkbenchCodeReviewPane.tsx');
+const versionsDialog = read('src/renderer/components/data-view/WorkbenchVersionsDialog.tsx');
 const consoleSrc = read('src/renderer/components/data-view/raw-table-generation-console.tsx');
 const versions = read('src/renderer/components/data-view/raw-table-version-history.tsx');
 
@@ -50,7 +46,8 @@ describe('raw table 自定义 flow matches config design c15–c19', () => {
   it('version history: flush 6-column grid in a p-0 dialog', () => {
     expect(versions).toContain('grid-cols-[120px_100px_120px_minmax(0,1fr)_92px_40px]');
     expect(versions).toContain('data-testid="normalizer-version-publish"');
-    expect(versionsDialog).toContain('data-testid="normalizer-versions-header"');
+    expect(workbench).toContain('headerTestId="normalizer-versions-header"');
+    expect(versionsDialog).toContain('data-testid={headerTestId}');
     expect(versionsDialog).not.toContain('className="w-full max-w-4xl p-5"');
   });
 });

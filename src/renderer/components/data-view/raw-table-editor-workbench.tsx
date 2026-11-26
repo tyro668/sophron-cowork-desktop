@@ -12,10 +12,10 @@ import {
   GenerateActionCells,
   WorkbenchStepBreadcrumb,
 } from './WorkbenchActionBarCells';
-import { CustomizeReviewCodePane } from './raw-table-editor/CustomizeReviewCodePane';
+import { WorkbenchCodeReviewPane } from './WorkbenchCodeReviewPane';
+import { WorkbenchVersionsDialog } from './WorkbenchVersionsDialog';
 import { CustomizeReviewResultPane } from './raw-table-editor/CustomizeReviewResultPane';
 import { CustomizeRulesStep } from './raw-table-editor/CustomizeRulesStep';
-import { NormalizerVersionsDialog } from './raw-table-editor/NormalizerVersionsDialog';
 import { ParsingDetailSection } from './raw-table-editor/ParsingDetailSection';
 import { useSecretReview } from '../secrets/secrets-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -1818,16 +1818,24 @@ export function RawTableEditorWorkbench({
                       onPageChange={(page) => void previewCustomizeDraft(page, true)}
                     />
                   ) : customizeStep === 'review' ? (
-                    <CustomizeReviewCodePane
+                    <WorkbenchCodeReviewPane
                       files={normalizerProjectFiles}
                       selectedFile={selectedNormalizerFile}
                       selectedFilePath={selectedNormalizerFilePath}
                       showingFix={showingFix}
-                      fixBaseFiles={fixInfo?.baseFiles}
+                      diffBaseContent={
+                        fixInfo?.baseFiles.find(
+                          (file) => file.path === selectedNormalizerFile?.path
+                        )?.content
+                      }
                       codeView={codeView}
                       codeCopied={codeCopied}
                       focusLine={focusLine}
                       changeMarkers={normalizerChangeMarkers}
+                      testId="raw-customize-review"
+                      copyButtonTestId="raw-customize-copy-code"
+                      emptySubtitle={t('data.rawTables.editor.selectedFileEmpty')}
+                      treeWidth="wide"
                       onCodeViewChange={setCodeView}
                       onCopyCode={() => {
                         if (selectedNormalizerFile) {
@@ -2192,7 +2200,7 @@ export function RawTableEditorWorkbench({
           }
         />
       )}
-      <NormalizerVersionsDialog
+      <WorkbenchVersionsDialog
         open={versionsDialogOpen}
         onOpenChange={setVersionsDialogOpen}
         versions={normalizerVersions}
@@ -2201,6 +2209,16 @@ export function RawTableEditorWorkbench({
         loading={normalizerVersionsLoading}
         deletingVersionId={deletingNormalizerVersionId}
         publishingVersionId={customizeVersionActionId}
+        headerTestId="normalizer-versions-header"
+        sourceOf={(version) =>
+          t(
+            version.source === 'manual'
+              ? 'scripts.source.manual'
+              : version.source === 'ai_repair'
+                ? 'scripts.source.ai_repair'
+                : 'scripts.source.rule'
+          )
+        }
         onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
         onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
         onPublish={(version) => void applyNormalizerVersion(version)}

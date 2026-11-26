@@ -7,23 +7,7 @@ import { useDataWorkspaceActivation } from '../../../../features/data/hooks/use-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Connection } from '@xyflow/react';
-import {
-  AlertCircle,
-  ArrowLeft,
-  FileText,
-  MoreHorizontal,
-  PencilLine,
-  Play,
-  Save,
-  Sparkles,
-  Upload,
-  Waypoints,
-  Workflow,
-  X,
-  Undo2,
-  Redo2,
-  LoaderCircle,
-} from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import type {
   DataPipeline,
   DataRawTable,
@@ -47,7 +31,6 @@ import {
 import { dataFieldTypeFromDuckDbType } from '../../../../../shared/data-field-types';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { WorkflowDataContext } from '../../../../hooks/workflow-data-context';
-import { GlassDropdownMenu, GlassMenuItem } from '../../../GlassDropdownMenu';
 import { useConfirmDialog } from '../../../ConfirmDialog';
 import { RESULT_TABLE_INPUT_CHOICES_LIMIT, makeLocalId } from '../../shared';
 import { incompleteConfigMessageKey } from '../../workflow-config-guards';
@@ -60,9 +43,11 @@ import { WorkflowExplainDialog } from './WorkflowExplainDialog';
 import { getOperatorDefinition } from '../../../../../shared/operators';
 import { WorkflowCanvas, type WorkflowRevealRequest } from './WorkflowCanvas';
 import { WorkflowInspector } from './WorkflowInspector';
-import { WorkflowDslDialog, WorkflowNodeDataPreview, WorkflowOperatorPalette } from './WorkflowUi';
+import { WorkflowDslDialog, WorkflowOperatorPalette } from './WorkflowUi';
+import { PipelineExpectFailureBanner } from './PipelineExpectFailureBanner';
+import { PipelineHeader } from './PipelineHeader';
+import { PipelineStarterOverlay } from './PipelineStarterOverlay';
 import { Button } from '../../../ui/button';
-import { Dialog } from '../../../ui/dialog';
 import { InlineBanner } from '../../../ui/inline-banner';
 import {
   connectWorkflowNodes as connectWorkflowGraphNodes,
@@ -1549,173 +1534,40 @@ export function PipelineEditor({
 
   return (
     <section className="relative flex flex-1 min-h-0 flex-col">
-      <div className="flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle">
-        <div className="flex min-w-0 items-stretch">
-          <button
-            onClick={() => void handleBack()}
-            className="inline-flex w-[232px] flex-shrink-0 items-center gap-1.5 border-r border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
-            data-testid="pipeline-back-cell"
-          >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            {t('data.editor.back')}
-          </button>
-          <div className="flex min-w-0 items-center gap-2 border-r border-border-subtle px-3">
-            {isEditingPipelineTitle ? (
-              <span className="flex h-8 min-w-0 max-w-[22rem] items-center rounded-lg border border-accent/40 bg-surface px-2.5 shadow-soft ring-2 ring-accent/15">
-                <input
-                  ref={pipelineTitleInputRef}
-                  value={pipelineTitle}
-                  maxLength={80}
-                  onChange={(event) => setPipelineTitle(event.target.value)}
-                  onBlur={() => void savePipelineTitle()}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.currentTarget.blur();
-                    }
-                    if (event.key === 'Escape') {
-                      skipPipelineTitleSaveRef.current = true;
-                      setPipelineTitle(pipeline.name);
-                      setIsEditingPipelineTitle(false);
-                    }
-                  }}
-                  className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-text-secondary outline-none"
-                />
-              </span>
-            ) : (
-              <h1 className="truncate text-[15px] font-medium text-text-secondary">
-                {pipelineTitle}
-              </h1>
-            )}
-            {!isEditingPipelineTitle && (
-              <button
-                onClick={() => setIsEditingPipelineTitle(true)}
-                disabled={isBusy}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                title={t('common.edit')}
-              >
-                <PencilLine className="h-3.5 w-3.5" />
-                <span className="sr-only">{t('common.edit')}</span>
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex items-stretch">
-          <div className="flex items-stretch">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={undo}
-              disabled={isBusy || !canUndo}
-              className="h-full w-10 rounded-none border-l border-border-subtle"
-              title={t('data.workflow.undo')}
-              aria-label={t('data.workflow.undo')}
-            >
-              <Undo2 className="h-3.5 w-3.5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={redo}
-              disabled={isBusy || !canRedo}
-              className="h-full w-10 rounded-none border-l border-border-subtle"
-              title={t('data.workflow.redo')}
-              aria-label={t('data.workflow.redo')}
-            >
-              <Redo2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-          <Button
-            variant="secondary"
-            onClick={() => setAiDialogOpen(true)}
-            disabled={isBusy || !workflow}
-            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            {t('data.workflow.aiGenerate')}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={tidyCanvas}
-            disabled={isBusy || nodes.length === 0}
-            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
-            title={t('data.workflow.tidyLayoutHint')}
-          >
-            <Waypoints className="h-3.5 w-3.5" />
-            {t('data.workflow.tidyLayout')}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => void saveWorkflow()}
-            disabled={isBusy || !workflow || !isWorkflowDirty}
-            className="h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none"
-          >
-            <Save className="h-3.5 w-3.5" />
-            {saving ? t('common.saving') : t('common.save')}
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => void handleTrialRun()}
-            disabled={isBusy || !workflow}
-            data-testid="pipeline-trial-run"
-            className={`h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs shadow-none ${
-              runningKind === 'trial' ? 'bg-accent-muted/60 text-accent disabled:opacity-100' : ''
-            }`}
-          >
-            {runningKind === 'trial' ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            {runningKind === 'trial' ? t('data.workflow.runningShort') : t('data.editor.trialRun')}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => void handleSaveAndRun()}
-            disabled={isBusy || !workflow}
-            data-testid="pipeline-save-and-run"
-            className={`h-full rounded-none border-0 border-l border-border-subtle px-3 text-xs font-semibold text-accent shadow-none hover:bg-accent-muted/60 hover:text-accent ${
-              runningKind === 'run' ? 'bg-accent-muted/60 disabled:opacity-100' : ''
-            }`}
-          >
-            {runningKind === 'run' ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            {runningKind === 'run' ? t('data.workflow.runningShort') : t('data.editor.saveAndRun')}
-          </Button>
-          <GlassDropdownMenu
-            open={workflowMenuOpen}
-            onOpenChange={setWorkflowMenuOpen}
-            align="end"
-            contentClassName="w-40"
-            trigger={
-              <button
-                type="button"
-                disabled={isBusy || !workflow}
-                className="inline-flex h-full w-10 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
-                title={t('data.actions.more')}
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </button>
-            }
-          >
-            <GlassMenuItem
-              icon={<FileText className="h-3.5 w-3.5" />}
-              onSelect={() => setExplainDialogOpen(true)}
-              disabled={nodes.length === 0}
-            >
-              {t('data.workflow.explainTitle')}
-            </GlassMenuItem>
-            <GlassMenuItem icon={<Upload className="h-3.5 w-3.5" />} onSelect={openImportDsl}>
-              {t('data.workflow.importDsl')}
-            </GlassMenuItem>
-            <GlassMenuItem icon={<Workflow className="h-3.5 w-3.5" />} onSelect={openExportDsl}>
-              {t('data.workflow.exportDsl')}
-            </GlassMenuItem>
-          </GlassDropdownMenu>
-        </div>
-      </div>
+      <PipelineHeader
+        pipelineTitle={pipelineTitle}
+        isEditingPipelineTitle={isEditingPipelineTitle}
+        pipelineTitleInputRef={pipelineTitleInputRef}
+        isBusy={isBusy}
+        hasWorkflow={Boolean(workflow)}
+        isWorkflowDirty={isWorkflowDirty}
+        saving={saving}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        nodeCount={nodes.length}
+        runningKind={runningKind}
+        workflowMenuOpen={workflowMenuOpen}
+        onBack={() => void handleBack()}
+        onTitleChange={setPipelineTitle}
+        onTitleBlur={() => void savePipelineTitle()}
+        onTitleCancel={() => {
+          skipPipelineTitleSaveRef.current = true;
+          setPipelineTitle(pipeline.name);
+          setIsEditingPipelineTitle(false);
+        }}
+        onStartEditTitle={() => setIsEditingPipelineTitle(true)}
+        onUndo={undo}
+        onRedo={redo}
+        onOpenAiDialog={() => setAiDialogOpen(true)}
+        onTidyCanvas={tidyCanvas}
+        onSaveWorkflow={() => void saveWorkflow()}
+        onTrialRun={() => void handleTrialRun()}
+        onSaveAndRun={() => void handleSaveAndRun()}
+        onWorkflowMenuOpenChange={setWorkflowMenuOpen}
+        onOpenExplainDialog={() => setExplainDialogOpen(true)}
+        onOpenImportDsl={openImportDsl}
+        onOpenExportDsl={openExportDsl}
+      />
 
       {!workflow ? (
         <div className="flex flex-1 min-h-0 items-center justify-center bg-surface text-xs text-text-muted">
@@ -1773,43 +1625,12 @@ export function PipelineEditor({
                 onRemoveEdge={removeWorkflowEdge}
               />
               {nodes.length === 0 && (
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                  <div className="pointer-events-auto flex w-[26rem] max-w-full flex-col items-center gap-4 rounded-xl border border-border-muted bg-surface px-6 py-5 text-center shadow-card">
-                    <div className="text-[13px] font-semibold text-text-secondary">
-                      {t('data.workflow.starterTitle')}
-                    </div>
-                    <div className="text-[12px] leading-5 text-text-muted">
-                      {t('data.workflow.starterHint')}
-                    </div>
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={applyStarterTemplate}
-                        disabled={isBusy}
-                        className="h-8 px-3 text-xs"
-                      >
-                        <Workflow className="h-3.5 w-3.5" />
-                        {t('data.workflow.starterTemplate')}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setAiDialogOpen(true)}
-                        disabled={isBusy || !boundRawTable}
-                        className="h-8 px-3 text-xs"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                        {t('data.workflow.starterAi')}
-                      </Button>
-                    </div>
-                    {!boundRawTable && (
-                      <div className="text-[11px] leading-5 text-text-muted">
-                        {t('data.workflow.aiInputMissing')}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <PipelineStarterOverlay
+                  isBusy={isBusy}
+                  hasBoundRawTable={Boolean(boundRawTable)}
+                  onApplyStarterTemplate={applyStarterTemplate}
+                  onOpenAiDialog={() => setAiDialogOpen(true)}
+                />
               )}
             </div>
             <WorkflowDataContext.Provider value={workflowDataContext}>
@@ -1908,105 +1729,28 @@ export function PipelineEditor({
           </button>
         </div>
       )}
-      {failedExpectRun && lastRunFailure && (
-        <div className="absolute bottom-4 left-1/2 z-40 flex w-[min(92%,36rem)] -translate-x-1/2 flex-col items-center gap-2">
-          {failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at && (
-            <div
-              role="alert"
-              className="w-full rounded-lg border border-error/30 bg-surface px-3.5 py-3 text-[13px] shadow-card"
-            >
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-error" />
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium text-error">
-                    {t('data.workflow.expectFailureTitle')}
-                  </div>
-                  <div className="mt-0.5 text-text-secondary">{failedExpectSummary}</div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {expectSamplePreview && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => setExpectSampleOpen(true)}
-                        className="h-7 text-[11px]"
-                      >
-                        {t('data.workflow.expectViewSample')}
-                      </Button>
-                    )}
-                    {failedExpectRun.node && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => {
-                          selectSingleNode(failedExpectRun.node!.id);
-                          setActiveInspectorTab('data');
-                        }}
-                        className="h-7 text-[11px]"
-                      >
-                        {t('data.workflow.expectLocateNode')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setExpectDetailsOpen((open) => !open)}
-                      className="h-7 text-[11px]"
-                    >
-                      {t('data.workflow.expectTechDetails')}
-                    </Button>
-                  </div>
-                  {expectDetailsOpen && (
-                    <pre className="scrollbar-hover mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border-muted/60 bg-background p-2 font-mono text-[10.5px] leading-4 text-text-muted">
-                      {lastRunFailure.message}
-                    </pre>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setExpectCardDismissedAt(lastRunFailure.at)}
-                  aria-label={t('common.close')}
-                  className="flex-shrink-0 rounded-md p-1 text-text-muted transition-colors hover:bg-surface hover:text-text-secondary"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {expectSamplePreview && (
-        <Dialog
-          open={expectSampleOpen}
-          onOpenChange={setExpectSampleOpen}
-          ariaLabel={t('data.workflow.expectSampleTitle')}
-          overlayClassName="operator-ui bg-black/15 px-4 py-6 dark:bg-black/50"
-          className="h-[28rem] w-[56rem] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card"
-        >
-          <div className="glass-panel-header flex h-12 flex-shrink-0 items-center justify-between gap-3 px-4">
-            <div className="text-[14px] font-semibold text-text-primary">
-              {t('data.workflow.expectSampleTitle')}
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setExpectSampleOpen(false)}
-              className="text-[11px]"
-            >
-              <X className="h-3.5 w-3.5" />
-              {t('common.close')}
-            </Button>
-          </div>
-          <div className="min-h-0 flex-1 p-3">
-            <WorkflowNodeDataPreview
-              preview={expectSamplePreview}
-              isLoading={false}
-              error={null}
-              currentPage={1}
-              onPageChange={() => {}}
-            />
-          </div>
-        </Dialog>
-      )}
+      <PipelineExpectFailureBanner
+        visible={Boolean(
+          failedExpectRun && lastRunFailure && expectCardDismissedAt !== lastRunFailure.at
+        )}
+        summary={failedExpectSummary}
+        failureMessage={lastRunFailure?.message ?? ''}
+        hasSamplePreview={Boolean(expectSamplePreview)}
+        samplePreview={expectSamplePreview}
+        sampleOpen={expectSampleOpen}
+        detailsOpen={expectDetailsOpen}
+        failedNodeId={failedExpectRun?.node?.id}
+        onOpenSample={() => setExpectSampleOpen(true)}
+        onSampleOpenChange={setExpectSampleOpen}
+        onLocateNode={(nodeId) => {
+          selectSingleNode(nodeId);
+          setActiveInspectorTab('data');
+        }}
+        onToggleDetails={() => setExpectDetailsOpen((open) => !open)}
+        onDismiss={() => {
+          if (lastRunFailure) setExpectCardDismissedAt(lastRunFailure.at);
+        }}
+      />
     </section>
   );
 }

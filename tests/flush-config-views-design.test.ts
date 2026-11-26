@@ -18,7 +18,7 @@ describe('config / detail views use the flush group variant', () => {
     expect(read('src/renderer/components/data-view/raw-table-editor-workbench.tsx')).toContain(
       'ui-config-flush'
     );
-    expect(read('src/renderer/components/data-view/result-tables.tsx')).toContain(
+    expect(read('src/renderer/components/data-view/result-tables/ResultTableEditor.tsx')).toContain(
       'ui-config-flush'
     );
     expect(read('src/renderer/components/settings/SettingsSchedule.tsx')).toContain(
@@ -37,7 +37,7 @@ describe('config / detail views use the flush group variant', () => {
       'groupClass'
     );
     const workbench = read('src/renderer/components/data-view/raw-table-editor-workbench.tsx');
-    const results = read('src/renderer/components/data-view/result-tables.tsx');
+    const results = read('src/renderer/components/data-view/result-tables/ResultTableEditor.tsx');
     expect(workbench).toContain(
       '<TabsContent value="automation" className={configFlushBodyClass}>'
     );
