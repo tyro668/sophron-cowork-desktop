@@ -1421,6 +1421,36 @@
 .data-list-table tbody tr {
   height: 36px;
 }
+/* Fill the list viewport even when there are few rows; leftover height goes to the filler.
+   The shell uses min-height (not height) so a percentage height on the table would not
+   resolve; flex-grow stretches the table instead. */
+.data-list-table-shell {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+}
+.data-list-table-fill {
+  flex: 1 0 auto;
+  width: 100%;
+}
+.data-list-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background-color: var(--data-grid-header-surface);
+}
+.data-list-table tbody tr[data-list-filler] {
+  height: 100%;
+  border: 0;
+  pointer-events: none;
+}
+.data-list-table tbody tr[data-list-filler] td {
+  height: auto;
+  padding: 0;
+  border-bottom: 0;
+  vertical-align: top;
+}
 
 /* Balanced compact spacing: a "group" is a 1px-bordered, 6px-radius block inset
    from its container (tokens live in workflow-forms/shared/form-grid.css). */

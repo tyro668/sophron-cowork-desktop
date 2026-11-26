@@ -494,7 +494,10 @@ export function DataViewPage() {
                       onDeleteGroup={(group) => actions.handleDeleteGroup('pipeline', group)}
                     />
                   </TabsContent>
-                  <TabsContent value="raw_tables" className="min-h-0 flex-1 bg-transparent">
+                  <TabsContent
+                    value="raw_tables"
+                    className="flex min-h-0 flex-1 flex-col bg-transparent"
+                  >
                     <RawTablesPanel
                       rawTables={rawTables.rawTables}
                       drafts={drafts.drafts}
@@ -537,7 +540,10 @@ export function DataViewPage() {
                       }
                     />
                   </TabsContent>
-                  <TabsContent value="result_tables" className="min-h-0 flex-1 bg-transparent">
+                  <TabsContent
+                    value="result_tables"
+                    className="flex min-h-0 flex-1 flex-col bg-transparent"
+                  >
                     <ResultTablesPanel
                       resultTables={dashboard.dashboard.resultTables}
                       totalResultTables={dashboard.dashboard.totalResultTables}

@@ -141,7 +141,7 @@ export function RawTablesPanel({
   return (
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-between`}>
-        <div className="flex min-w-[16rem] flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {(isLoading || hasRows || searchQuery.trim()) && (
             <TabBarAction>
               <button

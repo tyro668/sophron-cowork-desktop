@@ -23,6 +23,11 @@ import {
 import { cn } from '../ui';
 import { PickerCheck, type TableTreeSelectionMode } from './raw-table-tree';
 import { TablePickerTree, type TablePickerTreeNode } from './table-picker-tree';
+import {
+  DATA_LIST_HEADER_ROW_CLASS,
+  DATA_LIST_PAGE_ROW_CLASS,
+  DataListTable,
+} from './data-list-table';
 
 export type ResultTableTreeVariant = 'page' | 'picker';
 
@@ -151,9 +156,10 @@ export function ResultTableTree({
         key={resultTable.id}
         onClick={() => onActiveIdChange?.(resultTable.id)}
         onDoubleClick={() => onOpenTable?.(resultTable)}
-        className={`h-[3.25rem] cursor-pointer border-b border-border-muted/85 last:border-b-0 transition-colors ${
+        className={cn(
+          DATA_LIST_PAGE_ROW_CLASS,
           isActive ? 'bg-accent-muted' : 'hover:bg-surface-hover'
-        }`}
+        )}
       >
         <td className={indented ? 'pl-9 pr-2' : 'px-2'}>
           <div className="flex min-w-0 items-center gap-3">
@@ -201,53 +207,42 @@ export function ResultTableTree({
   }
 
   return (
-    <div className="min-w-full overflow-x-auto" data-testid="result-table-tree">
-      <table className="data-list-table w-full table-fixed border-collapse text-left">
-        {isPicker ? null : (
-          <thead>
-            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-              <th className="w-[36%] whitespace-nowrap px-2">
-                {t('data.columns.resultTableName')}
-              </th>
-              <th className="w-[32%] whitespace-nowrap px-2">
-                {t('data.columns.relatedPipelines')}
-              </th>
-              <th className="w-[18%] whitespace-nowrap px-2">
-                <span className="inline-flex items-center gap-1">
-                  {t('data.columns.updatedAt')}
-                  <ArrowUpDown className="h-3 w-3" />
-                </span>
-              </th>
-              <th className="w-[14%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {sections.map((section) => (
-            <GroupSectionRows
-              key={section.key}
-              colSpan={colSpan}
-              section={section}
-              grouped={grouped}
-              collapsed={collapsedGroups.has(section.key)}
-              onToggle={() =>
-                setCollapsedGroups((current) => toggleCollapsed(current, section.key))
-              }
-              onRename={!isPicker && section.group ? onRenameGroup : undefined}
-              onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
-              count={
-                isPicker ? section.rows.length : (groupCounts[section.key] ?? section.rows.length)
-              }
-              page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
-              pageSize={pageSize}
-              onPageChange={(page) => onGroupPageChange?.(section.key, page)}
-              renderRow={(table, _index, indented) => renderRow(table, indented)}
-              headerAppearance={isPicker ? 'picker' : 'default'}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataListTable
+      testId="result-table-tree"
+      colSpan={colSpan}
+      header={
+        <tr className={DATA_LIST_HEADER_ROW_CLASS}>
+          <th className="w-[36%] whitespace-nowrap px-2">{t('data.columns.resultTableName')}</th>
+          <th className="w-[32%] whitespace-nowrap px-2">{t('data.columns.relatedPipelines')}</th>
+          <th className="w-[18%] whitespace-nowrap px-2">
+            <span className="inline-flex items-center gap-1">
+              {t('data.columns.updatedAt')}
+              <ArrowUpDown className="h-3 w-3" />
+            </span>
+          </th>
+          <th className="w-[14%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+        </tr>
+      }
+    >
+      {sections.map((section) => (
+        <GroupSectionRows
+          key={section.key}
+          colSpan={colSpan}
+          section={section}
+          grouped={grouped}
+          collapsed={collapsedGroups.has(section.key)}
+          onToggle={() => setCollapsedGroups((current) => toggleCollapsed(current, section.key))}
+          onRename={!isPicker && section.group ? onRenameGroup : undefined}
+          onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
+          count={isPicker ? section.rows.length : (groupCounts[section.key] ?? section.rows.length)}
+          page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
+          pageSize={pageSize}
+          onPageChange={(page) => onGroupPageChange?.(section.key, page)}
+          renderRow={(table, _index, indented) => renderRow(table, indented)}
+          headerAppearance={isPicker ? 'picker' : 'default'}
+        />
+      ))}
+    </DataListTable>
   );
 }
 

@@ -94,6 +94,18 @@ describe('reusable table trees in existing views', () => {
     expect(screen.getByTestId('raw-source-group-row').textContent).toContain('经营.xlsx');
     expect(screen.getByText('目标')).toBeTruthy();
     expect(screen.getByText('销售')).toBeTruthy();
+    expect(screen.getByText('Source type')).toBeTruthy();
+    expect(screen.getByText('Rows')).toBeTruthy();
+    const filler = screen.getByTestId('data-list-filler');
+    expect(filler).toBeTruthy();
+    expect(filler.getAttribute('aria-hidden')).toBe('true');
+    const table = screen.getByTestId('raw-table-tree').querySelector('table');
+    expect(table?.classList.contains('data-list-table-fill')).toBe(true);
+    const dataRows = [...screen.getByTestId('raw-table-tree').querySelectorAll('tbody tr')].filter(
+      (row) => row.getAttribute('data-list-filler') !== 'true'
+    );
+    expect(dataRows.some((row) => row.className.includes('border-dashed'))).toBe(false);
+    expect(dataRows.some((row) => row.className.includes('border-border-muted/85'))).toBe(true);
   });
 
   it('renders the 结果表 page with folder grouping after the tree extract', () => {
@@ -125,5 +137,11 @@ describe('reusable table trees in existing views', () => {
     expect(screen.getByTestId('result-table-tree')).toBeTruthy();
     expect(screen.getByText('分析组')).toBeTruthy();
     expect(screen.getByText('汇总')).toBeTruthy();
+    const filler = screen.getByTestId('data-list-filler');
+    expect(filler).toBeTruthy();
+    expect(filler.getAttribute('aria-hidden')).toBe('true');
+    const table = screen.getByTestId('result-table-tree').querySelector('table');
+    expect(table?.classList.contains('data-list-table-fill')).toBe(true);
+    expect(filler.querySelectorAll('td')).toHaveLength(4);
   });
 });

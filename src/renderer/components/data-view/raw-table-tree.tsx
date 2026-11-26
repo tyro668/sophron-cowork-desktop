@@ -38,6 +38,12 @@ import {
 import { cn } from '../ui';
 import { TablePickerTree, type TablePickerTreeNode } from './table-picker-tree';
 import { PickerCheck } from './picker-check';
+import {
+  DATA_LIST_HEADER_ROW_CLASS,
+  DATA_LIST_PAGE_ROW_CLASS,
+  DataListTable,
+  DataListTypeIcon,
+} from './data-list-table';
 
 export { PickerCheck };
 
@@ -381,57 +387,50 @@ export function RawTableTree({
   }
 
   return (
-    <div className="min-w-full overflow-x-auto" data-testid="raw-table-tree">
-      <table className="data-list-table w-full table-fixed border-collapse text-left">
-        {isPicker ? null : (
-          <thead>
-            <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-              <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
-              <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
-              <th className="w-[12%] whitespace-nowrap px-2 pr-6 text-right">
-                {t('data.columns.rowCount')}
-              </th>
-              <th className="w-[22%] whitespace-nowrap px-2">
-                {t('data.columns.relatedPipelines')}
-              </th>
-              <th className="w-[16%] whitespace-nowrap px-2">
-                <span className="inline-flex items-center gap-1">
-                  {t('data.columns.updatedAt')}
-                  <ArrowUpDown className="h-3 w-3" />
-                </span>
-              </th>
-              <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {pageSections.map((section) => (
-            <GroupSectionRows
-              key={section.key}
-              colSpan={colSpan}
-              section={section}
-              grouped={grouped}
-              collapsed={collapsedGroups.has(section.key)}
-              onToggle={() =>
-                setCollapsedGroups((current) => toggleCollapsed(current, section.key))
-              }
-              onRename={!isPicker && section.group ? onRenameGroup : undefined}
-              onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
-              count={
-                isPicker
-                  ? section.rows.filter((row) => row.kind === 'rawTable').length
-                  : (sectionCounts[section.key] ?? section.rows.length)
-              }
-              page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
-              pageSize={pageSize}
-              onPageChange={(page) => onGroupPageChange?.(section.key, page)}
-              renderRow={(row, _index, sectionIndented) => renderRow(row, sectionIndented)}
-              headerAppearance={isPicker ? 'picker' : 'default'}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataListTable
+      testId="raw-table-tree"
+      colSpan={colSpan}
+      header={
+        <tr className={DATA_LIST_HEADER_ROW_CLASS}>
+          <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
+          <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
+          <th className="w-[12%] whitespace-nowrap px-2 pr-6 text-right">
+            {t('data.columns.rowCount')}
+          </th>
+          <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.relatedPipelines')}</th>
+          <th className="w-[16%] whitespace-nowrap px-2">
+            <span className="inline-flex items-center gap-1">
+              {t('data.columns.updatedAt')}
+              <ArrowUpDown className="h-3 w-3" />
+            </span>
+          </th>
+          <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+        </tr>
+      }
+    >
+      {pageSections.map((section) => (
+        <GroupSectionRows
+          key={section.key}
+          colSpan={colSpan}
+          section={section}
+          grouped={grouped}
+          collapsed={collapsedGroups.has(section.key)}
+          onToggle={() => setCollapsedGroups((current) => toggleCollapsed(current, section.key))}
+          onRename={!isPicker && section.group ? onRenameGroup : undefined}
+          onDelete={!isPicker && section.group ? onDeleteGroup : undefined}
+          count={
+            isPicker
+              ? section.rows.filter((row) => row.kind === 'rawTable').length
+              : (sectionCounts[section.key] ?? section.rows.length)
+          }
+          page={isPicker ? 1 : (groupPages[section.key] ?? 1)}
+          pageSize={pageSize}
+          onPageChange={(page) => onGroupPageChange?.(section.key, page)}
+          renderRow={(row, _index, sectionIndented) => renderRow(row, sectionIndented)}
+          headerAppearance={isPicker ? 'picker' : 'default'}
+        />
+      ))}
+    </DataListTable>
   );
 }
 
@@ -444,7 +443,7 @@ function renderPartRow(
     <tr
       key={row.id}
       data-testid="raw-merge-part-row"
-      className="h-8 border-b border-dashed border-border-muted/60 text-[12px]"
+      className="h-8 border-b border-border-muted/60 text-[12px]"
     >
       <td
         colSpan={6}
@@ -599,23 +598,26 @@ function renderPageTableRow(
         else if (rawTable) ctx.onOpenTable?.(rawTable);
       }}
       data-testid={isChild ? 'raw-source-child-row' : undefined}
-      className={`cursor-pointer border-b border-dashed border-border-muted/85 last:border-b-0 transition-colors ${
-        isChild ? 'h-[2.625rem]' : 'h-[2.875rem]'
-      } ${
+      className={cn(
+        DATA_LIST_PAGE_ROW_CLASS,
         selected
           ? 'bg-accent-muted'
           : parts
             ? 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
             : 'hover:bg-surface-hover'
-      }`}
+      )}
     >
       <td
         className={`relative pr-2 ${
           isChild ? (indented ? 'pl-[4.25rem]' : 'pl-12') : indented ? 'pl-9' : 'pl-2'
         } ${isChild && selected ? 'shadow-[inset_2px_0_0_var(--color-accent)]' : ''}`}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          {isChild ? <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" /> : typeIcon}
+        <div className="flex min-w-0 items-center gap-3">
+          {isChild ? (
+            <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+          ) : (
+            <DataListTypeIcon>{typeIcon}</DataListTypeIcon>
+          )}
           <div
             className={`min-w-0 truncate text-[13px] text-text-primary ${
               isChild ? '' : parts ? 'font-semibold' : 'font-medium'
@@ -770,13 +772,14 @@ function renderSourceRow(
         ctx.toggleSource(source.id);
       }}
       onDoubleClick={() => ctx.onOpenSource?.(source, ctx.lastChildBySource.current.get(source.id))}
-      className={`h-[2.875rem] cursor-pointer border-b border-dashed border-border-muted/85 ${
+      className={cn(
+        DATA_LIST_PAGE_ROW_CLASS,
         selected ? 'bg-accent-muted' : 'bg-[var(--data-grid-header-surface)] hover:bg-surface-hover'
-      }`}
+      )}
     >
       <td colSpan={2} className={indented ? 'pl-9 pr-2' : 'px-2'}>
-        <div className="flex min-w-0 items-center gap-2">
-          {icon}
+        <div className="flex min-w-0 items-center gap-3">
+          <DataListTypeIcon>{icon}</DataListTypeIcon>
           <span className="min-w-0 truncate text-[13px] font-semibold text-text-primary">
             {source.name}
           </span>

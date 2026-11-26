@@ -293,7 +293,7 @@ export function EmptyState({
   icon?: ReactNode;
 }) {
   return (
-    <div className="flex min-h-[16rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
+    <div className="flex h-full min-h-[16rem] flex-col items-center justify-center gap-3 px-6 py-10 text-center">
       {icon && (
         <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-muted text-accent-text">
           {icon}
@@ -310,7 +310,7 @@ export function EmptyState({
 
 export function LoadingState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
+    <div className="flex h-full min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
       <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2 shadow-soft">
         <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
         {label}
