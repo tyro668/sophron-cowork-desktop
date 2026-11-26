@@ -1,3 +1,5 @@
+import type { SessionResultRepository } from '../session/session-result-repository';
+import { logWarn } from '../utils/logger';
 import { randomUUID } from 'node:crypto';
 import { Type } from 'typebox';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
@@ -13,6 +15,9 @@ const EVIDENCE_KEYS = new Set([
   'taskId',
   'rawTableId',
   'resultTableId',
+  'requestId',
+  'receiptId',
+  'resultRef',
   'analysisId',
   'draftId',
   'runId',
@@ -64,46 +69,74 @@ function compactEvidence(evidence: Record<string, unknown>): Record<string, unkn
   return compact;
 }
 
-/** Session-owned, bounded cache. References never cross conversation boundaries. */
+/** Bound model-visible output while retaining full results in the owning session. */
 export class ModelResultStore {
-  private readonly results = new Map<string, { text: string; evidence: Record<string, unknown> }>();
-  private size = 0;
+  constructor(private readonly repository: SessionResultRepository) {}
 
-  bound(result: ToolResult, onTruncated?: () => void): ToolResult {
+  bound(
+    result: ToolResult,
+    onTruncated?: () => void,
+    toolCallId: string = randomUUID()
+  ): ToolResult {
     let text = result.content
       .filter((block) => block.type === 'text')
       .map((block) => block.text)
       .join('\n');
-    if (text.length <= MODEL_RESULT_MAX_CHARS) return result;
-    let evidence = evidenceOf(result.details);
+    const structured = JSON.stringify(result.structuredContent);
+    if (text.length + (structured?.length ?? 0) <= MODEL_RESULT_MAX_CHARS) return result;
+    if (structured && !text.includes(structured)) text += '\n' + structured;
+    let evidence = { ...evidenceOf(result.structuredContent), ...evidenceOf(result.details) };
     if (JSON.stringify(evidence).length > 1800) {
       text += `\nAdditional execution evidence:\n${JSON.stringify(evidence)}`;
       evidence = compactEvidence(evidence);
     }
     const resultRef = `result_${randomUUID()}`;
-    this.results.set(resultRef, { text, evidence });
-    this.size += text.length;
-    // Retain at least the latest result, even if that one result exceeds the
-    // cache target. Never silently discard part of a stored result.
-    while (this.results.size > 1 && (this.results.size > 32 || this.size > 8_000_000)) {
-      const first = this.results.keys().next().value!;
-      this.size -= this.results.get(first)!.text.length;
-      this.results.delete(first);
+    try {
+      this.repository.write(resultRef, toolCallId, text, evidence);
+    } catch (error) {
+      // The tool may already have committed. A storage error must not invite a replay.
+      logWarn('[ModelResultStore] Could not archive tool result', error);
+      return {
+        ...result,
+        structuredContent: undefined,
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              storageError: 'RESULT_NOT_STORED',
+              evidence,
+              textFragment: text.slice(0, 500),
+            }),
+          },
+          ...result.content.filter((block) => block.type !== 'text'),
+        ],
+      };
     }
     onTruncated?.();
     return {
       ...result,
+      structuredContent: { resultRef },
       content: [
-        { type: 'text', text: this.page(resultRef, 0, 3500) },
+        { type: 'text', text: this.formatPage({ text, evidence }, resultRef, 0, 3500) },
         ...result.content.filter((block) => block.type !== 'text'),
       ],
     };
   }
 
   private page(resultRef: string, offset: number, limit: number, contains?: string): string {
-    const result = this.results.get(resultRef);
+    const result = this.repository.read(resultRef);
     if (!result)
       throw new Error('RESULT_REF_EXPIRED: Result reference is unavailable in this conversation.');
+    return this.formatPage(result, resultRef, offset, limit, contains);
+  }
+
+  private formatPage(
+    result: { text: string; evidence: Record<string, unknown> },
+    resultRef: string,
+    offset: number,
+    limit: number,
+    contains?: string
+  ): string {
     if (contains) {
       const match = result.text.indexOf(contains, offset);
       if (match < 0)
@@ -122,7 +155,7 @@ export class ModelResultStore {
         evidence: result.evidence,
         // This is explicitly a TEXT FRAGMENT, never presented as complete JSON.
         textFragment: result.text.slice(offset, end),
-        readMore: `Use ${RESULT_READ_TOOL} with resultRef and nextOffset (as offset), or contains to locate a field. References expire when this session cache is cleared or older results are evicted.`,
+        readMore: `Use ${RESULT_READ_TOOL} with resultRef and nextOffset (as offset), or contains to locate a field. References belong to this session and expire after seven days.`,
       });
       if (page.length <= MODEL_RESULT_MAX_CHARS) return page;
       if (length === 0) throw new Error('Result evidence exceeds the model result budget.');
@@ -173,7 +206,7 @@ export class ModelResultStore {
   wrap(tools: ToolDefinition[], onTruncated: () => void): ToolDefinition[] {
     return tools.map((tool) => ({
       ...tool,
-      execute: async (...args) => this.bound(await tool.execute(...args), onTruncated),
+      execute: async (...args) => this.bound(await tool.execute(...args), onTruncated, args[0]),
     }));
   }
 }

@@ -18,6 +18,8 @@ interface ApiModelSelectorFieldProps {
   onCustomModelChange: (value: string) => void;
   inputClassName?: string;
   triggerClassName?: string;
+  /** Render borderless flush controls inside `.ui-form-flush` cells. */
+  flush?: boolean;
 }
 
 /** Shared model input/select control reused by ConfigModal and SettingsAPI. */
@@ -32,10 +34,23 @@ export function ApiModelSelectorField({
   onCustomModelChange,
   inputClassName = 'h-8',
   triggerClassName = 'h-8 w-full justify-between bg-surface px-2.5 text-[13px] text-text-primary',
+  flush = false,
 }: ApiModelSelectorFieldProps) {
   const { t } = useTranslation();
 
   if (useCustomModel) {
+    if (flush) {
+      return (
+        <input
+          id={inputId}
+          type="text"
+          value={customModel}
+          onChange={(event) => onCustomModelChange(event.target.value)}
+          placeholder={modelInputPlaceholder}
+          className="min-w-0 flex-1 text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+        />
+      );
+    }
     return (
       <Input
         id={inputId}
@@ -65,7 +80,11 @@ export function ApiModelSelectorField({
       }
       placeholder={t('api.noModelsAvailable')}
       disabled={!modelOptions.length}
-      triggerClassName={triggerClassName}
+      triggerClassName={
+        flush
+          ? 'w-full justify-between text-[12.5px] text-text-primary focus-visible:ring-0'
+          : triggerClassName
+      }
       contentClassName="w-[var(--radix-select-trigger-width)]"
     />
   );

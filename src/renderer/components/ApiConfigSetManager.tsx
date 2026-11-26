@@ -4,7 +4,6 @@ import { Check, Layers3, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'luci
 import type { ApiConfigSet, ProviderPresets } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { useConfirmDialog } from './ConfirmDialog';
-import { Button } from './ui/button';
 
 type PendingConfigSetAction = { type: 'select' | 'switch'; targetSetId: string };
 
@@ -95,35 +94,35 @@ export function PendingConfigSetBanner({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle bg-warning/10 px-4 py-2">
-      <p className="text-[12px] font-medium text-text-primary">
+    <div className="flex min-h-[36px] flex-wrap items-stretch justify-between border-b border-border-subtle bg-warning/10">
+      <p className="flex min-w-0 flex-1 items-center px-3 py-1.5 text-[12px] font-medium text-text-primary">
         {t('api.unsavedSwitchPrompt', { name: pendingConfigSet?.name || '-' })}
       </p>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Button
-          variant="primary"
-          size="sm"
+      <div className="flex shrink-0 items-stretch">
+        <button
+          type="button"
           onClick={() => void onSaveAndContinue()}
           disabled={isMutatingConfigSet || isSaving}
+          className="ui-accent-cell border-l border-border-subtle"
         >
           {t('api.saveAndContinue')}
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
+        </button>
+        <button
+          type="button"
           onClick={() => void onDiscardAndContinue()}
           disabled={isMutatingConfigSet || isSaving}
+          className="inline-flex items-center justify-center border-l border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
         >
           {t('api.discardAndContinue')}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
+        </button>
+        <button
+          type="button"
           onClick={onCancel}
           disabled={isMutatingConfigSet || isSaving}
+          className="inline-flex items-center justify-center border-l border-border-subtle px-3 text-xs font-medium text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
         >
           {t('common.cancel')}
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -216,12 +215,14 @@ export function ApiConfigSetManager({
           type="button"
           onClick={(event) => event.stopPropagation()}
           disabled={isMutatingConfigSet}
-          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-all hover:bg-surface-active hover:text-text-primary disabled:opacity-50 ${
+          className={`flex shrink-0 items-center justify-center text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary disabled:opacity-50 ${
             variant === 'sidebar'
-              ? isSelected
-                ? 'opacity-100'
-                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
-              : ''
+              ? `w-8 self-stretch ${
+                  isSelected
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+                }`
+              : 'h-6 w-6 rounded-md'
           }`}
           aria-label={t('api.moreActions')}
         >
@@ -253,9 +254,9 @@ export function ApiConfigSetManager({
 
   if (variant === 'sidebar') {
     return (
-      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary/45 md:w-[232px] md:border-b-0 md:border-r lg:w-[248px]">
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
-          <div className="flex min-w-0 items-center gap-1.5">
+      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary md:w-[232px] md:border-b-0 md:border-r lg:w-[248px]">
+        <div className="flex h-9 shrink-0 items-stretch border-b border-border-subtle bg-surface-muted">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3">
             <Layers3 className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <h2 className="truncate text-[12px] font-semibold text-text-primary">
               {t('api.configSet')}
@@ -266,14 +267,14 @@ export function ApiConfigSetManager({
             type="button"
             onClick={() => void onRequestCreateBlankSet()}
             disabled={isMutatingConfigSet || Boolean(renameTargetId)}
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted/75 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-accent-cell shrink-0 border-l border-border-subtle !px-2.5"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('api.newSet')}
           </button>
         </div>
 
-        <div className="scrollbar-hover max-h-48 flex-1 space-y-0.5 overflow-y-auto p-1.5 md:max-h-none">
+        <div className="scrollbar-hover max-h-48 flex-1 overflow-y-auto md:max-h-none">
           {configSets.map((set) => {
             const isSelected = set.id === selectedConfigSetId;
             const isDefault = set.id === activeConfigSetId;
@@ -282,10 +283,10 @@ export function ApiConfigSetManager({
             return (
               <div
                 key={set.id}
-                className={`group flex min-w-0 items-center rounded-lg pr-1 transition-colors ${
+                className={`group flex min-w-0 items-stretch border-b border-border-subtle transition-colors ${
                   isSelected
-                    ? 'bg-accent-muted/85 text-text-primary shadow-[inset_2px_0_0_var(--color-accent)]'
-                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                    ? 'bg-accent-muted text-text-primary shadow-[inset_3px_0_0_var(--color-accent)]'
+                    : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                 }`}
               >
                 {isRenaming ? (
@@ -304,7 +305,7 @@ export function ApiConfigSetManager({
                       }
                     }}
                     autoFocus
-                    className="mx-1.5 my-1 min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 py-1 text-[12.5px] text-text-primary outline-none ring-2 ring-accent/15"
+                    className="min-h-[40px] min-w-0 flex-1 bg-surface px-3 text-[12.5px] text-text-primary outline-none"
                     aria-label={t('api.currentSetName')}
                   />
                 ) : (
@@ -313,14 +314,12 @@ export function ApiConfigSetManager({
                     onClick={() => void onSelectSet(set.id)}
                     disabled={isMutatingConfigSet}
                     aria-pressed={isSelected}
-                    className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
+                    className="flex min-w-0 flex-1 flex-col gap-0.5 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
                   >
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span
                         className={`truncate text-[12.5px] leading-4 ${
-                          isSelected
-                            ? 'font-semibold text-text-primary'
-                            : 'font-medium text-text-primary'
+                          isSelected ? 'font-semibold text-accent' : 'font-medium text-text-primary'
                         }`}
                       >
                         {set.name}

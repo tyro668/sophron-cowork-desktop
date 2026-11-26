@@ -4,6 +4,7 @@
  * normalizes results for the model.
  */
 import { Type, type TSchema } from 'typebox';
+import type { JsonObject } from '@earendil-works/pi-ai';
 import type { AgentSession, ToolDefinition } from '@earendil-works/pi-coding-agent';
 import type { MCPManager } from '../mcp/mcp-manager';
 import type { AgentToolPack } from '../extensions/agent-runtime-extension';
@@ -20,15 +21,32 @@ export function buildMcpCustomTools(mcpManager: MCPManager): ToolDefinition[] {
 
     const toolDef: ToolDefinition<TSchema, unknown> = {
       name: mcpTool.name,
-      label: `${mcpTool.serverName} → ${mcpTool.originalName || mcpTool.name}`,
+      label: `${mcpTool.serverName} → ${mcpTool.originalName}`,
       description: mcpTool.description || `MCP tool from ${mcpTool.serverName}`,
       parameters,
-      async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      async execute(toolCallId, params, signal) {
         try {
-          const result = await mcpManager.callTool(mcpTool.name, params as Record<string, unknown>);
+          const result = await mcpManager.callTool(
+            mcpTool.name,
+            params as Record<string, unknown>,
+            signal,
+            toolCallId
+          );
           const normalizedResult = normalizeMcpToolResultForModel(result);
+          const isError =
+            typeof result === 'object' &&
+            result !== null &&
+            'isError' in result &&
+            result.isError === true;
           return {
             content: [{ type: 'text' as const, text: normalizedResult.text }],
+            isError,
+            ...(result &&
+            typeof result === 'object' &&
+            'structuredContent' in result &&
+            result.structuredContent
+              ? { structuredContent: result.structuredContent as JsonObject }
+              : {}),
             details:
               normalizedResult.images.length > 0
                 ? { sophronImages: normalizedResult.images }
@@ -75,52 +93,20 @@ export function selectActiveToolsForTurn(
   );
 }
 
-/**
- * Apply a new active-tool set in place. The SDK's `setActiveToolsByName`
- * replaces `agent.state.tools` with a fresh array, but a running agent loop
- * captured the previous array instance in its context (`context.tools` is the
- * same reference — not a copy) — so mid-run activations via the public API
- * would only take effect on the next prompt. Mutating the live array makes the
- * next loop iteration see the new tools immediately. Falls back to the public
- * API when SDK internals differ from the expected shape.
- */
-export function applyActiveToolsInPlace(piSession: AgentSession, toolNames: string[]): string[] {
-  const internals = piSession as unknown as {
-    _toolRegistry?: Map<string, { name: string }>;
-    _rebuildSystemPrompt?: (toolNames: string[]) => string;
-    _baseSystemPrompt?: string;
-  };
-  const agent = piSession.agent as unknown as {
-    state?: { tools?: Array<{ name: string }> };
-    setSystemPrompt?: (prompt: string) => void;
-  };
-  const liveTools = agent?.state?.tools;
-  const registry = internals._toolRegistry;
-  if (!Array.isArray(liveTools) || !registry) {
-    piSession.setActiveToolsByName(toolNames);
-    return piSession.getActiveToolNames();
-  }
-  const resolved: Array<{ name: string }> = [];
-  const validNames: string[] = [];
-  for (const name of new Set(toolNames)) {
-    const tool = registry.get(name);
-    if (tool) {
-      resolved.push(tool);
-      validNames.push(name);
-    }
-  }
-  liveTools.length = 0;
-  liveTools.push(...resolved);
-  if (typeof internals._rebuildSystemPrompt === 'function') {
-    internals._baseSystemPrompt = internals._rebuildSystemPrompt.call(piSession, validNames);
-  }
-  if (typeof agent.setSystemPrompt === 'function' && internals._baseSystemPrompt) {
-    agent.setSystemPrompt(internals._baseSystemPrompt);
-  }
-  return validNames;
+export function activateSessionTools(session: AgentSession, names: string[]): string[] {
+  session.setActiveToolsByName([...new Set(names)]);
+  return session.getActiveToolNames();
 }
 
-/**
- * Get shell environment with proper PATH (including node, npm, etc.)
- * GUI apps on macOS don't inherit shell PATH, so we need to extract it
- */
+/** Pi 1.5 exposes activation publicly; changing the registered definitions still requires its registry hook. */
+export function replaceSessionToolRegistry(
+  session: AgentSession,
+  definitions: ToolDefinition[]
+): void {
+  const registry = session as unknown as {
+    _customTools: ToolDefinition[];
+    _refreshToolRegistry: () => void;
+  };
+  registry._customTools = definitions;
+  registry._refreshToolRegistry();
+}

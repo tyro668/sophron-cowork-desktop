@@ -39,6 +39,7 @@ import type { Message, ContentBlock, ServerEvent, Session } from '../../shared/c
 
 // Agent executor interface - exported for use in main process
 export interface AgentExecutor {
+  getMcpTool?(name: string): { serverName: string; originalName?: string } | undefined;
   startSession(title: string, prompt: string, cwd?: string): Promise<Session>;
   continueSession(
     sessionId: string,
@@ -798,28 +799,33 @@ export class RemoteManager extends EventEmitter {
         'LS',
         'WebFetch',
         'WebSearch',
-        // MCP Chrome tools (for browsing)
-        'mcp__Chrome__navigate_page',
-        'mcp__Chrome__take_screenshot',
-        'mcp__Chrome__take_snapshot',
-        'mcp__Chrome__click',
-        'mcp__Chrome__fill',
-        'mcp__Chrome__hover',
-        'mcp__Chrome__list_pages',
-        'mcp__Chrome__select_page',
-        'mcp__Chrome__new_page',
-        'mcp__Chrome__close_page',
-        'mcp__Chrome__wait_for',
-        'mcp__Chrome__press_key',
-        'mcp__Chrome__evaluate_script',
-        'mcp__Chrome__get_network_request',
-        'mcp__Chrome__list_network_requests',
-        'mcp__Chrome__list_console_messages',
         // Task tools
         'Task',
       ];
 
-      if (safeTools.includes(toolName)) {
+      const mcpTool = this.agentExecutor?.getMcpTool?.(toolName);
+      const chromeTools = [
+        'navigate_page',
+        'take_screenshot',
+        'take_snapshot',
+        'click',
+        'fill',
+        'hover',
+        'list_pages',
+        'select_page',
+        'new_page',
+        'close_page',
+        'wait_for',
+        'press_key',
+        'evaluate_script',
+        'get_network_request',
+        'list_network_requests',
+        'list_console_messages',
+      ];
+      if (
+        safeTools.includes(toolName) ||
+        (mcpTool?.serverName === 'Chrome' && chromeTools.includes(mcpTool.originalName ?? ''))
+      ) {
         log('[RemoteManager] Auto-approving safe tool:', toolName);
         // Send notification to user
         await this.doSendToChannel(channelInfo, `🔧 自动执行: **${toolName}**`);
@@ -1380,8 +1386,9 @@ export class RemoteManager extends EventEmitter {
     if (!channelInfo || !this.gateway) return;
 
     // Only send notifications for interesting tools
-    const notifyTools = ['Bash', 'Write', 'Edit', 'WebSearch', 'WebFetch', 'mcp__Chrome__'];
-    const shouldNotify = notifyTools.some((t) => toolName.includes(t));
+    const isChromeTool = this.agentExecutor?.getMcpTool?.(toolName)?.serverName === 'Chrome';
+    const notifyTools = ['Bash', 'Write', 'Edit', 'WebSearch', 'WebFetch'];
+    const shouldNotify = isChromeTool || notifyTools.some((t) => toolName.includes(t));
 
     if (!shouldNotify) return;
 
@@ -1425,7 +1432,7 @@ export class RemoteManager extends EventEmitter {
     }
 
     // Send completed/error status immediately for important tools
-    if (status === 'completed' && toolName.includes('mcp__Chrome__')) {
+    if (status === 'completed' && isChromeTool) {
       // For Chrome MCP, send progress
       await this.doSendToChannel(channelInfo, `${emoji} ${statusText}`);
     }

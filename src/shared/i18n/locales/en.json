@@ -1,4 +1,18 @@
 {
+  "agentHarness": {
+    "interrupted": "This turn was interrupted by an application restart. Check its tool receipts before retrying.",
+    "searchAliases": {
+      "data_preview_table": ["preview table", "preview a table"],
+      "data_apply_workflow_plan": ["edit workflow plan", "edit workflow"],
+      "automation_update_schedule": ["update automation schedule"]
+    },
+    "timeout": "Time limit exceeded",
+    "unknownToolOutcome": "The outcome of {{tool}} is unknown. Check the result before retrying. {{reason}}",
+    "loopGuard": "Stopped after repeated tool calls",
+    "cancelled": "Conversation cancelled",
+    "turnTimeout": "Conversation timed out",
+    "waitTimeout": "Conversation timed out after {{timeoutMs}}ms"
+  },
   "common": {
     "appName": "sophron cowork",
     "save": "Save",

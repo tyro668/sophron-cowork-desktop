@@ -14,6 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   AgentSession as PiAgentSession,
   AgentSessionEvent,
+  CompactionResult,
 } from '@earendil-works/pi-coding-agent';
 import type { Model, Api } from '@earendil-works/pi-ai';
 import type {
@@ -56,6 +57,8 @@ import {
 
 export interface AgentRunBridgeDeps {
   session: Session;
+  saveCompactedHistory?: (result: Pick<CompactionResult, 'summary' | 'firstKeptEntryId'>) => void;
+  sessionExists?: (sessionId: string) => boolean;
   piSession: PiAgentSession;
   controller: AbortController;
   thinkingStepId: string;
@@ -288,10 +291,18 @@ export class AgentRunEventBridge {
 
   private handleEvent = (event: AgentSessionEvent): void => {
     try {
-      if (this.ctx.controller.signal.aborted) return;
-
-      // Reset activity timeout on meaningful events
-      this.resetActivityTimeout();
+      if (this.ctx.controller.signal.aborted) {
+        // An in-flight tool can still deliver its receipt after the user stops the turn.
+        if (
+          event.type !== 'tool_execution_end' ||
+          !this.ctx.toolStartedAt.has(`${this.ctx.session.id}:${event.toolCallId}`) ||
+          this.ctx.sessionExists?.(this.ctx.session.id) === false
+        ) {
+          return;
+        }
+      } else {
+        this.resetActivityTimeout();
+      }
 
       if (event.type === 'message_update') {
         const updateType = event.assistantMessageEvent.type;
@@ -693,7 +704,6 @@ export class AgentRunEventBridge {
         }
 
         case 'tool_execution_end': {
-          if (this.ctx.controller.signal.aborted) break;
           const toolCallId = event.toolCallId;
           this.liveToolOutputSent.delete(toolCallId);
           const isError = event.isError;
@@ -737,6 +747,10 @@ export class AgentRunEventBridge {
             content: [
               {
                 type: 'tool_result',
+                ...(event.result?.structuredContent &&
+                typeof event.result.structuredContent === 'object'
+                  ? { structuredContent: event.result.structuredContent as Record<string, unknown> }
+                  : {}),
                 toolUseId: toolCallId,
                 content: outputText,
                 ...(!isError && event.toolName === 'data_generate_pipeline_from_requirement'
@@ -818,6 +832,8 @@ export class AgentRunEventBridge {
         }
 
         case 'compaction_end': {
+          if (event.result && !event.aborted && !event.errorMessage)
+            this.ctx.saveCompactedHistory?.(event.result);
           const status = event.aborted ? 'error' : event.errorMessage ? 'error' : 'completed';
           const title = event.aborted
             ? 'Context compaction aborted'

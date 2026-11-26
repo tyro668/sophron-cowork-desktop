@@ -114,6 +114,7 @@ export interface MessageRow {
   role: string;
   content: string; // JSON string
   timestamp: number;
+  turn_id?: string | null;
   token_usage: string | null; // JSON string
   execution_time_ms: number | null;
 }
@@ -871,6 +872,36 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
       ensureColumn(database, 'projects', 'folders_json', "folders_json TEXT NOT NULL DEFAULT '[]'");
     },
   },
+  {
+    version: 12,
+    name: 'session_harness_storage',
+    up: (database) => {
+      ensureColumn(database, 'messages', 'turn_id', 'turn_id TEXT');
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS session_turns (
+          sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+          turn_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          message_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+          prompt TEXT NOT NULL, options_json TEXT NOT NULL, status TEXT NOT NULL, error TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_turns_queue ON session_turns(status, sequence);
+        CREATE INDEX IF NOT EXISTS idx_messages_turn ON messages(turn_id);
+        CREATE TABLE IF NOT EXISTS session_history_summaries (
+          session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+          first_message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+          last_message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+          range_hash TEXT NOT NULL, summary TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS session_tool_results (
+          result_ref TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+          tool_call_id TEXT NOT NULL, bytes INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+          body TEXT NOT NULL, evidence_json TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_results_expiry ON session_tool_results(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_results_session ON session_tool_results(session_id);
+      `);
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =
@@ -999,9 +1030,10 @@ function ensureColumn(
  * Initialize the database
  */
 export function initDatabase(): DatabaseInstance {
-  if (db) return db;
+  return (db ??= openDatabase(getDatabasePath()));
+}
 
-  const dbPath = getDatabasePath();
+export function openDatabase(dbPath: string): DatabaseInstance {
   log('[Database] Opening database at:', dbPath);
 
   let rawDb: Database.Database;
@@ -1099,12 +1131,13 @@ export function initDatabase(): DatabaseInstance {
   `);
 
   const insertMessage = rawDb.prepare(`
-    INSERT INTO messages (id, session_id, role, content, timestamp, token_usage, execution_time_ms)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, session_id, role, content, timestamp, token_usage, execution_time_ms, turn_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getMessagesBySessionStmt = rawDb.prepare(`
-    SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC
+    SELECT m.* FROM messages m LEFT JOIN session_turns t ON t.turn_id = m.turn_id
+    WHERE m.session_id = ? ORDER BY COALESCE(t.sequence, 0), m.timestamp, m.rowid
   `);
 
   const updateMessageStmt = rawDb.prepare(`
@@ -1173,7 +1206,7 @@ export function initDatabase(): DatabaseInstance {
       )
     : null;
 
-  db = {
+  const instance: DatabaseInstance = {
     raw: rawDb,
 
     skillInvocations: {
@@ -1335,7 +1368,8 @@ export function initDatabase(): DatabaseInstance {
           message.content,
           message.timestamp,
           message.token_usage,
-          message.execution_time_ms ?? null
+          message.execution_time_ms ?? null,
+          message.turn_id ?? null
         );
       },
 
@@ -1477,12 +1511,12 @@ export function initDatabase(): DatabaseInstance {
     pragma: (pragma: string) => rawDb.pragma(pragma),
     close: () => {
       rawDb.close();
-      db = null;
+      if (db === instance) db = null;
     },
   };
 
   log('[Database] SQLite database initialized successfully');
-  return db!;
+  return instance;
 }
 
 /**

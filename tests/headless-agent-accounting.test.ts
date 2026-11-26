@@ -6,15 +6,17 @@ import { createAssistantMessageEventStream, type AssistantMessage } from '@earen
 import { Type } from 'typebox';
 
 vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
-  resolvePiAiTarget: async () => ({
+  resolvePiAiTarget: vi.fn(async () => ({
     model: { api: 'openai-completions', provider: 'test', id: 'test' },
     apiKey: 'test',
-  }),
+  })),
 }));
 
 const { HeadlessToolAgent, formatAgentUsage } =
   await import('../src/main/agent/headless-tool-agent');
 const { registerSecretSource } = await import('../src/main/exec-guard/redact');
+
+const { resolvePiAiTarget } = await import('../src/main/agent/pi-ai-one-shot');
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -51,6 +53,43 @@ function toolLoopStream() {
 }
 
 describe('headless agent accounting', () => {
+  it.each(['aborted', 'timeout'] as const)('stops during initialization with %s', async (stop) => {
+    vi.useFakeTimers();
+    const target = await resolvePiAiTarget({} as never);
+    let release!: () => void;
+    vi.mocked(resolvePiAiTarget).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(target);
+        })
+    );
+    const controller = new AbortController();
+    const streamFn = vi.fn(toolLoopStream());
+    const execute = vi.fn();
+    const agent = new HeadlessToolAgent({
+      config: {} as never,
+      systemPrompt: '',
+      tools: [{ name: 'probe', execute }] as never,
+      signal: controller.signal,
+      maxTurns: 1,
+      timeoutMs: 50,
+      streamFn,
+    });
+    try {
+      const pending = agent.prompt('go');
+      if (stop === 'aborted') controller.abort();
+      else await vi.advanceTimersByTimeAsync(50);
+      await expect(pending).resolves.toMatchObject({ stop, turns: 0, toolCalls: 0 });
+      release();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(streamFn).not.toHaveBeenCalled();
+      expect(execute).not.toHaveBeenCalled();
+    } finally {
+      agent.dispose();
+      vi.useRealTimers();
+    }
+  });
+
   it('counts tokens, stops at the token budget and logs every tool call redacted', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'agent-log-'));
     dirs.push(dir);

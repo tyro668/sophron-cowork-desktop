@@ -11,6 +11,8 @@
  *
  * Dependencies: config-store (via mcp-config-store)
  */
+import { waitWithSignal } from '../utils/wait-with-signal';
+import { callMcpTool } from './mcp-tool-call';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -20,7 +22,7 @@ import { createHash } from 'crypto';
 import { app, BrowserWindow } from 'electron';
 
 import path from 'path';
-import { log, logError, logWarn, logCtx, logCtxError, logTiming } from '../utils/logger';
+import { log, logError, logWarn } from '../utils/logger';
 import { getDefaultShell } from '../utils/shell-resolver';
 import { sanitizeUrlForLog } from '../utils/sanitize-url';
 import { formatMcpTransportError } from './mcp-http-error';
@@ -33,7 +35,6 @@ import {
 } from './mcp-oauth';
 
 const MCP_LIST_TOOLS_TIMEOUT_MS = 5 * 60 * 1000;
-const MCP_TOOL_CALL_TIMEOUT_MS = 5 * 60 * 1000;
 
 export type MCPConnectionStatus =
   'connecting' | 'connected' | 'failed' | 'disabled' | 'authorizing' | 'needs_auth';
@@ -76,19 +77,15 @@ function isRemoteMcpType(type: MCPServerConfig['type']): boolean {
  */
 export interface MCPTool {
   name: string;
-  originalName?: string;
+  originalName: string;
+  readOnly?: boolean;
   description: string;
-  inputSchema: {
-    type: string;
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
+  inputSchema: import('@modelcontextprotocol/sdk/types.js').Tool['inputSchema'];
   serverId: string;
   serverName: string;
 }
 
 const MAX_MODEL_TOOL_NAME_LENGTH = 64;
-const MCP_TOOL_NAME_HASH_LENGTH = 8;
 
 function normalizeWindowsPathForComparison(candidate: string): string {
   return path.win32.normalize(candidate).replace(/\//g, '\\').toLowerCase();
@@ -98,85 +95,48 @@ function normalizeWindowsDirectoryForComparison(candidate: string): string {
   return normalizeWindowsPathForComparison(candidate).replace(/[\\/]+$/, '');
 }
 
-function sanitizeMcpToolSegment(segment: string, fallback: string): string {
-  const sanitized = segment
-    .trim()
-    .replace(/\s+/g, '_')
-    .replace(/[^a-zA-Z0-9_-]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  return sanitized || fallback;
+export function mcpModelToolName(serverId: string, originalName: string): string {
+  const readable = originalName.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '') || 'tool';
+  const identity = createHash('sha256')
+    .update(JSON.stringify([serverId, originalName]))
+    .digest('hex')
+    .slice(0, 16);
+  return `mcp__${identity}__${readable}`.slice(0, MAX_MODEL_TOOL_NAME_LENGTH);
 }
 
-function truncateMcpToolName(baseName: string, maxLength: number): string {
-  if (baseName.length <= maxLength) {
-    return baseName;
-  }
-
-  if (maxLength <= 0) {
-    return '';
-  }
-
-  if (maxLength <= MCP_TOOL_NAME_HASH_LENGTH) {
-    return createHash('sha256').update(baseName).digest('hex').slice(0, maxLength);
-  }
-
-  const hashLength = Math.min(MCP_TOOL_NAME_HASH_LENGTH, maxLength - 2);
-  const hash = createHash('sha256').update(baseName).digest('hex').slice(0, hashLength);
-  const prefixLength = Math.max(1, maxLength - hash.length - 1);
-
-  return `${baseName.slice(0, prefixLength)}_${hash}`;
-}
-
-export function formatMcpToolName(baseName: string, suffix: string | null): string {
-  const suffixPart = suffix === null ? '' : `_${suffix}`;
-  const availableBaseLength = MAX_MODEL_TOOL_NAME_LENGTH - suffixPart.length;
-
-  if (availableBaseLength <= 0) {
-    return truncateMcpToolName(
-      `tool_${createHash('sha256').update(`${baseName}${suffixPart}`).digest('hex')}`,
-      MAX_MODEL_TOOL_NAME_LENGTH
-    );
-  }
-
-  const truncatedBase = truncateMcpToolName(baseName, availableBaseLength);
-
-  return `${truncatedBase}${suffixPart}`;
-}
-
-function createUniqueMcpToolName(baseName: string, usedNames: Set<string>): string {
-  const firstCandidate = formatMcpToolName(baseName, null);
-  if (!usedNames.has(firstCandidate)) {
-    usedNames.add(firstCandidate);
-    return firstCandidate;
-  }
-
-  let suffix = 2;
-  let candidate = formatMcpToolName(baseName, String(suffix));
-  while (usedNames.has(candidate)) {
-    suffix += 1;
-    candidate = formatMcpToolName(baseName, String(suffix));
-  }
-
-  usedNames.add(candidate);
-  return candidate;
-}
-
-async function raceWithTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  timeoutMessage: string
-): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    clearTimeout(timeoutId!);
-  }
+async function listServerTools(
+  client: Client,
+  serverId: string,
+  serverName: string,
+  signal: AbortSignal
+): Promise<MCPTool[]> {
+  const tools = new Map<string, MCPTool>();
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    signal.throwIfAborted();
+    const page = await client.listTools(cursor ? { cursor } : undefined, {
+      signal,
+      timeout: MCP_LIST_TOOLS_TIMEOUT_MS,
+    });
+    for (const tool of page.tools) {
+      const name = mcpModelToolName(serverId, tool.name);
+      if (tools.has(name)) throw new Error(`Duplicate MCP tool: ${serverId}/${tool.name}`);
+      tools.set(name, {
+        name,
+        originalName: tool.name,
+        serverId,
+        serverName,
+        description: tool.description ?? '',
+        inputSchema: tool.inputSchema,
+        ...(tool.annotations?.readOnlyHint === true && { readOnly: true }),
+      });
+    }
+    cursor = page.nextCursor;
+    if (cursor && cursors.has(cursor)) throw new Error(`Repeated MCP tool cursor: ${serverId}`);
+    if (cursor) cursors.add(cursor);
+  } while (cursor);
+  return [...tools.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getTrustedWindowsNpxDirectories(
@@ -244,6 +204,7 @@ export function findPreferredWindowsNpxPath(
  * MCP Manager - Manages connections to MCP servers and exposes their tools
  */
 export class MCPManager {
+  private catalogRevision = 0;
   private clients: Map<string, Client> = new Map();
   private transports: Map<
     string,
@@ -1568,10 +1529,12 @@ export class MCPManager {
    * Refresh tools from all connected servers with timeout protection
    */
   async refreshTools(): Promise<void> {
+    const revision = ++this.catalogRevision;
+    const clients = new Map(this.clients);
     log('[MCPManager] Refreshing tools from all servers');
 
     const toolResults: RefreshToolsResult[] = await Promise.all(
-      Array.from(this.clients.entries()).map(async ([serverId, client]) => {
+      Array.from(clients.entries()).map(async ([serverId, client]) => {
         const config = this.serverConfigs.get(serverId);
         if (!config) {
           return { kind: 'success', serverId, tools: [] as MCPTool[] };
@@ -1580,68 +1543,34 @@ export class MCPManager {
         const timeoutMs = MCP_LIST_TOOLS_TIMEOUT_MS;
         log(`[MCPManager] Fetching tools from ${config.name} (timeout: ${timeoutMs}ms)...`);
 
+        const controller = new AbortController();
+        const timer = setTimeout(
+          () => controller.abort(new Error(`listTools timeout after ${timeoutMs}ms`)),
+          timeoutMs
+        );
         try {
-          const listToolsResult = await raceWithTimeout(
-            client.listTools(),
-            timeoutMs,
-            `listTools timeout after ${timeoutMs}ms`
+          const tools = await waitWithSignal(
+            listServerTools(client, serverId, config.name, controller.signal),
+            controller.signal
           );
-
-          log(`[MCPManager] Raw tools from ${config.name}:`, listToolsResult);
-
-          // Sort alphabetically so dedup suffix assignment is deterministic
-          // across reconnects (otherwise session history can reference a name
-          // that later changes if the server returns tools in a new order).
-          const sortedTools = [...listToolsResult.tools].sort((left, right) => {
-            const leftName = left.name || '';
-            const rightName = right.name || '';
-            if (leftName < rightName) return -1;
-            if (leftName > rightName) return 1;
-            return 0;
-          });
-
-          // OpenAI-compatible providers reject tool names that contain
-          // punctuation like dots or colons, so we expose a sanitized
-          // model-facing name while preserving the original MCP tool name
-          // for the actual call.
-          const serverKey = sanitizeMcpToolSegment(config.name, 'server');
-          const usedToolNames = new Set<string>();
-          const tools = sortedTools.map((tool) => {
-            const originalToolName =
-              typeof tool.name === 'string' && tool.name.trim().length > 0 ? tool.name : 'tool';
-            const sanitizedToolName = sanitizeMcpToolSegment(originalToolName, 'tool');
-            const prefixedName = createUniqueMcpToolName(
-              `mcp__${serverKey}__${sanitizedToolName}`,
-              usedToolNames
-            );
-            return {
-              name: prefixedName,
-              originalName: originalToolName,
-              description: tool.description || '',
-              inputSchema: {
-                type: 'object',
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                properties: (tool.inputSchema as any)?.properties || {},
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                required: (tool.inputSchema as any)?.required,
-              },
-              serverId,
-              serverName: config.name,
-            } satisfies MCPTool;
-          });
-
           log(`[MCPManager] ✓ Loaded ${tools.length} tools from ${config.name}`);
           return { kind: 'success' as const, serverId, tools };
         } catch (error) {
           return { kind: 'error' as const, serverId, error };
+        } finally {
+          clearTimeout(timer);
         }
       })
     );
 
+    if (revision !== this.catalogRevision) return;
     const newTools = new Map<string, MCPTool>();
     for (const result of toolResults) {
+      if (clients.get(result.serverId) !== this.clients.get(result.serverId)) continue;
       if (result.kind === 'success') {
         for (const tool of result.tools) {
+          if (newTools.has(tool.name))
+            throw new Error(`Conflicting MCP tool identity: ${tool.name}`);
           newTools.set(tool.name, tool);
         }
         continue;
@@ -1691,130 +1620,38 @@ export class MCPManager {
   /**
    * Call an MCP tool with timeout and retry
    */
-  async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
+  async callTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    signal?: AbortSignal,
+    toolCallId?: string
+  ): Promise<unknown> {
     const tool = this.tools.get(toolName);
     if (!tool) {
       throw new Error(`MCP tool not found: ${toolName}`);
     }
 
-    // Prefer the original MCP tool name when present so sanitized model-facing
-    // names can still map back to the true server tool.
-    let actualToolName = tool.originalName || toolName;
-    if (!tool.originalName && toolName.startsWith('mcp__')) {
-      const remainder = toolName.slice('mcp__'.length);
-      const separatorIndex = remainder.indexOf('__');
-      if (separatorIndex !== -1) {
-        actualToolName = remainder.slice(separatorIndex + 2);
-      }
-    }
-
-    logCtx(`[MCPManager] Calling tool ${actualToolName} on server ${tool.serverName}`);
-
-    const callStartTime = Date.now();
-    const maxRetries = 2;
-    let lastError: unknown;
-    let compatHotReloadTried = false;
-    const deadline = Date.now() + MCP_TOOL_CALL_TIMEOUT_MS;
-
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      // Re-lookup tool on every iteration: after reconnect the registry is refreshed
-      const currentTool = this.tools.get(toolName) ?? tool;
-      try {
-        const client = this.clients.get(currentTool.serverId);
-        if (!client) {
-          throw new Error(`MCP server not connected: ${currentTool.serverId}`);
-        }
-
-        const remainingMs = deadline - Date.now();
-        if (remainingMs <= 0) {
-          throw new Error(`Tool call timeout after ${MCP_TOOL_CALL_TIMEOUT_MS}ms`);
-        }
-
-        const callPromise = client.callTool({
-          name: actualToolName,
-          arguments: args,
-        });
-        const result = await raceWithTimeout(
-          callPromise,
-          remainingMs,
-          `Tool call timeout after ${MCP_TOOL_CALL_TIMEOUT_MS}ms`
-        );
-
-        const toolErrorMessage = extractStructuredToolErrorMessage(result);
-        if (shouldReconnectOnStructuredToolError(toolErrorMessage)) {
-          // 某些 MCP 服务会把连接错误包在结构化结果里而非直接抛异常，这里转为异常以复用统一重连逻辑。
-          throw new Error(toolErrorMessage);
-        }
+    return callMcpTool({
+      tool,
+      name: tool.originalName,
+      toolCallId,
+      args,
+      getClient: () => {
+        const client = this.clients.get(tool.serverId);
+        const current = this.tools.get(toolName);
         if (
-          !compatHotReloadTried &&
-          shouldHotReloadGuiVisionServer(currentTool.serverName, actualToolName, toolErrorMessage)
+          client &&
+          (current?.serverId !== tool.serverId ||
+            current.originalName !== tool.originalName ||
+            Boolean(current.readOnly) !== Boolean(tool.readOnly))
         ) {
-          compatHotReloadTried = true;
-          logWarn(
-            `[MCPManager] Detected GUI vision compatibility error (${toolErrorMessage}). Reconnecting server ${currentTool.serverName} and retrying once.`
-          );
-          const reconnected = await this.reconnectServer(currentTool.serverId);
-          if (reconnected) {
-            continue;
-          }
+          throw new Error(`MCP tool definition changed during the call: ${toolName}`);
         }
-
-        logTiming(`MCP tool ${actualToolName}`, callStartTime);
-        return result;
-      } catch (error: unknown) {
-        lastError = error;
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        logCtxError(
-          `[MCPManager] Error calling tool ${toolName} (attempt ${attempt + 1}/${maxRetries + 1}):`,
-          errorMsg
-        );
-
-        if (attempt >= maxRetries) {
-          break;
-        }
-
-        const lowerErrorMsg = errorMsg.toLowerCase();
-        const shouldReconnect =
-          lowerErrorMsg.includes('mcp server not connected') ||
-          lowerErrorMsg.includes('not connected') ||
-          lowerErrorMsg.includes('connection closed');
-
-        if (shouldReconnect) {
-          log(
-            `[MCPManager] Reconnectable MCP error detected for ${currentTool.serverName}; attempting reconnect...`
-          );
-          const reconnected = await this.reconnectServer(currentTool.serverId);
-          if (reconnected) {
-            continue;
-          }
-          logWarn(
-            `[MCPManager] Reconnect attempt failed for ${currentTool.serverName}, will retry after backoff`
-          );
-          const delay = Math.min(2000 * Math.pow(1.5, attempt), 10000);
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          continue;
-        }
-
-        if (errorMsg.includes('timeout')) {
-          if (attempt >= maxRetries || deadline - Date.now() <= 0) {
-            break;
-          }
-          log(`[MCPManager] Tool call timeout detected, retrying within shared deadline...`);
-          const delay = Math.min(2000 * Math.pow(1.5, attempt), 10000);
-          const remainingAfterDelay = deadline - Date.now();
-          if (remainingAfterDelay <= 0) {
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, Math.min(delay, remainingAfterDelay)));
-          continue;
-        }
-
-        // For non-retryable errors, exit retry loop immediately
-        break;
-      }
-    }
-
-    throw lastError;
+        return client;
+      },
+      reconnect: () => this.reconnectServer(tool.serverId),
+      signal,
+    });
   }
 
   private async reconnectServer(serverId: string): Promise<boolean> {
@@ -1940,81 +1777,4 @@ export function mergeShellEnvForMcp(
     }
   }
   return merged;
-}
-
-function extractStructuredToolErrorMessage(result: unknown): string {
-  if (!result || typeof result !== 'object') {
-    return '';
-  }
-
-  const topLevelIsError = (result as { isError?: unknown }).isError === true;
-  const resultObj = result as { content?: unknown };
-  const content = Array.isArray(resultObj.content) ? resultObj.content : [];
-  for (const item of content) {
-    if (!item || typeof item !== 'object') continue;
-    if ((item as { type?: string }).type !== 'text') continue;
-    const text = (item as { text?: unknown }).text;
-    if (typeof text !== 'string') continue;
-
-    const trimmed = text.trim();
-    if (!trimmed) continue;
-
-    if (trimmed.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(trimmed) as { error?: unknown; message?: unknown };
-        if (parsed.error === true && typeof parsed.message === 'string' && parsed.message.trim()) {
-          return parsed.message.trim();
-        }
-      } catch {
-        // Ignore malformed JSON payloads
-      }
-    }
-
-    if (topLevelIsError && isReconnectableErrorText(trimmed)) {
-      return trimmed;
-    }
-  }
-
-  return '';
-}
-
-function isReconnectableErrorText(text: string): boolean {
-  const normalized = text.trim().toLowerCase();
-  if (!normalized) {
-    return false;
-  }
-  return (
-    normalized === 'not connected' ||
-    normalized.includes('mcp server not connected') ||
-    normalized.includes('connection closed')
-  );
-}
-
-function shouldReconnectOnStructuredToolError(errorMessage: string): boolean {
-  if (!errorMessage) {
-    return false;
-  }
-  return isReconnectableErrorText(errorMessage);
-}
-
-function shouldHotReloadGuiVisionServer(
-  serverName: string,
-  actualToolName: string,
-  errorMessage: string
-): boolean {
-  if (!errorMessage) {
-    return false;
-  }
-  if (actualToolName !== 'gui_verify_vision') {
-    return false;
-  }
-  if (!serverName.toLowerCase().includes('gui')) {
-    return false;
-  }
-
-  return (
-    errorMessage.includes('Unsupported parameter: max_output_tokens') ||
-    errorMessage.includes('Instructions are required') ||
-    errorMessage.includes('Stream must be set to true')
-  );
 }

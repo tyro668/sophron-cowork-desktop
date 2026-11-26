@@ -1,19 +1,32 @@
-import type { SessionManager } from '../session/session-manager';
+import type { SessionTurn } from '../session/session-turn';
+import { harnessMessage } from '../utils/harness-messages';
 
-export async function waitForSession(
-  sessionManager: SessionManager,
-  sessionId: string,
-  timeoutMs: number,
-  now: () => number
-): Promise<void> {
-  const deadline = now() + timeoutMs;
-  while (now() < deadline) {
-    const session = sessionManager.listSessions().find((row) => row.id === sessionId);
-    if (!session || session.status === 'completed' || session.status === 'idle') return;
-    if (session.status === 'error') {
-      throw new Error(`Conversation failed: ${session.title}`);
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+export async function waitForSessionTurn(turn: SessionTurn, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    const checkDeadline = () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) reject(new Error(harnessMessage('waitTimeout', { timeoutMs })));
+      else timer = setTimeout(checkDeadline, Math.min(remaining, MAX_TIMER_DELAY_MS));
+    };
+    checkDeadline();
+  });
+  try {
+    const outcome = await Promise.race([turn.completion, timeout]);
+    switch (outcome.status) {
+      case 'succeeded':
+        return;
+      case 'failed':
+        throw new Error(outcome.error);
+      case 'cancelled':
+        throw new Error(harnessMessage('cancelled'));
+      case 'timed_out':
+        throw new Error(harnessMessage('turnTimeout'));
     }
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+  } finally {
+    clearTimeout(timer);
   }
-  throw new Error(`Conversation timed out after ${timeoutMs}ms`);
 }

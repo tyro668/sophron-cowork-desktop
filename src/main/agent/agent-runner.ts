@@ -40,7 +40,9 @@ import type {
   AssistantMessage as PiAssistantMessage,
   Message as PiMessage,
 } from '@earendil-works/pi-ai';
-import { getSharedModelRuntime, setRuntimeApiKey } from './shared-auth';
+import type { SessionTurnOutcome } from '../session/session-turn';
+import { harnessMessage } from '../utils/harness-messages';
+import { createSessionModelRuntime } from './shared-auth';
 import type {
   Session,
   Message,
@@ -55,9 +57,7 @@ import { completePermissionReview } from '../config/permission-model-review';
 import { runPiAiOneShot } from './pi-ai-one-shot';
 import { PathResolver } from '../sandbox/path-resolver';
 import { MCPManager } from '../mcp/mcp-manager';
-import { mcpConfigStore } from '../mcp/mcp-config-store';
 import { log, logWarn, logError, logCtx, logCtxError, logTiming } from '../utils/logger';
-import * as path from 'path';
 import { spawn } from 'child_process';
 import { setMaxListeners } from 'node:events';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
@@ -76,14 +76,14 @@ import { buildMainAgentSystemPrompt } from '../prompts/main-agent';
 import {
   VIRTUAL_WORKSPACE_PATH,
   estimateCharsPerToken,
-  getBundledNodePaths,
   enrichProcessPathForBuild,
 } from './agent-runner-env';
 import { initSandboxSyncForRun, syncRunWorkspaceToHost } from './agent-runner-sandbox-sync';
 import { AgentRunEventBridge } from './agent-runner-event-bridge';
 import { safeStringify, toErrorText } from './agent-runner-log-utils';
 import {
-  applyActiveToolsInPlace,
+  activateSessionTools,
+  replaceSessionToolRegistry,
   buildMcpCustomTools,
   buildMcpToolPacks,
   selectActiveToolsForTurn,
@@ -94,6 +94,9 @@ import type { ToolActivationResult } from '../extensions/agent-runtime-extension
 import { AgentRequestContext } from './agent-request-context';
 import { installAgentPermissionGate } from './agent-permission-hook';
 import { checkAppDataAccess, resolveAppUserDataDir } from './app-data-guard';
+import { getDatabase, type DatabaseInstance } from '../db/database';
+import { APP_TURN_ENTRY, HistorySummaryRepository, historyUserText } from './history-summary';
+import { SessionResultRepository } from '../session/session-result-repository';
 import { ModelResultStore, RESULT_READ_TOOL } from './model-result-store';
 
 function installBaseTools(session: PiAgentSession, tools: Array<{ name: string }>): void {
@@ -115,8 +118,10 @@ function installBaseTools(session: PiAgentSession, tools: Array<{ name: string }
 
 // Virtual workspace path shown to the model (hides real sandbox path)
 interface AgentRunnerOptions {
+  database?: DatabaseInstance;
   sendToRenderer: (event: ServerEvent) => void;
   saveMessage?: (message: Message) => void;
+  sessionExists?: (sessionId: string) => boolean;
   requestSudoPassword?: (
     sessionId: string,
     toolUseId: string,
@@ -143,6 +148,7 @@ interface CachedPiSession {
 }
 
 interface AgentRunOptions {
+  turnId?: string;
   selectedSkillNames?: string[];
 }
 
@@ -155,8 +161,10 @@ interface AgentRunOptions {
  *   ANTHROPIC_API_KEY="" (must be empty)
  */
 export class AgentRunner {
+  private readonly database?: DatabaseInstance;
   private sendToRenderer: (event: ServerEvent) => void;
   private saveMessage?: (message: Message) => void;
+  private readonly sessionExists?: (sessionId: string) => boolean;
   private requestSudoPassword?: (
     sessionId: string,
     toolUseId: string,
@@ -185,7 +193,6 @@ export class AgentRunner {
   private toolDisplayNameCache: Map<string, string> = new Map();
   private static readonly MAX_CACHED_SESSIONS = 50;
 
-  private _mcpServersCache: { fingerprint: string; servers: Record<string, unknown> } | null = null;
   private readonly skills: AgentRunnerSkills;
 
   /**
@@ -211,42 +218,9 @@ export class AgentRunner {
     }
   }
 
-  /**
-   * Re-register this turn's customTools on a reused session. The SDK captures
-   * customTools at creation; we refresh its internal registry so tools added
-   * after the first turn (new MCP servers, rebuilt extension defs) take effect
-   * on warm starts. Falls back to a warning when SDK internals are absent —
-   * matching the historical behavior of tools staying unavailable until the
-   * session is recreated.
-   */
-  private syncSessionToolRegistry(piSession: PiAgentSession, customTools: ToolDefinition[]): void {
-    const internals = piSession as unknown as {
-      _customTools?: ToolDefinition[];
-      _refreshToolRegistry?: () => void;
-    };
-    if (
-      typeof internals._refreshToolRegistry !== 'function' ||
-      !Array.isArray(internals._customTools)
-    ) {
-      logWarn(
-        '[AgentRunner] SDK session does not support tool registry refresh; newly added tools stay unavailable until the session is recreated'
-      );
-      return;
-    }
-    internals._customTools = [...customTools];
-    internals._refreshToolRegistry();
-  }
-
   /** Call after the user installs / removes a skill so the next query re-links everything. */
   invalidateSkillsSetup(): void {
     this.skills.invalidateSetup();
-  }
-
-  /** Call after the user changes MCP server config so the next query rebuilds mcpServers. */
-  invalidateMcpServersCache(): void {
-    this._mcpServersCache = null;
-    // Sessions stay alive — MCP tools are rebuilt each query via buildMcpCustomTools()
-    log('[AgentRunner] MCP servers cache invalidated — tools will rebuild on next query');
   }
 
   constructor(
@@ -258,7 +232,9 @@ export class AgentRunner {
     extensionManager?: AgentRuntimeExtensionManager
   ) {
     this.sendToRenderer = options.sendToRenderer;
+    this.database = options.database;
     this.saveMessage = options.saveMessage;
+    this.sessionExists = options.sessionExists;
     this.requestSudoPassword = options.requestSudoPassword;
     this.requestPermission = options.requestPermission;
     this.pathResolver = pathResolver;
@@ -274,153 +250,6 @@ export class AgentRunner {
     log('[AgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
     if (mcpManager) {
       log('[AgentRunner] MCP support enabled');
-    }
-  }
-
-  private prepareMcpConfiguration(imageCapable: boolean): void {
-    // Build MCP servers configuration for SDK
-    // IMPORTANT: SDK uses tool names in format: mcp__<ServerKey>__<toolName>
-    const mcpServers: Record<string, unknown> = {};
-    if (this.mcpManager) {
-      const serverStatuses = this.mcpManager.getServerStatus();
-      const connectedServers = serverStatuses.filter((s) => s.connected);
-      log('[AgentRunner] MCP server statuses:', safeStringify(serverStatuses));
-      log('[AgentRunner] Connected MCP servers:', connectedServers.length);
-
-      let allConfigs: ReturnType<typeof mcpConfigStore.getEnabledServers>;
-      try {
-        allConfigs = mcpConfigStore.getEnabledServers();
-        log(
-          '[AgentRunner] Enabled MCP configs:',
-          allConfigs.map((c) => c.name)
-        );
-      } catch (error) {
-        logWarn(
-          '[AgentRunner] Failed to read enabled MCP configs; MCP tools will be unavailable this query',
-          error
-        );
-        allConfigs = [];
-      }
-
-      // Cache key: serialized config list + imageCapable flag.  The bundled node
-      // paths are stable for the lifetime of the process so they don't need to be
-      // part of the fingerprint.
-      const mcpFingerprint = JSON.stringify(allConfigs) + String(imageCapable);
-      if (this._mcpServersCache?.fingerprint === mcpFingerprint) {
-        Object.assign(mcpServers, this._mcpServersCache.servers);
-        log('[AgentRunner] MCP servers config reused from cache');
-      } else {
-        // Use the module-level memoized helper — no more per-query fs.existsSync calls.
-        const bundledNodePaths = getBundledNodePaths();
-        const bundledNpx = bundledNodePaths?.npx ?? null;
-
-        for (const config of allConfigs) {
-          try {
-            // Use a simpler key without spaces to avoid issues
-            const serverKey = config.name;
-
-            if (config.type === 'stdio') {
-              // 当命令是 npx 或 node 时优先使用内置路径
-              const command =
-                config.command === 'npx' && bundledNpx
-                  ? bundledNpx
-                  : config.command === 'node' && bundledNodePaths
-                    ? bundledNodePaths.node
-                    : config.command;
-
-              // 使用内置 npx/node 时，将内置 node bin 注入 PATH
-              const serverEnv = { ...config.env };
-              if (bundledNodePaths && (config.command === 'npx' || config.command === 'node')) {
-                const nodeBinDir = path.dirname(bundledNodePaths.node);
-                const currentPath = process.env.PATH || '';
-                // Prepend bundled node bin to PATH so npx can find node
-                serverEnv.PATH = `${nodeBinDir}${path.delimiter}${currentPath}`;
-                log(`[AgentRunner]   Added bundled node bin to PATH: ${nodeBinDir}`);
-              }
-
-              if (!imageCapable) {
-                serverEnv.SOPHRON_DISABLE_IMAGE_TOOL_OUTPUT = '1';
-              }
-
-              // Resolve path placeholders for presets
-              let resolvedArgs = config.args || [];
-
-              // Check if any args contain placeholders that need resolving
-              const hasPlaceholders = resolvedArgs.some(
-                (arg) =>
-                  arg.includes('{SOFTWARE_DEV_SERVER_PATH}') ||
-                  arg.includes('{GUI_OPERATE_SERVER_PATH}')
-              );
-
-              if (hasPlaceholders) {
-                // Get the appropriate preset based on config name
-                let presetKey: string | null = null;
-                if (
-                  config.name === 'Software_Development' ||
-                  config.name === 'Software Development'
-                ) {
-                  presetKey = 'software-development';
-                } else if (config.name === 'GUI_Operate' || config.name === 'GUI Operate') {
-                  presetKey = 'gui-operate';
-                }
-
-                if (presetKey) {
-                  const preset = mcpConfigStore.createFromPreset(presetKey, true);
-                  if (preset && preset.args) {
-                    resolvedArgs = preset.args;
-                  }
-                }
-              }
-
-              mcpServers[serverKey] = {
-                type: 'stdio',
-                command,
-                args: resolvedArgs,
-                env: serverEnv,
-              };
-              log(`[AgentRunner] Added STDIO MCP server: ${serverKey}`);
-              log(`[AgentRunner]   Command: ${command} ${resolvedArgs.join(' ')}`);
-              log(`[AgentRunner]   Tools will be named: mcp__${serverKey}__<toolName>`);
-            } else if (config.type === 'sse') {
-              mcpServers[serverKey] = {
-                type: 'sse',
-                url: config.url,
-                headers: config.headers || {},
-              };
-              log(`[AgentRunner] Added SSE MCP server: ${serverKey}`);
-            }
-          } catch (error) {
-            logError('[AgentRunner] Failed to prepare MCP server config, skipping server', {
-              serverId: config.id,
-              serverName: config.name,
-              error: toErrorText(error),
-            });
-          }
-        }
-
-        // Store in cache for subsequent queries
-        this._mcpServersCache = { fingerprint: mcpFingerprint, servers: { ...mcpServers } };
-      }
-
-      const mcpServersSummary = Object.entries(mcpServers).map(([name, serverConfig]) => {
-        const typedServerConfig = serverConfig as {
-          type?: string;
-          command?: string;
-          args?: unknown[];
-          env?: Record<string, unknown>;
-        };
-        return {
-          name,
-          type: typedServerConfig.type ?? 'unknown',
-          command: typedServerConfig.command ?? '',
-          argsCount: Array.isArray(typedServerConfig.args) ? typedServerConfig.args.length : 0,
-          envKeys: typedServerConfig.env ? Object.keys(typedServerConfig.env).length : 0,
-        };
-      });
-      log('[AgentRunner] Final mcpServers summary:', safeStringify(mcpServersSummary, 2));
-      if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
-        log('[AgentRunner] Final mcpServers config:', safeStringify(mcpServers, 2));
-      }
     }
   }
 
@@ -502,10 +331,6 @@ export class AgentRunner {
       if (permissionSignal?.aborted) return { block: true, reason: 'Task cancelled.' };
       const { decision } = evaluation;
       const reviewReason = evaluation.source === 'auto_review' ? evaluation.reason : undefined;
-      // Human-readable name for prompts/messages (e.g. MCP sanitized
-      // 'mcp__chrome__chrome_screenshot__ab12' → 'chrome_screenshot').
-      // Rule matching and rememberAlwaysAllow still use the canonical
-      // `toolName` so allow-once decisions stay stable across calls.
       const displayName = getDisplayName(toolName);
       const parentId: string = ctx.toolCall?.id ?? uuidv4();
       const turnId = this.activeTurnIds.get(sessionId);
@@ -850,9 +675,9 @@ export class AgentRunner {
     existingMessages: Message[],
     runtimeConfigOverride?: AgentRuntimeConfig,
     options?: AgentRunOptions
-  ): Promise<void> {
+  ): Promise<SessionTurnOutcome> {
     const runStartTime = Date.now();
-    const turnId = uuidv4();
+    const turnId = options?.turnId ?? uuidv4();
     const modelClock: { startedAt?: number } = {};
     const evaluationMetrics: TraceEvaluationMetrics = {
       inputTokens: 0,
@@ -980,9 +805,6 @@ export class AgentRunner {
         },
       });
 
-      // Set up API keys on the shared model runtime. OAuth credentials are
-      // refreshed by ModelRuntime.getAuth() when a request is sent.
-      const modelRuntime = await getSharedModelRuntime();
       const apiKey = provider === 'openai-codex' ? undefined : runtimeConfig.apiKey?.trim();
       if (provider === 'openai-codex') {
         if (!(await ensureCodexCredentials())) {
@@ -991,19 +813,7 @@ export class AgentRunner {
           );
         }
         log('[AgentRunner] Using OAuth credentials for openai-codex');
-      } else if (apiKey) {
-        // Map our config provider to pi-ai provider name
-        const piProvider =
-          provider === 'custom' ? runtimeConfig.customProtocol || 'anthropic' : provider;
-        await setRuntimeApiKey(piProvider, apiKey);
-        // Also set the key for the model's native provider (e.g., when using
-        // google/gemini via openrouter, pi-ai looks up "google" not "openrouter")
-        if (piModel.provider !== piProvider) {
-          await setRuntimeApiKey(piModel.provider, apiKey);
-          log('[AgentRunner] Set runtime API key for model provider:', piModel.provider);
-        }
-        log('[AgentRunner] Set runtime API key for config provider:', piProvider);
-      } else {
+      } else if (!apiKey) {
         if (provider === 'ollama') {
           log(
             '[AgentRunner] Ollama configured without explicit API key; relying on OpenAI-compatible placeholder/env auth path',
@@ -1025,7 +835,6 @@ export class AgentRunner {
       logTiming('after pi-ai model resolution', runStartTime);
 
       // the agent SDK handles path sandboxing via its own tools
-      const imageCapable = true; // pi-ai models generally support images; let the model handle unsupported cases
       const effectiveCwd =
         useSandboxIsolation && sandboxPath ? sandboxPath : workingDir || process.cwd();
       this.activePermissionContexts.set(session.id, {
@@ -1077,8 +886,7 @@ export class AgentRunner {
 
       // Build contextual prompt — if reusing an existing SDK session, the SDK
       // already has conversation history so we only pass the new prompt.
-      // For cold starts (new SDK session with existing DB history), we inject
-      // a token-budgeted summary of recent history as a preamble.
+      // A cold session starts with persisted conversation history within the model budget.
       let cachedSession = this.piSessions.get(session.id);
       if (cachedSession && cachedSession.runtimeSignature !== sessionRuntimeSignature) {
         logCtx('[AgentRunner] Runtime changed, recreating cached pi session:', session.id);
@@ -1109,7 +917,11 @@ export class AgentRunner {
       // made before the session resolves (none today — tools execute inside
       // the loop) are queued and applied right after resolution.
       const requestContext = cachedSession?.requestContext ?? new AgentRequestContext();
-      const resultStore = cachedSession?.resultStore ?? new ModelResultStore();
+      const resultStore =
+        cachedSession?.resultStore ??
+        new ModelResultStore(
+          new SessionResultRepository((this.database ?? getDatabase()).raw, session.id)
+        );
       const runSessionRef: { current?: PiAgentSession } = {};
       const queuedToolActivations = new Set<string>();
       const activateToolsForRun = (toolNames: string[]): ToolActivationResult => {
@@ -1119,15 +931,16 @@ export class AgentRunner {
           return { activated: [...toolNames], unknown: [] };
         }
         const registered = new Set(target.getAllTools().map((tool) => tool.name));
-        const unknown = toolNames.filter((name) => !registered.has(name));
         const valid = toolNames.filter((name) => registered.has(name));
         if (valid.length > 0) {
-          // In-place mutation makes the running loop's next iteration see the
-          // tools; setActiveToolsByName would only affect future prompts.
-          applyActiveToolsInPlace(target, [...new Set([...target.getActiveToolNames(), ...valid])]);
+          activateSessionTools(target, [...new Set([...target.getActiveToolNames(), ...valid])]);
           requestContext.setActiveTools(target.getActiveToolNames());
         }
-        return { activated: valid, unknown };
+        const active = new Set(target.getActiveToolNames());
+        return {
+          activated: toolNames.filter((name) => active.has(name)),
+          unknown: toolNames.filter((name) => !active.has(name)),
+        };
       };
 
       const extensionResult = this.extensionManager
@@ -1145,30 +958,23 @@ export class AgentRunner {
       requestContext.update(extensionResult);
       const contextualPrompt = prompt;
       let coldStartHistory: PiMessage[] = [];
+      const restoredUserIds = new Map<PiMessage, string>();
+      const historyMessages = existingMessages.slice(0, -1);
+      const summaries = new HistorySummaryRepository(
+        (this.database ?? getDatabase()).raw,
+        session.id
+      );
       if (!cachedSession) {
-        // Cold start: rebuild recent history using the SDK's native structured
-        // messages. Never embed tool protocol markup into the current user prompt.
-        const conversationMessages = existingMessages.filter(
-          (msg) => msg.role === 'user' || msg.role === 'assistant'
-        );
-        // Historical binary images are intentionally omitted to avoid injecting
-        // large base64 payloads into a newly-created SDK session.
-        const textOnlyMessages = conversationMessages.filter(
-          (msg) => !msg.content.some((c) => (c as { type?: string }).type === 'image')
-        );
-        const historyMessages =
-          textOnlyMessages.length > 0 &&
-          textOnlyMessages[textOnlyMessages.length - 1]?.role === 'user'
-            ? textOnlyMessages.slice(0, -1)
-            : textOnlyMessages;
-
         if (historyMessages.length > 0) {
           // Content-aware chars-per-token estimation (CJK text uses ~1.5 chars/token vs ~4 for English)
           const contextWindow = piModel.contextWindow || 128000;
           const historyBudgetRatio = provider === 'ollama' && contextWindow < 16384 ? 0.15 : 0.3;
           const historyTokenBudget = Math.floor(contextWindow * historyBudgetRatio);
 
-          const sampleText = JSON.stringify(historyMessages.slice(-3).map((m) => m.content));
+          const sampleText = historyMessages
+            .slice(-3)
+            .flatMap((message) => message.content.map(historyUserText))
+            .join(' ');
           const charsPerToken = estimateCharsPerToken(sampleText);
           const historyCharBudget = Math.floor(historyTokenBudget * charsPerToken);
           coldStartHistory = buildColdStartAgentHistory(historyMessages, {
@@ -1176,6 +982,8 @@ export class AgentRunner {
             provider: piModel.provider,
             model: piModel.id,
             maxChars: historyCharBudget,
+            summaries,
+            restoredUserIds,
           });
 
           if (coldStartHistory.length > 0) {
@@ -1196,10 +1004,6 @@ export class AgentRunner {
         // Reusing session — SDK already has the full conversation context
         logCtx('[AgentRunner] Reusing existing SDK session for:', session.id);
       }
-      logTiming('before building MCP servers config', runStartTime);
-
-      this.prepareMcpConfiguration(imageCapable);
-      logTiming('after building MCP servers config', runStartTime);
 
       const additionalProjectFolders = (session.mountedPaths ?? [])
         .map((entry) => entry.real?.trim())
@@ -1228,10 +1032,13 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // Create or reuse agent session
       // Bridge MCP tools as customTools for the agent SDK.
       // Re-read every query so newly added/removed MCP servers take effect immediately.
-      const mcpCustomTools = this.mcpManager ? buildMcpCustomTools(this.mcpManager) : [];
-      const mcpToolPacks = this.mcpManager ? buildMcpToolPacks(this.mcpManager) : {};
+      let catalog = this.mcpManager?.getTools() ?? [];
+      let mcpCustomTools = this.mcpManager ? buildMcpCustomTools(this.mcpManager) : [];
+      let mcpToolPacks = this.mcpManager ? buildMcpToolPacks(this.mcpManager) : {};
       const extensionCustomTools = extensionResult.customTools || [];
       const capabilitiesTool = createCapabilitiesSearchTool({
+        getTools: () => [...mcpCustomTools, ...extensionCustomTools],
+        refresh: () => refreshMcpCatalog(),
         getPacks: () => ({
           ...mcpToolPacks,
           ...(extensionResult.toolPacks ?? {}),
@@ -1243,12 +1050,32 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         }),
         activateTools: activateToolsForRun,
       });
-      const customTools = [
+      const buildCustomTools = () => [
         ...resultStore.wrap([...mcpCustomTools, ...extensionCustomTools, capabilitiesTool], () => {
           activateToolsForRun([RESULT_READ_TOOL]);
         }),
         resultStore.createReadTool(),
       ];
+      const customTools = buildCustomTools();
+      const refreshMcpCatalog = () => {
+        const manager = this.mcpManager;
+        const target = runSessionRef.current;
+        if (!target || !manager) return false;
+        const latest = manager.getTools();
+        if (
+          latest.length === catalog.length &&
+          latest.every((tool, index) => tool === catalog[index])
+        )
+          return false;
+        const active = target.getActiveToolNames();
+        catalog = latest;
+        mcpCustomTools = buildMcpCustomTools(manager);
+        mcpToolPacks = buildMcpToolPacks(manager);
+        replaceSessionToolRegistry(target, buildCustomTools());
+        requestContext.setActiveTools(activateSessionTools(target, active));
+        return true;
+      };
+      requestContext.beforeRequest = refreshMcpCatalog;
       if (mcpCustomTools.length > 0) {
         log(
           `[AgentRunner] Registered ${mcpCustomTools.length} MCP tools as customTools:`,
@@ -1397,13 +1224,15 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
         const piSessionManager = PiSessionManager.inMemory();
         for (const historyMessage of coldStartHistory) {
+          const userId = restoredUserIds.get(historyMessage);
+          if (userId) piSessionManager.appendCustomEntry(APP_TURN_ENTRY, userId);
           piSessionManager.appendMessage(historyMessage);
         }
 
         const { session: newPiSession } = await createAgentSession({
           model: piModel,
           thinkingLevel,
-          modelRuntime,
+          modelRuntime: await createSessionModelRuntime(piModel.provider, apiKey),
           customTools,
           sessionManager: piSessionManager,
           settingsManager: PiSettingsManager.inMemory({
@@ -1494,7 +1323,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // warm starts so tools connected after the first turn (new MCP servers,
       // rebuilt extension defs) actually register.
       if (cachedSession) {
-        this.syncSessionToolRegistry(piSession, customTools);
+        replaceSessionToolRegistry(piSession, customTools);
       }
       // Registration != exposure: only this turn's activated subset is
       // serialized for the model. Extension packs and MCP tools stay
@@ -1520,7 +1349,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         [...allowedExtensionTools, ...queuedToolActivations]
       );
       queuedToolActivations.clear();
-      applyActiveToolsInPlace(piSession, nextActiveTools);
+      activateSessionTools(piSession, nextActiveTools);
       requestContext.setActiveTools(nextActiveTools);
       log(
         `[AgentRunner] Active tools this turn (${nextActiveTools.length}):`,
@@ -1532,6 +1361,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
 
       // Set up event handler to bridge agent SDK events → our ServerEvent protocol
       const eventBridge = new AgentRunEventBridge({
+        sessionExists: this.sessionExists,
+        saveCompactedHistory: (result) =>
+          summaries.saveCompaction(existingMessages, piSession.sessionManager.getBranch(), result),
         session,
         piSession,
         controller,
@@ -1583,6 +1415,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             })
           );
         }
+        const currentUser = existingMessages.at(-1);
+        if (currentUser?.role === 'user')
+          piSession.sessionManager.appendCustomEntry(APP_TURN_ENTRY, currentUser.id);
         const promptResult = await piSession.prompt(contextualPrompt);
         controller.signal.throwIfAborted();
         // Backstop: surface a held-back attempt error if no agent_end flushed it.
@@ -1689,7 +1524,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           endedAt: Date.now(),
           duration: Date.now() - runStartTime,
         });
-        return;
+        return { status: 'timed_out' };
       }
       // If the SDK swallowed the AbortError after a loop-guard abort, preserve
       // the 'error' trace status that eventBridge.handleLoopGuardDecision already published.
@@ -1697,8 +1532,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // them with the default "Task completed" below.
       if (controller.signal.aborted && abortedByLoopGuard) {
         logCtx('[AgentRunner] Aborted by loop guard (detected after prompt returned)');
-        return;
+        return { status: 'failed', error: harnessMessage('loopGuard') };
       }
+      controller.signal.throwIfAborted();
       // Complete - update the initial thinking step
       this.sendTraceUpdate(session.id, thinkingStepId, {
         status: eventBridge.terminalErrorText ? 'error' : 'completed',
@@ -1720,6 +1556,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         endedAt: Date.now(),
         duration: Date.now() - runStartTime,
       });
+      return eventBridge.terminalErrorText
+        ? { status: 'failed', error: eventBridge.terminalErrorText }
+        : { status: 'succeeded' };
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         if (abortedByTimeout) {
@@ -1745,11 +1584,13 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             endedAt: Date.now(),
             duration: Date.now() - runStartTime,
           });
+          return { status: 'timed_out' };
         } else if (abortedByLoopGuard) {
           // Loop guard already published the user-facing assistant message and
           // an 'error' trace step with the loop-detected title. Do NOT overwrite
           // them here with a 'completed/Cancelled' state.
           logCtx('[AgentRunner] Aborted by loop guard');
+          return { status: 'failed', error: harnessMessage('loopGuard') };
         } else {
           logCtx('[AgentRunner] Aborted by user');
           this.sendTraceUpdate(session.id, thinkingStepId, {
@@ -1760,6 +1601,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             endedAt: Date.now(),
             duration: Date.now() - runStartTime,
           });
+          return { status: 'cancelled' };
         }
       } else {
         logCtxError('[AgentRunner] Error:', error);
@@ -1785,10 +1627,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
           duration: Date.now() - runStartTime,
         });
 
-        // Mark so session-manager doesn't report again
-        if (error instanceof Error) {
-          (error as Error & { alreadyReportedToUser?: boolean }).alreadyReportedToUser = true;
-        }
+        return { status: 'failed', error: errorText };
       }
     } finally {
       this.activeControllers.delete(session.id);

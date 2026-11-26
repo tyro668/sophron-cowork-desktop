@@ -1,3 +1,7 @@
+import { SessionManager as PiSessionManager } from '@earendil-works/pi-coding-agent';
+import type { Message as PiMessage } from '@earendil-works/pi-ai';
+import { APP_TURN_ENTRY, HistorySummaryRepository } from '../../main/agent/history-summary';
+import { harnessDatabase, temporaryDatabasePath } from '../../../tests/fixtures/harness-db';
 import { describe, expect, it } from 'vitest';
 import type { Message } from '../../shared/contracts';
 import {
@@ -146,6 +150,134 @@ describe('buildColdStartAgentHistory', () => {
     );
 
     expect(history).toEqual([{ role: 'user', content: 'run it', timestamp: 1 }]);
+  });
+
+  it('restores constraints, attachment references and receipts from a verified checkpoint under 1000 characters', () => {
+    const path = temporaryDatabasePath();
+    const db = harnessDatabase(path);
+    db.raw.exec("INSERT INTO sessions(id,title,created_at,updated_at) VALUES ('s','Test',0,0)");
+    const messages = [
+      message('u1', 'user', [{ type: 'text', text: 'Use EUR only' }], 1),
+      message(
+        'u2',
+        'user',
+        [
+          { type: 'text', text: 'Check the image totals' },
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'PRIVATE_BINARY' },
+          },
+          {
+            type: 'file_attachment',
+            filename: 'ledger.csv',
+            relativePath: '.tmp/ledger.csv',
+            size: 1,
+            inlineDataBase64: 'PRIVATE_BINARY',
+          },
+          {
+            type: 'cloud_table_attachment',
+            tables: [{ id: 'cloud-7', tableId: 'table-3', tableName: 'Ledger' }],
+          },
+        ],
+        2
+      ),
+      message(
+        'r2',
+        'assistant',
+        [
+          {
+            type: 'tool_result',
+            toolUseId: 'write-1',
+            content: 'saved',
+            structuredContent: { receiptId: 'out-49' },
+          },
+        ],
+        3
+      ),
+      message('a2', 'assistant', [{ type: 'text', text: 'a'.repeat(5000) }], 4),
+    ];
+    for (const row of messages)
+      db.raw
+        .prepare(
+          'INSERT INTO messages(id,session_id,role,content,timestamp) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(row.id, 's', row.role, JSON.stringify(row.content), row.timestamp);
+    const build = (repository: HistorySummaryRepository) =>
+      JSON.stringify(
+        buildColdStartAgentHistory(messages, {
+          ...HISTORY_OPTIONS,
+          maxChars: 1000,
+          summaries: repository,
+        })
+      );
+    const fresh = build(new HistorySummaryRepository(db.raw, 's'));
+    expect(fresh.length).toBeLessThanOrEqual(1000);
+    for (const field of [
+      'Use EUR only',
+      'Check the image totals',
+      '.tmp/ledger.csv',
+      'cloud-7',
+      'table-3',
+      'out-49',
+    ])
+      expect(fresh).toContain(field);
+    expect(fresh).not.toContain('PRIVATE_BINARY');
+    db.close();
+    const reopened = harnessDatabase(path);
+    const repository = new HistorySummaryRepository(reopened.raw, 's');
+    expect(repository.load(messages)?.count).toBe(4);
+    expect(build(repository)).toBe(fresh);
+    messages[0] = message('u1', 'user', [{ type: 'text', text: 'Use USD only' }], 1);
+    expect(repository.load(messages)).toBeUndefined();
+    expect(build(repository)).toContain('Use USD only');
+  });
+  it('saves native compaction only for its verified range and restores a whole split turn', () => {
+    const db = harnessDatabase();
+    db.raw.exec(
+      "INSERT INTO sessions(id,title,created_at,updated_at) VALUES ('session-1','Test',0,0)"
+    );
+    const messages = [
+      message('u1', 'user', [{ type: 'text', text: 'Keep source records' }], 1),
+      message('a1', 'assistant', [{ type: 'text', text: 'Noted' }], 2),
+      message('u2', 'user', [{ type: 'text', text: 'Inspect output' }], 3),
+      message('call', 'assistant', [{ type: 'tool_use', name: 'inspect', id: 'c', input: {} }], 4),
+      message(
+        'result',
+        'assistant',
+        [{ type: 'tool_result', toolUseId: 'c', content: 'received' }],
+        5
+      ),
+    ];
+    for (const m of messages)
+      db.raw
+        .prepare('INSERT INTO messages(id,session_id,role,content,timestamp) VALUES (?,?,?,?,?)')
+        .run(m.id, m.sessionId, m.role, JSON.stringify(m.content), m.timestamp);
+    const ids = new Map<PiMessage, string>();
+    const pi = PiSessionManager.inMemory();
+    const seed = buildColdStartAgentHistory(messages, { ...HISTORY_OPTIONS, restoredUserIds: ids });
+    const entries = seed.map((item) => {
+      const userId = ids.get(item);
+      if (userId) pi.appendCustomEntry(APP_TURN_ENTRY, userId);
+      return pi.appendMessage(item);
+    });
+    const repository = new HistorySummaryRepository(db.raw, 'session-1');
+    for (const [firstKeptEntryId, atTurnStart] of [
+      [entries[2], true],
+      [entries[4], false],
+    ] as const) {
+      repository.saveCompaction(messages, pi.getBranch(), {
+        firstKeptEntryId,
+        summary: 'Verified context note',
+      });
+      expect(repository.load(messages)?.count).toBe(2);
+      const restored = buildColdStartAgentHistory(messages, {
+        ...HISTORY_OPTIONS,
+        summaries: repository,
+      });
+      expect(restored.slice(1)).toEqual(seed.slice(2));
+      expect(JSON.stringify(restored).includes('Verified context note')).toBe(atTurnStart);
+      expect(JSON.stringify(restored)).toContain('Keep source records');
+    }
   });
 
   it('keeps complete recent user turns within the history budget', () => {

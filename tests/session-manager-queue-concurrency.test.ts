@@ -1,3 +1,4 @@
+import { harnessDatabase, temporaryDatabasePath } from './fixtures/harness-db';
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
 import type { ServerEvent } from '../src/shared/contracts';
@@ -39,7 +40,7 @@ vi.mock('electron-store', () => {
 
 vi.mock('../src/main/agent/agent-runner', () => ({
   AgentRunner: class {
-    run = vi.fn();
+    run = vi.fn().mockResolvedValue({ status: 'succeeded' });
     cancel = vi.fn();
     handleQuestionResponse = vi.fn();
   },
@@ -51,32 +52,41 @@ vi.mock('../src/main/mcp/mcp-config-store', () => ({
   },
 }));
 
+import Database from 'better-sqlite3';
+import { migrateMainSchema } from '../src/main/db/database';
+import { PathResolver } from '../src/main/sandbox/path-resolver';
+import * as modelResolution from '../src/main/agent/agent-runner-model';
+import * as sandboxSync from '../src/main/agent/agent-runner-sandbox-sync';
+import { getSandboxAdapter } from '../src/main/sandbox/sandbox-adapter';
+import { AutomationRunner } from '../src/main/automation/automation-runner';
+import { createAutomationStore } from '../src/main/automation/automation-store';
+import { createDefaultAutomationActionRegistry } from '../src/main/automation/default-actions';
+import { harnessMessage } from '../src/main/utils/harness-messages';
+import { waitForSessionTurn } from '../src/main/automation/wait-for-session';
 import { SessionManager } from '../src/main/session/session-manager';
 import { configStore } from '../src/main/config/config-store';
 import { getPermissionRulesForPolicy } from '../src/shared/permission-policies';
 
 // Helper: create a minimal mock DB
 function createMockDb() {
+  const storage = harnessDatabase();
+  storage.raw
+    .prepare(
+      "INSERT INTO sessions(id,title,cwd,created_at,updated_at) VALUES ('s1','Test','/tmp',0,0)"
+    )
+    .run();
   return {
+    ...storage,
     sessions: {
-      create: vi.fn(),
-      get: vi.fn(() => ({
-        id: 's1',
-        title: 'Test',
-        created_at: Date.now(),
-        updated_at: Date.now(),
-        status: 'idle',
-        cwd: '/tmp',
-      })),
-      getAll: vi.fn(() => []),
-      update: vi.fn(),
-      delete: vi.fn(),
+      ...storage.sessions,
+      create: vi.fn(storage.sessions.create),
+      get: vi.fn(storage.sessions.get),
+      update: vi.fn(storage.sessions.update),
     },
     messages: {
-      create: vi.fn(),
-      getBySessionId: vi.fn(() => []),
-      delete: vi.fn(),
-      deleteBySessionId: vi.fn(),
+      ...storage.messages,
+      create: vi.fn(storage.messages.create),
+      getBySessionId: vi.fn(storage.messages.getBySessionId),
     },
     traceSteps: {
       create: vi.fn(),
@@ -96,12 +106,337 @@ describe('SessionManager processQueue concurrency', () => {
     sendToRenderer = vi.fn<(event: ServerEvent) => void>();
   });
 
+  it('settles each queued turn independently with the same ID passed to the runner', async () => {
+    const manager = new SessionManager(db, sendToRenderer);
+    const runtime = manager as unknown as {
+      ensureSandboxInitialized: Mock;
+      agentRunner: { run: Mock };
+      runSessionTitleGeneration: Mock;
+    };
+    vi.spyOn(runtime, 'ensureSandboxInitialized').mockResolvedValue(undefined);
+    vi.spyOn(runtime, 'runSessionTitleGeneration').mockResolvedValue(undefined);
+    let fail!: (error: Error) => void;
+    runtime.agentRunner.run
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject;
+          })
+      )
+      .mockResolvedValueOnce({ status: 'succeeded' });
+    const first = await manager.continueSession('s1', 'first');
+    const second = await manager.continueSession('s1', 'second');
+    expect(first.turnId).not.toBe(second.turnId);
+    await vi.waitFor(() => expect(runtime.agentRunner.run).toHaveBeenCalledTimes(1));
+    fail(new Error('first failed'));
+    await expect(waitForSessionTurn(first, 1000)).rejects.toThrow('first failed');
+    await expect(waitForSessionTurn(second, 1000)).resolves.toBeUndefined();
+    expect(runtime.agentRunner.run.mock.calls.map((call) => call[4].turnId)).toEqual([
+      first.turnId,
+      second.turnId,
+    ]);
+  });
+
+  it('recovers queued input once and keeps the receipt of an interrupted write', async () => {
+    const path = temporaryDatabasePath();
+    const original = harnessDatabase(path);
+    original.raw
+      .prepare(
+        "INSERT INTO sessions(id,title,cwd,created_at,updated_at) VALUES ('s1','Test','/tmp',0,0)"
+      )
+      .run();
+    const route = vi.fn().mockResolvedValue({ model: 'stored-model', apiKey: 'ephemeral-secret' });
+    const prepare = (storage: DatabaseInstance) => {
+      const manager = new SessionManager(
+        storage,
+        sendToRenderer,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        route
+      );
+      const internals = manager as unknown as {
+        ensureSandboxInitialized: Mock;
+        agentRunner: { run: Mock };
+        runSessionTitleGeneration: Mock;
+      };
+      vi.spyOn(internals, 'ensureSandboxInitialized').mockResolvedValue(undefined);
+      vi.spyOn(internals, 'runSessionTitleGeneration').mockResolvedValue(undefined);
+      return { manager, run: internals.agentRunner.run };
+    };
+    const first = prepare(original);
+    first.run.mockImplementationOnce(() => new Promise(() => {}));
+    const inFlight = await first.manager.continueSession('s1', 'commit once');
+    const queued = await first.manager.continueSession('s1', 'inspect receipt', undefined, {
+      modelConfigSetId: 'inspection',
+      permissionPolicy: 'default',
+      selectedSkillNames: ['inspect'],
+    });
+    await vi.waitFor(() => expect(first.run).toHaveBeenCalledOnce());
+    expect(JSON.stringify(first.run.mock.calls[0][2])).not.toContain('inspect receipt');
+    first.manager.saveMessage({
+      id: 'receipt',
+      sessionId: 's1',
+      role: 'assistant',
+      timestamp: Date.now(),
+      content: [
+        {
+          type: 'tool_result',
+          toolUseId: 'write',
+          content: 'saved',
+          structuredContent: { receiptId: 'stored-123' },
+        },
+      ],
+    });
+    expect(first.manager.getMessages('s1').map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ]);
+    const copiedId = first.manager.duplicateSession('s1', ' (copy)')!;
+    expect(first.manager.getMessages(copiedId).map(({ role }) => role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(
+      original.raw
+        .prepare('SELECT status FROM session_turns WHERE session_id=? ORDER BY sequence')
+        .pluck()
+        .all(copiedId)
+    ).toEqual(['cancelled', 'cancelled']);
+    original.close();
+
+    const reopened = harnessDatabase(path);
+    const next = prepare(reopened);
+    next.manager.restorePendingTurns();
+    next.manager.restorePendingTurns();
+    await next.manager.waitForSessionIdle('s1');
+    expect(next.run).toHaveBeenCalledOnce();
+    const [, prompt, history, config, settings] = next.run.mock.calls[0];
+    expect(prompt).toBe('inspect receipt');
+    expect(config.model).toBe('stored-model');
+    expect(route).toHaveBeenCalledWith('inspection');
+    expect(settings).toMatchObject({
+      turnId: queued.turnId,
+      selectedSkillNames: ['inspect'],
+      permissionPolicy: 'default',
+      permissionRules: getPermissionRulesForPolicy('default'),
+    });
+    expect(history.filter((message: { role: string }) => message.role === 'user')).toHaveLength(2);
+    expect(JSON.stringify(history)).toContain('stored-123');
+    expect(history.at(-1).id).toBe(settings.messageId);
+    const records = reopened.raw
+      .prepare(
+        "SELECT turn_id,status,options_json FROM session_turns WHERE session_id='s1' ORDER BY sequence"
+      )
+      .all();
+    expect(records).toMatchObject([
+      { turn_id: inFlight.turnId, status: 'interrupted' },
+      { turn_id: queued.turnId, status: 'succeeded' },
+    ]);
+    expect(JSON.stringify(records)).not.toContain('ephemeral-secret');
+    expect(JSON.stringify(next.manager.getMessages('s1'))).toContain(harnessMessage('interrupted'));
+    reopened.close();
+    const final = prepare(harnessDatabase(path));
+    final.manager.restorePendingTurns();
+    await final.manager.waitForSessionIdle('s1');
+    expect(final.run).not.toHaveBeenCalled();
+  });
+
+  it('keeps receipts of cancelled running turns while omitting unexecuted cancelled input', async () => {
+    const manager = new SessionManager(db, sendToRenderer);
+    const runtime = manager as unknown as {
+      ensureSandboxInitialized: Mock;
+      agentRunner: { run: Mock };
+      runSessionTitleGeneration: Mock;
+    };
+    vi.spyOn(runtime, 'ensureSandboxInitialized').mockResolvedValue(undefined);
+    vi.spyOn(runtime, 'runSessionTitleGeneration').mockResolvedValue(undefined);
+    let stop!: () => void;
+    runtime.agentRunner.run.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          stop = () => resolve({ status: 'cancelled' });
+        })
+    );
+    const first = await manager.continueSession('s1', 'save record');
+    await vi.waitFor(() => expect(runtime.agentRunner.run).toHaveBeenCalledOnce());
+    await manager.continueSession('s1', 'never execute this');
+    manager.stopSession('s1');
+    manager.saveMessage({
+      id: 'saved',
+      sessionId: 's1',
+      role: 'assistant',
+      timestamp: Date.now(),
+      content: [{ type: 'tool_result', toolUseId: 'write', content: 'committed-123' }],
+    });
+    stop();
+    await first.completion;
+    const next = await manager.continueSession('s1', 'review the receipt');
+    await next.completion;
+    const history = JSON.stringify(runtime.agentRunner.run.mock.calls[1][2]);
+    expect(history).toContain('committed-123');
+    expect(history).not.toContain('never execute this');
+  });
+
+  it('distinguishes a turn timeout from the deadline of an individual waiter', async () => {
+    vi.useFakeTimers();
+    try {
+      const manager = new SessionManager(db, sendToRenderer);
+      const runtime = manager as unknown as {
+        ensureSandboxInitialized: Mock;
+        agentRunner: { run: Mock };
+      };
+      let release!: () => void;
+      vi.spyOn(runtime, 'ensureSandboxInitialized').mockReturnValue(
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+      );
+      runtime.agentRunner.run.mockResolvedValue({ status: 'timed_out' });
+      const turn = await manager.continueSession('s1', 'slow');
+      const longWait = expect(waitForSessionTurn(turn, 30 * 24 * 60 * 60 * 1000)).rejects.toThrow(
+        harnessMessage('turnTimeout')
+      );
+      const expired = expect(waitForSessionTurn(turn, 25)).rejects.toThrow(
+        harnessMessage('waitTimeout', { timeoutMs: 25 })
+      );
+      await vi.advanceTimersByTimeAsync(25);
+      await expired;
+      release();
+      await expect(turn.completion).resolves.toEqual({ status: 'timed_out' });
+      await longWait;
+      await expect(waitForSessionTurn(turn, 1000)).rejects.toThrow(harnessMessage('turnTimeout'));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records a failed conversation step and stops before the next action', async () => {
+    const raw = new Database(':memory:');
+    try {
+      migrateMainSchema(raw);
+      const store = createAutomationStore({ raw } as DatabaseInstance);
+      const manager = new SessionManager(db, sendToRenderer);
+      const row = db.sessions.get('s1')!;
+      vi.mocked(db.sessions.get).mockImplementation((id) => ({ ...row, id }));
+      const { AgentRunner } = await vi.importActual<
+        typeof import('../src/main/agent/agent-runner')
+      >('../src/main/agent/agent-runner');
+      const agentRunner = new AgentRunner(
+        {
+          sendToRenderer,
+          saveMessage: (message) => manager.saveMessage(message),
+        },
+        new PathResolver()
+      );
+      const runtime = manager as unknown as {
+        ensureSandboxInitialized: Mock;
+        agentRunner: typeof agentRunner;
+      };
+      runtime.agentRunner = agentRunner;
+      vi.spyOn(runtime, 'ensureSandboxInitialized').mockResolvedValue(undefined);
+      vi.spyOn(sandboxSync, 'initSandboxSyncForRun').mockResolvedValueOnce({
+        sandboxPath: null,
+        useSandboxIsolation: false,
+        sandbox: getSandboxAdapter(),
+      });
+      vi.spyOn(modelResolution, 'resolveRunModel').mockRejectedValueOnce(
+        new Error('provider unavailable')
+      );
+      const registry = createDefaultAutomationActionRegistry({
+        sessionManager: manager,
+        dataPipelineStore: {} as never,
+      });
+      const next = vi.fn();
+      registry.register({
+        type: 'test.next',
+        title: 'Next',
+        category: 'custom',
+        icon: 'play',
+        version: 1,
+        configSchema: { type: 'object', properties: {} },
+        defaultConfig: {},
+        execute: next,
+      });
+      const automation = store.create({
+        name: 'Chat failure',
+        trigger: { kind: 'manual', timezone: 'UTC' },
+        actionGraph: {
+          version: 1,
+          nodes: [
+            {
+              id: 'chat',
+              type: 'conversation.run',
+              enabled: true,
+              config: { prompt: 'go', completionMode: 'wait' },
+            },
+            { id: 'next', type: 'test.next', enabled: true, config: {} },
+          ],
+          edges: [{ id: 'flow', sourceNodeId: 'chat', targetNodeId: 'next' }],
+        },
+      });
+      await new AutomationRunner({ store, registry }).run(automation, 'manual');
+      const [run] = store.listRuns(automation.id);
+      expect(run).toMatchObject({
+        status: 'failed',
+        executionSummary: {
+          steps: [
+            expect.objectContaining({
+              nodeId: 'chat',
+              status: 'failed',
+              error: 'provider unavailable',
+            }),
+          ],
+        },
+      });
+      const [artifact] = store.listArtifacts(run.id);
+      const sessionId = artifact.dataRef?.id;
+      expect(manager.getMessages(sessionId!)).toContainEqual(
+        expect.objectContaining({
+          role: 'assistant',
+          content: [{ type: 'text', text: '**Error**: provider unavailable' }],
+        })
+      );
+      expect(next).not.toHaveBeenCalled();
+    } finally {
+      raw.close();
+    }
+  });
+
+  it('returns the submitted turn immediately in fire-and-forget mode', async () => {
+    const manager = new SessionManager(db, sendToRenderer);
+    const runtime = manager as unknown as { ensureSandboxInitialized: Mock };
+    let release!: () => void;
+    vi.spyOn(runtime, 'ensureSandboxInitialized').mockReturnValue(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    const registry = createDefaultAutomationActionRegistry({
+      sessionManager: manager,
+      dataPipelineStore: {} as never,
+    });
+    const action = registry.get('conversation.run')!;
+    const result = (await action.execute(
+      { prompt: 'go', completionMode: 'fire_and_forget' },
+      { emitArtifact: vi.fn() } as never,
+      {} as never
+    )) as { sessionId: string; turnId: string };
+    expect(result).toMatchObject({ sessionId: expect.any(String), turnId: expect.any(String) });
+    manager.stopSession(result.sessionId);
+    release();
+    await manager.waitForSessionIdle(result.sessionId);
+  });
+
   it('keeps the permission policy passed to startSession together with its rules', async () => {
     const manager = new SessionManager(db, sendToRenderer);
-    const processPrompt = vi.fn().mockResolvedValue(undefined);
+    const processPrompt = vi.fn().mockResolvedValue({ status: 'succeeded' });
     (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
     const rules = getPermissionRulesForPolicy('auto_review');
-    const session = await manager.startSession(
+    const { session } = await manager.startSession(
       'Background',
       'go',
       '/tmp',
@@ -132,9 +467,9 @@ describe('SessionManager processQueue concurrency', () => {
     });
     const processPrompt = vi
       .fn()
-      .mockReturnValueOnce(first)
-      .mockReturnValueOnce(second)
-      .mockResolvedValue(undefined);
+      .mockReturnValueOnce(first.then(() => ({ status: 'cancelled' })))
+      .mockReturnValueOnce(second.then(() => ({ status: 'succeeded' })))
+      .mockResolvedValue({ status: 'succeeded' });
     (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
     const statuses = () =>
       sendToRenderer.mock.calls.flatMap(([event]) =>
@@ -142,8 +477,9 @@ describe('SessionManager processQueue concurrency', () => {
       );
 
     await manager.continueSession('s1', 'running');
-    await manager.continueSession('s1', 'discarded by stop');
+    const discarded = await manager.continueSession('s1', 'discarded by stop');
     manager.stopSession('s1');
+    await expect(discarded.completion).resolves.toEqual({ status: 'cancelled' });
     await manager.continueSession('s1', 'after stop');
     await manager.continueSession('s1', 'last');
     const becameIdle = vi.fn();
@@ -177,10 +513,11 @@ describe('SessionManager processQueue concurrency', () => {
       agentRunner: { run: Mock };
     };
     vi.spyOn(runtime, 'ensureSandboxInitialized').mockReturnValue(setup);
-    await manager.continueSession('s1', 'preparing');
+    const preparing = await manager.continueSession('s1', 'preparing');
     const idle = manager.waitForSessionIdle('s1');
     manager.stopSession('s1');
     finishSetup();
+    await expect(preparing.completion).resolves.toEqual({ status: 'cancelled' });
     await idle;
     expect(runtime.agentRunner.run).not.toHaveBeenCalled();
     expect(onCompleted).not.toHaveBeenCalled();
@@ -203,8 +540,8 @@ describe('SessionManager processQueue concurrency', () => {
     });
     const processPrompt = vi
       .fn()
-      .mockImplementationOnce(() => firstRun)
-      .mockResolvedValue(undefined);
+      .mockImplementationOnce(() => firstRun.then(() => ({ status: 'succeeded' })))
+      .mockResolvedValue({ status: 'succeeded' });
     (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
     (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = () => session;
     const enqueuePrompt = (
@@ -262,8 +599,8 @@ describe('SessionManager processQueue concurrency', () => {
     let callCount = 0;
     const processPromptSpy = vi.fn().mockImplementation(() => {
       callCount++;
-      if (callCount === 1) return firstCall;
-      return secondCall;
+      if (callCount === 1) return firstCall.then(() => ({ status: 'succeeded' }));
+      return secondCall.then(() => ({ status: 'succeeded' }));
     });
 
     // Replace the private processPrompt with our spy
@@ -336,9 +673,9 @@ describe('SessionManager processQueue concurrency', () => {
     );
 
     // Mock processPrompt to resolve immediately
-    (manager as unknown as { processPrompt: () => Promise<void> }).processPrompt = vi
-      .fn()
-      .mockResolvedValue(undefined);
+    (
+      manager as unknown as { processPrompt: () => Promise<{ status: 'succeeded' }> }
+    ).processPrompt = vi.fn().mockResolvedValue({ status: 'succeeded' });
     (manager as unknown as { loadSession: (id: string) => unknown }).loadSession = (
       id: string
     ) => ({
@@ -386,6 +723,11 @@ describe('SessionManager cache eviction', () => {
     const db = createMockDb();
     const manager = new SessionManager(db, vi.fn());
 
+    db.raw
+      .prepare(
+        "INSERT INTO sessions(id,title,created_at,updated_at) VALUES ('session-0','Test',0,0)"
+      )
+      .run();
     // Fill the cache to MAX_CACHE_SIZE by fetching messages for many sessions.
     // getMessages populates the cache via messageCache.set.
     const MAX = 100; // SessionManager.MAX_CACHE_SIZE

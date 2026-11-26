@@ -1,22 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { MCPManager } from '../src/main/mcp/mcp-manager';
 import { Agent, type AgentTool } from '@earendil-works/pi-agent-core';
-import { Type } from 'typebox';
 import { AgentRuntimeExtensionManager } from '../src/main/extensions/agent-runtime-extension-manager';
 import type { BeforeSessionRunContext } from '../src/main/extensions/agent-runtime-extension';
-import { AgentSession } from '@earendil-works/pi-coding-agent';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  AgentSession,
+  createAgentSession,
+  SessionManager,
+  ModelRuntime,
+  SettingsManager,
+} from '@earendil-works/pi-coding-agent';
 import {
   createAssistantMessageEventStream,
   getCurrentSystemPrompt,
   getCurrentTools,
   type AssistantMessage,
+  type Context,
   type Message,
   type Model,
   type ToolCall,
 } from '@earendil-works/pi-ai';
 import { AgentRequestContext } from '../src/main/agent/agent-request-context';
 import {
-  applyActiveToolsInPlace,
+  activateSessionTools,
+  buildMcpCustomTools,
   selectActiveToolsForTurn,
+  replaceSessionToolRegistry,
 } from '../src/main/agent/agent-runner-tools';
 import { createCapabilitiesSearchTool } from '../src/main/agent/agent-capabilities-tool';
 import { createDataAgentRuntimeExtension } from '../src/main/data/data-agent-extension';
@@ -180,7 +192,7 @@ describe('request-only domain context with the real SDK', () => {
     expect(seen.at(-1)?.system).toContain('current-task=9;');
     expect(seen.at(-1)?.system).toContain('stable-domain-rule');
     context.update({});
-    await agent.prompt('写诗');
+    await agent.prompt('next');
     expect(seen.at(-1)?.system).toBe('base');
   });
 
@@ -230,35 +242,75 @@ describe('request-only domain context with the real SDK', () => {
   it('discovers and executes a hidden tool in the same loop, then releases it next turn', async () => {
     const context = new AgentRequestContext();
     context.update({ toolContexts: [{ tools: ['hidden_tool'], stablePrompt: 'hidden-rule' }] });
-    let calls = 0;
-    const hidden: AgentTool = {
-      label: 'Offline test tool',
-      name: 'hidden_tool',
-      description: 'offline',
-      parameters: Type.Object({}),
-      execute: async () => {
-        calls++;
-        return { content: [{ type: 'text' as const, text: 'executed' }], details: {} };
-      },
+    const schema = {
+      type: 'object',
+      properties: { mode: { const: 'inspect' } },
+      required: ['mode'],
+      additionalProperties: false,
     };
-    const pi = Object.create(AgentSession.prototype) as AgentSession;
+    const callTool = vi.fn().mockResolvedValue({
+      isError: true,
+      content: [{ type: 'text', text: 'lookup required' }],
+      structuredContent: { receiptId: 'check-42' },
+    });
+    const [hidden] = buildMcpCustomTools({
+      getTools: () => [
+        {
+          name: 'hidden_tool',
+          originalName: 'inspect',
+          serverName: 'offline',
+          inputSchema: schema,
+          description: 'offline',
+        },
+      ],
+      callTool,
+    } as unknown as MCPManager);
+    let wireContext: Context | undefined;
+    let pi!: AgentSession;
     const search = createCapabilitiesSearchTool({
+      getTools: () => [hidden],
       getPacks: () => ({ hidden: { description: 'test', tools: ['hidden_tool'] } }),
       activateTools: (names) => {
-        const active = applyActiveToolsInPlace(pi, [...pi.getActiveToolNames(), ...names]);
+        const active = activateSessionTools(pi, [...pi.getActiveToolNames(), ...names]);
         context.setActiveTools(active);
         return { activated: names, unknown: [] };
       },
     });
-    const searchTool: AgentTool = {
-      ...search,
-      execute: (id, params, signal, onUpdate) =>
-        search.execute(id, params, signal, onUpdate, undefined as never),
-    };
     const requests: Array<{ tools: string[]; system: string }> = [];
-    const agent = new Agent({
-      initialState: { model, tools: [searchTool], systemPrompt: 'base' },
-      streamFn: (_model, request) => {
+    const dir = mkdtempSync(join(tmpdir(), 'harness-sdk-'));
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, 'auth.json'),
+      modelsStorePath: join(dir, 'models-cache'),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    await runtime.setRuntimeApiKey('openai', 'offline-test');
+    try {
+      ({ session: pi } = await createAgentSession({
+        cwd: dir,
+        agentDir: dir,
+        model,
+        modelRuntime: runtime,
+        sessionManager: SessionManager.inMemory(dir),
+        settingsManager: SettingsManager.inMemory({ retry: { enabled: false } }),
+        customTools: [search],
+      }));
+      activateSessionTools(pi, [search.name]);
+      let connected = false;
+      context.beforeRequest = () => {
+        if (connected) return false;
+        connected = true;
+        replaceSessionToolRegistry(pi, [search, hidden]);
+        activateSessionTools(pi, [search.name]);
+        return true;
+      };
+      const events: unknown[] = [];
+      pi.subscribe((event) => {
+        if (event.type === 'tool_execution_end') events.push(event);
+      });
+      pi.agent.streamFunction = (_model, request) => {
+        if (getCurrentTools(request.messages).some((tool) => tool.name === hidden.name))
+          wireContext = request;
         const view = requestView(request.messages);
         requests.push({
           tools: view.tools,
@@ -271,39 +323,115 @@ describe('request-only domain context with the real SDK', () => {
                   type: 'toolCall',
                   id: 'discover',
                   name: 'capabilities_search',
-                  arguments: { pack: 'hidden' },
+                  arguments: { query: 'offline' },
                 },
               ]
             : requests.length === 2
-              ? [{ type: 'toolCall', id: 'execute', name: 'hidden_tool', arguments: {} }]
-              : [{ type: 'text', text: 'done' }]
+              ? [
+                  {
+                    type: 'toolCall',
+                    id: 'load',
+                    name: search.name,
+                    arguments: { tool: hidden.name },
+                  },
+                ]
+              : requests.length === 3
+                ? [
+                    {
+                      type: 'toolCall',
+                      id: 'execute',
+                      name: hidden.name,
+                      arguments: { mode: 'inspect' },
+                    },
+                  ]
+                : [{ type: 'text', text: 'done' }]
         );
-      },
-    });
-    Object.assign(pi, {
-      agent,
-      _toolRegistry: new Map<string, AgentTool>([
-        [searchTool.name, searchTool],
-        [hidden.name, hidden],
-      ]),
-      _rebuildSystemPrompt: () => 'base',
-    });
-    context.install(agent);
-    await agent.prompt('discover');
-    expect(calls).toBe(1);
-    expect(requests[1].tools).toContain('hidden_tool');
-    expect(requests[1].system).toContain('hidden-rule');
-    const next = selectActiveToolsForTurn(
-      pi.getActiveToolNames(),
-      new Set([search.name, hidden.name]),
-      new Set([hidden.name]),
-      []
-    );
-    applyActiveToolsInPlace(pi, next);
-    context.update({});
-    context.setActiveTools(next);
-    await agent.prompt('写诗');
-    expect(requests.at(-1)?.tools).toEqual(['capabilities_search']);
-    expect(requests.at(-1)?.system).not.toContain('hidden-rule');
+      };
+      context.install(pi.agent);
+      await pi.prompt('discover');
+      expect(callTool).toHaveBeenCalledOnce();
+      expect(requests[2].tools).toContain(hidden.name);
+      expect(requests[2].system).toContain('hidden-rule');
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          toolName: hidden.name,
+          isError: true,
+          result: expect.objectContaining({ structuredContent: { receiptId: 'check-42' } }),
+        })
+      );
+      expect(pi.agent.state.messages).toContainEqual(
+        expect.objectContaining({ role: 'toolResult', toolCallId: 'execute', isError: true })
+      );
+      let body: { tools?: Array<{ name: string; parameters: unknown }> } = {};
+      let wireError: unknown;
+      const providerResponse = await runtime.completeSimple(model, wireContext!, {
+        fetch: async (input, init) => {
+          try {
+            body = await new Request(input, init).json();
+          } catch (error) {
+            wireError = error;
+          }
+          return new Response(
+            'event: response.completed\ndata: {"type":"response.completed","response":{"id":"offline","status":"completed","output":[]}}\n\n',
+            { headers: { 'Content-Type': 'text/event-stream' } }
+          );
+        },
+      });
+      expect(providerResponse.stopReason, providerResponse.errorMessage).toBe('stop');
+      expect(wireError).toBeUndefined();
+      expect(
+        body.tools?.find((tool) => tool.name === hidden.name)?.parameters,
+        JSON.stringify(body).slice(-700)
+      ).toEqual(schema);
+      await runtime.setRuntimeApiKey('google', 'offline-google');
+      let geminiSchema: unknown;
+      const gemini = {
+        ...model,
+        api: 'google-generative-ai' as const,
+        provider: 'google',
+        id: 'gemini-test',
+      };
+      const captured = await runtime.completeSimple(gemini, wireContext!, {
+        onPayload: (payload) => {
+          const { config } = payload as {
+            config: {
+              tools: Array<{
+                functionDeclarations: Array<{ name: string; parametersJsonSchema: unknown }>;
+              }>;
+            };
+          };
+          geminiSchema = config.tools
+            .flatMap((group) => group.functionDeclarations)
+            .find((tool) => tool.name === hidden.name)?.parametersJsonSchema;
+          throw new Error('offline declaration captured');
+        },
+      });
+      expect(captured.errorMessage).toContain('offline declaration captured');
+      expect(geminiSchema).toEqual({ ...schema, properties: { mode: { enum: ['inspect'] } } });
+      const next = selectActiveToolsForTurn(
+        pi.getActiveToolNames(),
+        new Set([search.name, hidden.name]),
+        new Set([hidden.name]),
+        []
+      );
+      activateSessionTools(pi, next);
+      context.update({});
+      context.setActiveTools(next);
+      await pi.prompt('next');
+      expect(requests.at(-1)?.tools).toEqual(['capabilities_search']);
+      expect(requests.at(-1)?.system).not.toContain('hidden-rule');
+      expect(requests.map((r) => r.tools.length)).toEqual([1, 1, 2, 2, 1]);
+      activateSessionTools(pi, [search.name, hidden.name]);
+      context.beforeRequest = () => {
+        replaceSessionToolRegistry(pi, [search]);
+        return true;
+      };
+      await pi.prompt('disconnected');
+      expect(requests.at(-1)?.tools).toEqual([search.name]);
+      expect(pi.getAllTools().map((tool) => tool.name)).not.toContain(hidden.name);
+    } finally {
+      pi?.dispose();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

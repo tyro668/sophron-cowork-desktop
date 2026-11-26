@@ -8,49 +8,14 @@ const bridgePath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-even
 const bridgeContent = readFileSync(bridgePath, 'utf8');
 const toolsPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-tools.ts');
 const toolsContent = readFileSync(toolsPath, 'utf8');
-const logUtilsPath = path.resolve(process.cwd(), 'src/main/agent/agent-runner-log-utils.ts');
-const logUtilsContent = readFileSync(logUtilsPath, 'utf8');
 const mainAgentPromptPath = path.resolve(process.cwd(), 'src/main/prompts/main-agent-system.txt');
 const mainAgentPromptContent = readFileSync(mainAgentPromptPath, 'utf8');
 
 describe('AgentRunner sophron SDK integration', () => {
-  it('avoids dynamic re-import shadowing for config store singletons', () => {
-    expect(agentRunnerContent).toContain(
-      "import { mcpConfigStore } from '../mcp/mcp-config-store'"
-    );
-    expect(agentRunnerContent).not.toContain(
-      "const { configStore } = await import('../config/config-store')"
-    );
-    expect(agentRunnerContent).not.toContain(
-      "const { mcpConfigStore } = await import('../mcp/mcp-config-store')"
-    );
-  });
-
-  it('keeps MCP config build resilient', () => {
-    expect(logUtilsContent).toContain('function safeStringify');
-    expect(agentRunnerContent).toContain('Failed to prepare MCP server config, skipping server');
-  });
-
   it('uses standard markdown link guidance for sources citations', () => {
     expect(mainAgentPromptContent).toContain(
       'otherwise use standard Markdown links: [Title](https://example.com/page)'
     );
-  });
-
-  it('avoids duplicating the current user prompt in contextual history assembly', () => {
-    expect(agentRunnerContent).toContain('const conversationMessages = existingMessages');
-    // Image-containing messages are filtered out individually (not skipping entire history)
-    expect(agentRunnerContent).toContain('const textOnlyMessages = conversationMessages');
-    expect(agentRunnerContent).toContain('textOnlyMessages.slice(0, -1)');
-    expect(agentRunnerContent).toContain(
-      "textOnlyMessages[textOnlyMessages.length - 1]?.role === 'user'"
-    );
-  });
-
-  it('keeps MCP server logging compact unless full debug logging is enabled', () => {
-    expect(agentRunnerContent).toContain("log('[AgentRunner] Final mcpServers summary:'");
-    expect(agentRunnerContent).toContain("if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {");
-    expect(agentRunnerContent).toContain("log('[AgentRunner] Final mcpServers config:'");
   });
 
   it('summarizes noisy SDK message updates instead of logging every text delta', () => {

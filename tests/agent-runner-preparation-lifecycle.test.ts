@@ -35,7 +35,9 @@ describe('agent preparation lifecycle', () => {
   it('unregisters the session after failing preparation', async () => {
     sandbox.init.mockRejectedValue(new Error('Storage unavailable'));
     const { runner, send, unmount } = fixture();
-    await runner.run(session, 'test', []);
+    await expect(
+      runner.run(session, 'test', [], undefined, { turnId: 'queued-turn' })
+    ).resolves.toMatchObject({ status: 'failed', error: 'Storage unavailable' });
     expect(unmount).toHaveBeenCalledWith(session.id);
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -60,7 +62,7 @@ describe('agent preparation lifecycle', () => {
     await vi.waitFor(() => expect(sandbox.init).toHaveBeenCalled());
     runner.cancel(session.id);
     finish({ sandboxPath: '/workspace', useSandboxIsolation: true, sandbox: {} });
-    await running;
+    await expect(running).resolves.toEqual({ status: 'cancelled' });
     expect(unmount).toHaveBeenCalledWith(session.id);
     expect(sandbox.sync).toHaveBeenCalledWith(session.id);
     expect(send).toHaveBeenCalledWith(

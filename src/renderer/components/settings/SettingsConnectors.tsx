@@ -6,7 +6,6 @@ import { Plug, Plus } from 'lucide-react';
 import type { MCPServerConfig, MCPServerStatus, MCPToolInfo } from './shared';
 import { showToast } from '../../utils/toast';
 import { useConfirmDialog } from '../ConfirmDialog';
-import { Button } from '../ui/button';
 import {
   formatMcpTypeLabel,
   getMcpStatusDotClass,
@@ -204,11 +203,11 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   const selectedServer = servers.find((item) => item.id === selectedServerId) ?? null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface md:flex-row">
-      {/* Left rail: connector list */}
-      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary/45 md:w-[236px] md:border-b-0 md:border-r lg:w-[256px]">
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
-          <div className="flex min-w-0 items-center gap-1.5">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[6px] border border-border-subtle bg-surface md:flex-row">
+      {/* Left rail: flush, gapless connector list */}
+      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary md:w-[232px] md:border-b-0 md:border-r lg:w-[248px]">
+        <div className="flex h-9 shrink-0 items-stretch border-b border-border-subtle bg-surface-muted">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 px-3">
             <Plug className="h-3.5 w-3.5 shrink-0 text-text-muted" />
             <h2 className="truncate text-[12px] font-semibold text-text-primary">
               {t('settings.connectors')}
@@ -222,16 +221,16 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
               setShowAddForm(true);
             }}
             disabled={isLoading}
-            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted/75 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-accent-cell shrink-0 border-l border-border-subtle !px-2.5"
           >
             <Plus className="h-3.5 w-3.5" />
             {t('common.add')}
           </button>
         </div>
 
-        <div className="scrollbar-hover max-h-48 flex-1 space-y-0.5 overflow-y-auto p-1.5 md:max-h-none">
+        <div className="scrollbar-hover max-h-48 flex-1 overflow-y-auto md:max-h-none">
           {servers.length === 0 ? (
-            <p className="px-2.5 py-6 text-center text-[12px] text-text-muted">
+            <p className="px-3 py-6 text-center text-[12px] text-text-muted">
               {t('mcp.noConnectors')}
             </p>
           ) : (
@@ -250,10 +249,10 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                     setSelectedServerId(server.id);
                   }}
                   aria-pressed={isSelected}
-                  className={`flex w-full min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                  className={`flex w-full min-w-0 flex-col gap-0.5 border-b border-border-subtle px-3 py-2 text-left transition-colors ${
                     isSelected
-                      ? 'bg-accent-muted/85 text-text-primary shadow-[inset_2px_0_0_var(--color-accent)]'
-                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      ? 'bg-accent-muted text-text-primary shadow-[inset_3px_0_0_var(--color-accent)]'
+                      : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-2">
@@ -262,9 +261,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
                     />
                     <span
                       className={`min-w-0 flex-1 truncate text-[12.5px] leading-4 ${
-                        isSelected
-                          ? 'font-semibold text-text-primary'
-                          : 'font-medium text-text-primary'
+                        isSelected ? 'font-semibold text-accent' : 'font-medium text-text-primary'
                       }`}
                     >
                       {server.name}
@@ -288,7 +285,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
           )}
         </div>
 
-        <div className="flex h-8 shrink-0 items-center border-t border-border-subtle px-3 text-[11.5px] text-text-muted">
+        <div className="flex h-9 shrink-0 items-center border-t border-border-subtle bg-surface px-3 text-[11.5px] text-text-muted">
           {t('mcp.toolsAvailable', { count: tools.length })}
         </div>
       </aside>
@@ -319,14 +316,16 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle bg-surface-muted text-text-muted">
-            <Plug className="h-5 w-5" />
-          </div>
-          <p className="text-[13px] font-medium text-text-primary">{t('mcp.noConnectors')}</p>
-          <Button variant="primary" size="md" onClick={() => setShowAddForm(true)} className="mt-4">
+          <Plug className="mb-2.5 h-5 w-5 text-text-muted" />
+          <p className="text-[12.5px] font-medium text-text-secondary">{t('mcp.noConnectors')}</p>
+          <button
+            type="button"
+            onClick={() => setShowAddForm(true)}
+            className="ui-accent-cell mt-3 h-8 border border-border-subtle"
+          >
             <Plus className="h-3.5 w-3.5" />
             {t('mcp.addCustomConnector')}
-          </Button>
+          </button>
         </div>
       )}
     </div>

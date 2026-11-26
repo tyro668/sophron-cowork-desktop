@@ -1,3 +1,4 @@
+import { harnessDatabase } from './fixtures/harness-db';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DatabaseInstance } from '../src/main/db/database';
 
@@ -35,7 +36,7 @@ vi.mock('electron-store', () => {
 
 vi.mock('../src/main/agent/agent-runner', () => ({
   AgentRunner: class {
-    run = vi.fn();
+    run = vi.fn().mockResolvedValue({ status: 'succeeded' });
     cancel = vi.fn();
     handleQuestionResponse = vi.fn();
   },
@@ -59,10 +60,10 @@ function makeDb(overrides: Partial<DatabaseInstance> = {}): DatabaseInstance {
     created_at: 1,
     updated_at: 1,
   };
+  const storage = harnessDatabase();
+  storage.raw.pragma('foreign_keys = OFF'); // These unit fixtures stub session and project rows.
   return {
-    raw: {
-      transaction: (fn: () => void) => fn,
-    } as any,
+    raw: storage.raw,
     projects: {
       create: vi.fn(),
       update: vi.fn(() => defaultProject),
@@ -175,7 +176,7 @@ describe('permission confirmation lifecycle', () => {
   it('unattended sessions deny permission requests instead of waiting for a human', async () => {
     const events = vi.fn();
     const manager = new SessionManager(makeDb(), events);
-    const session = await manager.startSession(
+    const { session } = await manager.startSession(
       '修复脚本',
       'fix it',
       '/tmp/workspace',

@@ -123,6 +123,7 @@ export interface ToolUseContent {
 }
 
 export interface ToolResultContent {
+  structuredContent?: Record<string, unknown>;
   type: 'tool_result';
   dataPipelineCompletion?: DataPipelineAuthoringCompletion;
   toolUseId: string;

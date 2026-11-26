@@ -19,6 +19,8 @@ import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { resolvePiAiTarget } from './pi-ai-one-shot';
 import type { AnyAgentTool } from './workspace-tools';
 import { log, logWarn } from '../utils/logger';
+import { waitWithSignal } from '../utils/wait-with-signal';
+import { harnessMessage } from '../utils/harness-messages';
 import { redactOutput } from '../exec-guard/redact';
 import { appendFileSync, mkdirSync } from 'fs';
 import path from 'path';
@@ -112,6 +114,7 @@ export class HeadlessToolAgent {
   private agent?: Agent;
   private readonly startedAt = Date.now();
   private readonly deadline: number;
+  private readonly cancellation = new AbortController();
   private timedOut = false;
   private aborted = false;
   private turnsThisPrompt = 0;
@@ -128,10 +131,9 @@ export class HeadlessToolAgent {
     const signal = options.signal;
     if (signal) {
       const onAbort = () => {
-        this.aborted = true;
-        this.agent?.abort();
+        this.cancel();
       };
-      if (signal.aborted) this.aborted = true;
+      if (signal.aborted) onAbort();
       else signal.addEventListener('abort', onAbort, { once: true });
       this.unsubscribeAbort = () => signal.removeEventListener('abort', onAbort);
     }
@@ -139,7 +141,11 @@ export class HeadlessToolAgent {
 
   private async ensureAgent(): Promise<Agent> {
     if (this.agent) return this.agent;
-    const { model, apiKey } = await resolvePiAiTarget(this.options.config);
+    const { model, apiKey } = await waitWithSignal(
+      resolvePiAiTarget(this.options.config),
+      this.cancellation.signal
+    );
+    this.cancellation.signal.throwIfAborted();
     const agent = new Agent({
       initialState: {
         systemPrompt: this.options.systemPrompt,
@@ -237,13 +243,16 @@ export class HeadlessToolAgent {
     this.maxTurnsThisPrompt = options?.maxTurns ?? this.options.maxTurns;
     if (this.aborted) return this.result('', 'aborted');
     const remaining = this.deadline - Date.now();
-    if (remaining <= 0) return this.result('', 'timeout', '超过时间上限');
-    const agent = await this.ensureAgent();
+    if (remaining <= 0) return this.result('', 'timeout', harnessMessage('timeout'));
     const timer = setTimeout(() => {
       this.timedOut = true;
-      agent.abort();
+      this.cancellation.abort();
+      this.agent?.abort();
     }, remaining);
     try {
+      const agent = await this.ensureAgent();
+      this.cancellation.signal.throwIfAborted();
+      if (Date.now() >= this.deadline) return this.result('', 'timeout', harnessMessage('timeout'));
       await agent.prompt(text);
     } catch (error) {
       if (!this.aborted && !this.timedOut) {
@@ -253,16 +262,16 @@ export class HeadlessToolAgent {
     } finally {
       clearTimeout(timer);
     }
-    const messages = agent.state.messages;
+    const messages = this.agent?.state.messages ?? [];
     const last = [...messages]
       .reverse()
       .find((message) => (message as { role?: string }).role === 'assistant') as
       AssistantMessage | undefined;
     const finalText = textOf(last);
     if (this.aborted) return this.result(finalText, 'aborted');
-    if (this.timedOut) return this.result(finalText, 'timeout', '超过时间上限');
+    if (this.timedOut) return this.result(finalText, 'timeout', harnessMessage('timeout'));
     if (last?.stopReason === 'error') {
-      return this.result(finalText, 'error', last.errorMessage || agent.state.errorMessage);
+      return this.result(finalText, 'error', last.errorMessage || this.agent?.state.errorMessage);
     }
     if (last?.stopReason === 'aborted') return this.result(finalText, 'aborted');
     const hitTurnCap =
@@ -275,7 +284,8 @@ export class HeadlessToolAgent {
         'max_tokens',
         `超过 token 上限（${this.options.maxTotalTokens?.toLocaleString('en-US')}）`
       );
-    if (Date.now() >= this.deadline) return this.result(finalText, 'timeout', '超过时间上限');
+    if (Date.now() >= this.deadline)
+      return this.result(finalText, 'timeout', harnessMessage('timeout'));
     return this.result(finalText, 'done');
   }
 
@@ -323,9 +333,15 @@ export class HeadlessToolAgent {
     }
   }
 
+  private cancel(): void {
+    this.aborted = true;
+    this.cancellation.abort();
+    this.agent?.abort();
+  }
+
   dispose(): void {
     this.unsubscribeAbort?.();
-    this.agent?.abort();
+    this.cancel();
   }
 }
 

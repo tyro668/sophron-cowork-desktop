@@ -1,10 +1,12 @@
 import '../../src/main/agent/pi-oauth-runtime';
+import assert from 'node:assert/strict';
+import { buildSyntheticPiModel } from '../../src/main/agent/pi-model-resolution';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 import {
   getProviderApiKey,
   getSharedAuthStorage,
   getSharedModelRuntime,
-  setRuntimeApiKey,
+  createSessionModelRuntime,
 } from '../../src/main/agent/shared-auth';
 
 // Synthetic credential: auth derivation is local and must never contact a server.
@@ -36,7 +38,7 @@ export async function verifyBundledOAuth() {
   // The subprocess redirects the credential store to a temporary directory.
   getSharedAuthStorage().set('openai-codex', credential);
   const shared = await getSharedModelRuntime();
-  await setRuntimeApiKey('openai-codex', 'must-not-mask-oauth');
+  await createSessionModelRuntime('openai-codex', 'must-not-mask-oauth');
   for (let attempt = 0; attempt < 3; attempt++) {
     if ((await getProviderApiKey('openai-codex')) !== credential.access) {
       throw new Error('Repeated auth lookup lost OAuth credentials');
@@ -53,16 +55,52 @@ export async function verifyBundledOAuth() {
     throw new Error('OAuth recovery failed');
   if (getSharedAuthStorage().get('openai-codex')?.type !== 'oauth')
     throw new Error('Stored OAuth changed');
-  // App-level provider ids (e.g. `aliyun`) have no pi-ai builtin provider.
-  // Publishing a runtime key must register a provider so session auth checks
-  // (hasConfiguredAuth/checkAuth/getAuth) resolve instead of reporting
-  // "No API key found for <provider>".
-  await setRuntimeApiKey('aliyun', 'sk-aliyun');
-  if (!shared.getProvider('aliyun')) throw new Error('aliyun provider not registered');
-  if (!shared.hasConfiguredAuth('aliyun')) throw new Error('aliyun not marked configured');
-  if ((await shared.checkAuth('aliyun')) === undefined) throw new Error('aliyun checkAuth failed');
-  if ((await shared.getAuth('aliyun'))?.auth.apiKey !== 'sk-aliyun')
-    throw new Error('aliyun getAuth did not return runtime key');
-  if ((await getProviderApiKey('aliyun')) !== 'sk-aliyun')
-    throw new Error('aliyun provider api key lookup failed');
+  const [chat, automation] = await Promise.all([
+    createSessionModelRuntime('aliyun', 'chat-only'),
+    createSessionModelRuntime('aliyun', 'automation-only'),
+  ]);
+  const routes = [
+    { runtime: chat, baseUrl: 'https://chat.example.test/v1', key: 'chat-only' },
+    { runtime: automation, baseUrl: 'https://automation.example.test/v1', key: 'automation-only' },
+  ];
+  for (const route of routes) {
+    assert.ok(route.runtime.hasConfiguredAuth('aliyun'));
+    assert.ok(await route.runtime.checkAuth('aliyun'));
+  }
+  const requests: Array<[string, string | null]> = [];
+  // Exercise Pi's actual request preparation and HTTP adapter with an offline transport.
+  for (const [step, route] of [routes[0], routes[1], routes[0], routes[0]].entries()) {
+    const model = buildSyntheticPiModel('offline', 'aliyun', 'openai', route.baseUrl);
+    const response = await route.runtime.completeSimple(
+      model,
+      { messages: [{ role: 'user', content: 'probe', timestamp: 0 }] },
+      {
+        fetch: async (input, init) => {
+          const request = new Request(input, init);
+          requests.push([request.url, request.headers.get('authorization')]);
+          if (step === 2)
+            return Response.json({ error: { message: 'Retry fixture' } }, { status: 401 });
+          return new Response(
+            'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+            { headers: { 'Content-Type': 'text/event-stream' } }
+          );
+        },
+      }
+    );
+    assert.equal(
+      response.stopReason,
+      step === 2 ? 'error' : 'stop',
+      response.errorMessage ?? 'Unexpected SDK stop reason'
+    );
+  }
+  assert.deepEqual(
+    requests,
+    [routes[0], routes[1], routes[0], routes[0]].map((route) => [
+      `${route.baseUrl}/chat/completions`,
+      `Bearer ${route.key}`,
+    ])
+  );
+  if (shared.getProviderAuthStatus('aliyun').source === 'runtime') {
+    throw new Error('Session credentials leaked to the shared runtime');
+  }
 }

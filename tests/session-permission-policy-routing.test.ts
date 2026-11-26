@@ -85,7 +85,7 @@ describe('session settings and permission policy routing', () => {
       logoVariant: 'fold',
       accentTheme: 'lavender',
     };
-    mocks.startSession.mockResolvedValue({ id: 'session-a' });
+    mocks.startSession.mockResolvedValue({ session: { id: 'session-a' } });
     mocks.continueSession.mockResolvedValue(undefined);
     registerSessionIpc(appContext);
   });

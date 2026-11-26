@@ -7,6 +7,12 @@ import type {
   ToolResultMessage as PiToolResultMessage,
   UserMessage as PiUserMessage,
 } from '@earendil-works/pi-ai';
+import {
+  historyUserText,
+  renderHistorySummary,
+  summarizeHistory,
+  type HistorySummaryRepository,
+} from './history-summary';
 import type { ContentBlock, Message } from '../../shared/contracts';
 
 const TOOL_PROTOCOL_OPENERS = [
@@ -24,6 +30,8 @@ export interface ColdStartHistoryOptions {
   provider: string;
   model: string;
   maxChars: number;
+  summaries?: HistorySummaryRepository;
+  restoredUserIds?: Map<PiMessage, string>;
 }
 
 export interface ProtocolGuardResult {
@@ -207,17 +215,14 @@ function convertTurnToPiMessages(turn: Message[], options: ColdStartHistoryOptio
   for (let messageIndex = 0; messageIndex < turn.length; messageIndex++) {
     const message = turn[messageIndex];
     if (message.role === 'user') {
-      const text = message.content
-        .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
-        .map((block) => block.text)
-        .filter(Boolean)
-        .join('\n');
+      const text = message.content.map(historyUserText).filter(Boolean).join('\n');
       if (text) {
         const userMessage: PiUserMessage = {
           role: 'user',
           content: text,
           timestamp: message.timestamp,
         };
+        options.restoredUserIds?.set(userMessage, message.id);
         converted.push(userMessage);
       }
       continue;
@@ -315,19 +320,62 @@ export function buildColdStartAgentHistory(
   messages: Message[],
   options: ColdStartHistoryOptions
 ): PiMessage[] {
-  if (options.maxChars <= 0) return [];
-  const turns = groupMessagesByUserTurn(messages);
+  if (options.maxChars <= 2 || !messages.length) return [];
+  const cached = options.summaries?.load(messages);
+  const turns = groupMessagesByUserTurn(messages.slice(cached?.count ?? 0));
   const selected: PiMessage[][] = [];
-  let usedChars = 0;
-
+  let used = 2;
+  let coveredCount = messages.length;
+  const reserve = Math.min(4000, Math.floor(options.maxChars * 0.45));
   for (let index = turns.length - 1; index >= 0; index--) {
     const converted = convertTurnToPiMessages(turns[index], options);
-    if (converted.length === 0) continue;
-    const chars = JSON.stringify(converted).length;
-    if (usedChars + chars > options.maxChars) break;
+    const size = converted.reduce((sum, message) => sum + JSON.stringify(message).length + 1, 0);
+    if (used + size - 1 > options.maxChars) break;
     selected.unshift(converted);
-    usedChars += chars;
+    coveredCount -= turns[index].length;
+    used += size;
   }
+  if (!coveredCount) return selected.flat();
 
-  return selected.flat();
+  // Make room for earlier constraints without splitting a tool call from its result.
+  const recent = selected.flat();
+  while (selected.length > 1 && options.maxChars - used < reserve) {
+    const oldest = selected.shift()!;
+    const originalTurn = turns[turns.length - selected.length - 1];
+    coveredCount += originalTurn.length;
+    used -= oldest.reduce((sum, message) => sum + JSON.stringify(message).length + 1, 0);
+  }
+  const covered = messages.slice(0, coveredCount);
+  const summary =
+    cached?.count === coveredCount
+      ? cached.digest
+      : summarizeHistory(covered.slice(cached?.count ?? 0), cached?.digest);
+  if (cached?.count !== coveredCount) options.summaries?.save(covered, summary);
+  const neutralSummary: PiAssistantMessage = {
+    role: 'assistant',
+    content: [{ type: 'text', text: '' }],
+    api: options.api,
+    provider: options.provider,
+    model: options.model,
+    usage: zeroUsage(),
+    stopReason: 'stop',
+    timestamp: covered[covered.length - 1].timestamp,
+  };
+  const room = options.maxChars - used - JSON.stringify(neutralSummary).length - 2;
+  if (room < 64 && recent.length) return recent;
+  if (room <= 0) return [];
+  let text = renderHistorySummary(summary, room);
+  neutralSummary.content = [{ type: 'text', text }];
+  const tail = selected.flat();
+  while (text && JSON.stringify([neutralSummary, ...tail]).length > options.maxChars) {
+    text = text.slice(
+      0,
+      Math.max(
+        0,
+        text.length - (JSON.stringify([neutralSummary, ...tail]).length - options.maxChars)
+      )
+    );
+    neutralSummary.content = [{ type: 'text', text }];
+  }
+  return text ? [neutralSummary, ...tail] : tail;
 }

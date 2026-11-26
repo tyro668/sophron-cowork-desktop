@@ -1,3 +1,4 @@
+import zh from '../src/shared/i18n/locales/zh.json';
 import { describe, expect, it, vi } from 'vitest';
 import {
   detectAutomationIntent,
@@ -133,16 +134,23 @@ describe('capabilities_search', () => {
     expect(result.details).toMatchObject({ pack: 'data.authoring' });
   });
 
-  it('activates all query-matched packs', async () => {
+  it.each([
+    'preview table',
+    zh.agentHarness.searchAliases.data_preview_table[0],
+    'edit workflow plan',
+    zh.agentHarness.searchAliases.data_apply_workflow_plan[1],
+  ])('ranks individual tools for %s', async (query) => {
     const activateTools = vi.fn((names: string[]) => ({ activated: names, unknown: [] }));
-    const tool = createCapabilitiesSearchTool({
-      getPacks: () => DATA_TOOL_PACKS,
-      activateTools,
-    });
-    const result = await execute(tool, { query: 'cloud' });
-    expect(activateTools).toHaveBeenCalledWith(
-      expect.arrayContaining([...DATA_TOOL_PACKS['data.cloud'].tools])
+    const tool = createCapabilitiesSearchTool({ getPacks: () => DATA_TOOL_PACKS, activateTools });
+    const result = await execute(tool, { query });
+    const first = JSON.parse(textOf(result)).candidates[0].name;
+    expect(first).toBe(
+      ['preview table', zh.agentHarness.searchAliases.data_preview_table[0]].includes(query)
+        ? 'data_preview_table'
+        : 'data_apply_workflow_plan'
     );
-    expect(textOf(result)).toContain('data.cloud');
+    expect(activateTools).not.toHaveBeenCalled();
+    await execute(tool, { tool: first });
+    expect(activateTools).toHaveBeenCalledWith([first]);
   });
 });

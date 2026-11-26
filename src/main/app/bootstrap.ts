@@ -193,7 +193,8 @@ export async function bootstrap(): Promise<void> {
     appContext.pluginRuntimeService,
     extensionManager,
     notifyConversationCompleted,
-    resolveAgentRuntimeConfigForAuth
+    resolveAgentRuntimeConfigForAuth,
+    resolveModelRuntimeConfigForAutomation
   );
   appContext.skillsManager = new SkillsManager(db, {
     getConfiguredGlobalSkillsPath: () => configStore.get('globalSkillsPath') || '',
@@ -213,41 +214,6 @@ export async function bootstrap(): Promise<void> {
   // macOS: application menu, dock menu, tray icon
   buildMacMenu();
   setupTray();
-
-  // Show window after core managers are ready so first-load actions can be handled.
-  createWindow();
-
-  // macOS: dock menu
-  setupDockMenu();
-
-  // macOS: send initial system theme to renderer
-  if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {
-    appContext.mainWindow.webContents.on('did-finish-load', () => {
-      sendToRenderer({
-        type: 'native-theme.changed',
-        payload: { shouldUseDarkColors: nativeTheme.shouldUseDarkColors },
-      });
-    });
-  }
-
-  // Listen for system theme changes
-  nativeTheme.on('updated', () => {
-    sendToRenderer({
-      type: 'native-theme.changed',
-      payload: { shouldUseDarkColors: nativeTheme.shouldUseDarkColors },
-    });
-    if (
-      getSavedThemePreference() === 'system' &&
-      appContext.mainWindow &&
-      !appContext.mainWindow.isDestroyed()
-    ) {
-      appContext.mainWindow.setBackgroundColor(
-        nativeTheme.shouldUseDarkColors ? DARK_BG : LIGHT_BG
-      );
-    }
-  });
-
-  startNavServer(() => appContext.mainWindow);
 
   // Finish metadata upgrades (including legacy output-action migration) before scheduling.
   await initializedDataPipelineStore.getDashboard({ includeSummary: false });
@@ -334,7 +300,6 @@ export async function bootstrap(): Promise<void> {
     },
     reimportRawTable: createRawTableReimporter(initializedDataPipelineStore),
   });
-  appContext.automationScheduler.start();
   const automationToolService = new AutomationToolService({
     automationService: appContext.automationService,
     dataPipelineStore: initializedDataPipelineStore,
@@ -345,16 +310,55 @@ export async function bootstrap(): Promise<void> {
   extensionManager.register(createAutomationAgentRuntimeExtension(automationToolService));
   extensionManager.register(createScriptPackageAgentRuntimeExtension(appContext.scriptPackages));
 
+  appContext.sessionManager.restorePendingTurns();
+  appContext.automationScheduler.start();
+
+  // Show window after core managers are ready so first-load actions can be handled.
+  createWindow();
+
+  // macOS: dock menu
+  setupDockMenu();
+
+  // macOS: send initial system theme to renderer
+  if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {
+    appContext.mainWindow.webContents.on('did-finish-load', () => {
+      sendToRenderer({
+        type: 'native-theme.changed',
+        payload: { shouldUseDarkColors: nativeTheme.shouldUseDarkColors },
+      });
+    });
+  }
+
+  // Listen for system theme changes
+  nativeTheme.on('updated', () => {
+    sendToRenderer({
+      type: 'native-theme.changed',
+      payload: { shouldUseDarkColors: nativeTheme.shouldUseDarkColors },
+    });
+    if (
+      getSavedThemePreference() === 'system' &&
+      appContext.mainWindow &&
+      !appContext.mainWindow.isDestroyed()
+    ) {
+      appContext.mainWindow.setBackgroundColor(
+        nativeTheme.shouldUseDarkColors ? DARK_BG : LIGHT_BG
+      );
+    }
+  });
+
+  startNavServer(() => appContext.mainWindow);
+
   // 初始化远程管理器
   remoteManager.setRendererCallback(sendToRenderer);
   const agentExecutor: AgentExecutor = {
+    getMcpTool: (name) => appContext.sessionManager?.getMCPManager().getTool(name),
     startSession: async (title, prompt, cwd) => {
       if (!appContext.sessionManager) throw new Error('Session manager not initialized');
       const unsupportedReason = getWorkspacePathUnsupportedReason(cwd);
       if (unsupportedReason) {
         throw new Error(unsupportedReason);
       }
-      return appContext.sessionManager.startSession(title, prompt, cwd);
+      return (await appContext.sessionManager.startSession(title, prompt, cwd)).session;
     },
     continueSession: async (sessionId, prompt, content, cwd) => {
       if (!appContext.sessionManager) throw new Error('Session manager not initialized');

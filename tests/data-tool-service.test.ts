@@ -1,4 +1,4 @@
-import { ModelResultStore } from '../src/main/agent/model-result-store';
+import { testResultStore } from './fixtures/harness-db';
 import { describe, expect, it, vi } from 'vitest';
 import type { AgentToolResult, ExtensionToolContext } from '@earendil-works/pi-coding-agent';
 import type { DataToolDefinition } from '../src/main/data/data-tool-types';
@@ -902,7 +902,7 @@ describe('DataToolService', () => {
       limit: 5,
       includeRows: true,
     });
-    const store = new ModelResultStore();
+    const store = testResultStore();
     const bounded = store.bound(result);
     const text = bounded.content[0]?.type === 'text' ? bounded.content[0].text : '';
     expect(text.length).toBeLessThanOrEqual(6000);

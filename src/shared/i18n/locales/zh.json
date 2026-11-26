@@ -1,4 +1,18 @@
 {
+  "agentHarness": {
+    "interrupted": "应用重启中断了本轮任务。请先核对工具回执，再决定是否重试。",
+    "searchAliases": {
+      "data_preview_table": ["预览表", "预览数据表", "查看表数据"],
+      "data_apply_workflow_plan": ["编辑工作流计划", "编辑工作流", "修改工作流"],
+      "automation_update_schedule": ["更新自动化计划", "修改定时任务"]
+    },
+    "timeout": "超过时间上限",
+    "unknownToolOutcome": "无法确认 {{tool}} 的执行结果。请先核对结果，再决定是否重试。{{reason}}",
+    "loopGuard": "因重复调用工具已停止",
+    "cancelled": "对话已取消",
+    "turnTimeout": "对话已超时",
+    "waitTimeout": "等待对话超过 {{timeoutMs}} 毫秒"
+  },
   "common": {
     "appName": "九思助理",
     "save": "保存",

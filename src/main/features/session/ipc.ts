@@ -92,7 +92,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
       const sessionManager = context.sessionManager;
       if (!sessionManager) throw new Error('Session manager not initialized');
       switch (event.type) {
-        case 'session.start':
+        case 'session.start': {
           if (getWorkspacePathUnsupportedReason(event.payload.cwd)) {
             sendToRenderer({
               type: 'error',
@@ -102,7 +102,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
             });
             return null;
           }
-          return sessionManager.startSession(
+          const { session } = await sessionManager.startSession(
             event.payload.title,
             event.payload.prompt,
             event.payload.cwd,
@@ -119,9 +119,11 @@ export function registerSessionIpc(context: SessionIpcContext): void {
               ),
             }
           );
+          return session;
+        }
 
         case 'session.continue':
-          return sessionManager.continueSession(
+          await sessionManager.continueSession(
             event.payload.sessionId,
             event.payload.prompt,
             event.payload.content,
@@ -134,6 +136,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
               ),
             }
           );
+          return;
 
         case 'session.stop':
           return sessionManager.stopSession(event.payload.sessionId);

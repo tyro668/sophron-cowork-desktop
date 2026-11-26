@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Database from 'better-sqlite3';
-import { migrateMainSchema, type DatabaseInstance } from '../src/main/db/database';
+import {
+  MAIN_SCHEMA_MIGRATIONS,
+  migrateMainSchema,
+  type DatabaseInstance,
+} from '../src/main/db/database';
 import { createAutomationStore } from '../src/main/automation/automation-store';
 import { AutomationService } from '../src/main/automation/automation-service';
 import { AutomationRunner } from '../src/main/automation/automation-runner';
@@ -230,7 +234,7 @@ describe('independent table association conditions', () => {
     expect(f.store.get(a.id)?.tableBindings).toEqual([]);
     expect(
       f.raw.prepare('SELECT count(*) AS n FROM app_schema_migrations WHERE version >= 5').get()
-    ).toEqual({ n: 6 });
+    ).toEqual({ n: MAIN_SCHEMA_MIGRATIONS.filter((migration) => migration.version >= 5).length });
   });
   it('validates canonical bindings before persisting a partial update', () => {
     const f = fixture();

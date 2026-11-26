@@ -87,6 +87,8 @@ describe('AgentRunEventBridge live tool output', () => {
       getToolDisplayName: (name: string) => name,
       sendTraceStep,
       sendTraceUpdate,
+      sanitizeOutputPaths: (text: string) => text,
+      sendMessage: vi.fn(),
     } as unknown as AgentRunBridgeDeps;
     bridge = new AgentRunEventBridge(deps);
     bridge.subscribe();
@@ -142,9 +144,65 @@ describe('AgentRunEventBridge live tool output', () => {
       toolPhase: 'executing',
       toolInputPreview: undefined,
     });
+    onEvent({
+      type: 'tool_execution_end',
+      toolCallId: 'failed-call',
+      toolName: 'inspect',
+      result: {
+        content: [{ type: 'text', text: 'lookup required' }],
+        structuredContent: { requestId: 'lookup-42' },
+        details: {},
+      },
+      isError: true,
+    } as AgentSessionEvent);
+    expect(sendTraceUpdate.mock.lastCall?.[2]).toMatchObject({
+      status: 'error',
+      isError: true,
+      outcome: 'tool_failed',
+    });
+    expect(deps.sendMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        content: [
+          expect.objectContaining({ isError: true, structuredContent: { requestId: 'lookup-42' } }),
+        ],
+      })
+    );
+    vi.mocked(deps.sendMessage).mockClear();
     deps.controller.abort();
     const beforeAbort = sendTraceUpdate.mock.calls.length;
     stream('toolcall_delta', 'ignored');
     expect(sendTraceUpdate).toHaveBeenCalledTimes(beforeAbort);
+    const receipt = {
+      type: 'tool_execution_end',
+      toolCallId: 'tool-1',
+      toolName: 'write',
+      result: {
+        content: [{ type: 'text', text: 'committed receipt-123' }],
+        structuredContent: { receiptId: 'receipt-123' },
+        details: {},
+      },
+      isError: false,
+    } as AgentSessionEvent;
+    deps.sessionExists = () => false;
+    onEvent(receipt);
+    expect(deps.sendMessage).not.toHaveBeenCalled();
+    deps.sessionExists = () => true;
+    onEvent(receipt);
+    onEvent(receipt);
+    expect(deps.sendMessage).toHaveBeenCalledTimes(1);
+    expect(deps.sendMessage).toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({
+        content: [
+          expect.objectContaining({
+            content: 'committed receipt-123',
+            structuredContent: { receiptId: 'receipt-123' },
+            isError: false,
+          }),
+        ],
+      })
+    );
+    expect(sendTraceUpdate.mock.lastCall?.[2]).toMatchObject({ status: 'completed' });
   });
 });

@@ -50,10 +50,8 @@ export async function resolveModelRuntimeConfigForAutomation(
     );
   }
 
-  return (
-    (await resolveAgentRuntimeConfigForAuth(configStore.getRuntimeConfigForSet(configSetId))) ??
-    null
-  );
+  const selected = configStore.getRuntimeConfigForSet(configSetId);
+  return selected ? withSophronRuntimeAuth(selected) : null;
 }
 
 export async function resolveAppConfigForAuth(

@@ -19,7 +19,6 @@ import type {
   Message,
   ServerEvent,
   PermissionResult,
-  PermissionRule,
   ContentBlock,
   TextContent,
   TraceStep,
@@ -27,8 +26,13 @@ import type {
   CloudTableAttachmentContent,
   AgentRuntimeConfig,
 } from '../../shared/contracts';
-import type { PermissionPolicyId } from '../../shared/permission-policies';
-import type { DatabaseInstance, ProjectRow, SessionRow, TraceStepRow } from '../db/database';
+import type {
+  DatabaseInstance,
+  MessageRow,
+  ProjectRow,
+  SessionRow,
+  TraceStepRow,
+} from '../db/database';
 import { PathResolver } from '../sandbox/path-resolver';
 import {
   SandboxAdapter,
@@ -70,37 +74,40 @@ import {
 import { generateTitleWithPiAi } from '../agent/pi-ai-one-shot';
 import { buildScheduledTaskTitle } from '../../shared/schedule/task-title';
 import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
+import { waitWithSignal } from '../utils/wait-with-signal';
+import { SessionTurnStore, type AcceptedTurn, type TurnSettings } from './session-turn-store';
+import { createSessionTurn, type SessionTurn, type SessionTurnOutcome } from './session-turn';
 
 interface AgentRunnerLike {
   run(
     session: Session,
     prompt: string,
     existingMessages: Message[],
-    runtimeConfig?: AgentRuntimeConfig,
-    options?: SessionRunOptions
-  ): Promise<void>;
+    runtimeConfig: AgentRuntimeConfig | undefined,
+    options: QueuedTurnOptions
+  ): Promise<SessionTurnOutcome>;
   cancel(sessionId: string): void;
   clearSdkSession?(sessionId: string): void;
   clearAllSdkSessions?(): void;
-  invalidateMcpServersCache?(): void;
   invalidateSkillsSetup?(): void;
 }
 
-interface SessionStartOptions {
-  suppressCompletionNotification?: boolean;
-  /** Unattended background session: a call that would need a human decision is denied
-   * immediately (the agent sees the denial and adapts) instead of waiting forever. */
-  denyPermissionRequests?: boolean;
-}
-
-interface SessionRunOptions {
-  selectedSkillNames?: string[];
-  permissionRules?: PermissionRule[];
-  permissionPolicy?: PermissionPolicyId;
+interface QueuedTurnOptions extends TurnSettings {
+  acceptedAt: number;
+  turnId: string;
+  messageId: string;
 }
 
 interface SessionPromptQueue {
-  pending: Array<{ prompt: string; content?: ContentBlock[]; options: SessionRunOptions }>;
+  pending: Array<{
+    prompt: string;
+    content?: ContentBlock[];
+    recovered: boolean;
+    runtimeConfig?: AgentRuntimeConfig;
+    options: QueuedTurnOptions;
+    finish: (outcome: SessionTurnOutcome) => void;
+  }>;
+  activeTurnId?: string;
   controller: AbortController;
   idleWaiters: Set<() => void>;
 }
@@ -114,6 +121,9 @@ const TITLE_GENERATION_TIMEOUT_MS = 20000;
 
 export class SessionManager {
   private db: DatabaseInstance;
+  private readonly turnStore: SessionTurnStore;
+  private recovered = false;
+  private readonly mcpReady: Promise<void>;
   private sendToRenderer: (event: ServerEvent) => void;
   private pathResolver: PathResolver;
   private sandboxAdapter: SandboxAdapter;
@@ -135,7 +145,6 @@ export class SessionManager {
   private sessionTitleAttempts: Set<string> = new Set();
   private titleGenerationTokens: Map<string, symbol> = new Map();
   private messageCache: Map<string, Message[]> = new Map();
-  private sessionRuntimeConfigs: Map<string, AgentRuntimeConfig> = new Map();
   private suppressedCompletionNotifications = new Set<string>();
   private readonly onSessionCompleted?: (session: Session) => void;
   private readonly resolveRuntimeConfig?: RuntimeConfigResolver;
@@ -147,9 +156,11 @@ export class SessionManager {
     pluginRuntimeService?: PluginRuntimeService,
     extensionManager?: AgentRuntimeExtensionManager,
     onSessionCompleted?: (session: Session) => void,
-    resolveRuntimeConfig?: RuntimeConfigResolver
+    resolveRuntimeConfig?: RuntimeConfigResolver,
+    private readonly resolveConfigSet?: (id: string) => Promise<AgentRuntimeConfig | null>
   ) {
     this.db = db;
+    this.turnStore = new SessionTurnStore(db.raw);
     this.sendToRenderer = (event) => {
       if (event.type === 'trace.step') {
         this.saveTraceStep(event.payload.sessionId, event.payload.step);
@@ -168,7 +179,7 @@ export class SessionManager {
 
     // Initialize MCP Manager
     this.mcpManager = new MCPManager();
-    this.initializeMCP();
+    this.mcpReady = this.initializeMCP();
 
     // Create agent runner based on current config
     this.createAgentRunner();
@@ -185,6 +196,8 @@ export class SessionManager {
       {
         sendToRenderer: this.sendToRenderer,
         saveMessage: (message: Message) => this.saveMessage(message),
+        database: this.db,
+        sessionExists: (sessionId) => Boolean(this.db.sessions.get(sessionId)),
         requestSudoPassword: (sessionId: string, toolUseId: string, command: string) =>
           this.requestSudoPassword(sessionId, toolUseId, command),
         requestPermission: (
@@ -219,14 +232,6 @@ export class SessionManager {
   async reloadMCP(): Promise<void> {
     log('[SessionManager] Reloading MCP servers');
     await this.initializeMCP();
-  }
-
-  /**
-   * Invalidate cached MCP servers config so the next query rebuilds tools.
-   * Call after MCP server add/update/delete.
-   */
-  invalidateMcpServersCache(): void {
-    this.agentRunner?.invalidateMcpServersCache?.();
   }
 
   /**
@@ -300,8 +305,8 @@ export class SessionManager {
     content?: ContentBlock[],
     memoryEnabled?: boolean,
     runtimeConfig?: AgentRuntimeConfig,
-    options?: SessionStartOptions & SessionRunOptions
-  ): Promise<Session> {
+    options?: TurnSettings
+  ): Promise<{ session: Session; turn: SessionTurn }> {
     log('[SessionManager] Starting new session:', title);
 
     const session = this.createSession(
@@ -312,26 +317,15 @@ export class SessionManager {
       runtimeConfig?.model
     );
 
-    // Save to database
-    this.saveSession(session);
-    if (runtimeConfig) {
-      this.sessionRuntimeConfigs.set(session.id, runtimeConfig);
-    }
-    if (options?.suppressCompletionNotification) {
-      this.suppressedCompletionNotifications.add(session.id);
-    }
-    if (options?.denyPermissionRequests) {
-      this.unattendedSessions.add(session.id);
-    }
-
-    // Start processing the prompt with content blocks
-    this.enqueuePrompt(session, prompt, content, {
-      selectedSkillNames: options?.selectedSkillNames,
-      permissionRules: options?.permissionRules,
-      permissionPolicy: options?.permissionPolicy,
-    });
-
-    return session;
+    const turn = this.enqueuePrompt(
+      session,
+      prompt,
+      content,
+      options,
+      () => this.saveSession(session),
+      runtimeConfig
+    );
+    return { session, turn };
   }
 
   // Create a new session object
@@ -511,8 +505,8 @@ export class SessionManager {
     sessionId: string,
     prompt: string,
     content?: ContentBlock[],
-    options?: SessionRunOptions
-  ): Promise<void> {
+    options?: TurnSettings
+  ): Promise<SessionTurn> {
     log('[SessionManager] Continuing session:', sessionId);
 
     const session = this.loadSession(sessionId);
@@ -520,7 +514,7 @@ export class SessionManager {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    this.enqueuePrompt(session, prompt, content, options);
+    return this.enqueuePrompt(session, prompt, content, options);
   }
 
   /**
@@ -752,11 +746,13 @@ export class SessionManager {
     session: Session,
     prompt: string,
     content: ContentBlock[] | undefined,
-    options: SessionRunOptions,
-    signal: AbortSignal
-  ): Promise<void> {
+    options: QueuedTurnOptions,
+    signal: AbortSignal,
+    snapshot?: AgentRuntimeConfig
+  ): Promise<SessionTurnOutcome> {
     const traceId = generateTraceId();
-    return runWithLogContext({ sessionId: session.id, traceId }, async () => {
+    const context = { sessionId: session.id, traceId };
+    return runWithLogContext(context, async (): Promise<SessionTurnOutcome> => {
       logCtx('[SessionManager] Processing prompt for session:', session.id, 'traceId:', traceId);
       logCtx(
         '[SessionManager] Received content:',
@@ -770,18 +766,17 @@ export class SessionManager {
           : 'none'
       );
 
-      // Ensure sandbox is initialized for this workspace
-      await this.ensureSandboxInitialized(session);
-      if (signal.aborted) return;
-
       try {
+        await this.ensureSandboxInitialized(session);
+        if (signal.aborted) return { status: 'cancelled' };
+
         // Use provided content blocks or fall back to simple text
         let messageContent: ContentBlock[] =
           content && content.length > 0 ? content : [{ type: 'text', text: prompt } as TextContent];
 
         // Process file attachments - copy to .tmp directory
         messageContent = await this.processFileAttachments(session, messageContent);
-        if (signal.aborted) return;
+        if (signal.aborted) return { status: 'cancelled' };
 
         logCtx(
           '[SessionManager] Final message content types:',
@@ -815,32 +810,28 @@ export class SessionManager {
           }
         }
 
-        // Save user message to database for persistence
-        const existingMessages = this.getMessages(session.id);
+        this.turnStore.updateContent(options.messageId, messageContent);
+        this.messageCache.delete(session.id);
+        const existingMessages = this.turnStore
+          .historyBefore(session.id, options.turnId)
+          .map((row) => this.toMessage(row));
         const userMessage: Message = {
-          id: uuidv4(),
+          id: options.messageId,
           sessionId: session.id,
           role: 'user',
-          content: messageContent, // Save full content including images and files
-          timestamp: Date.now(),
+          content: messageContent,
+          timestamp: options.acceptedAt,
         };
-        this.saveMessage(userMessage);
-        logCtx(
-          '[SessionManager] User message saved:',
-          userMessage.id,
-          'with',
-          messageContent.length,
-          'content blocks'
-        );
         const messagesForContext = [...existingMessages, userMessage];
-
-        // Update session model to match the selected runtime config. Automation-created sessions
-        // may carry an internal model snapshot that should not mutate global app config.
-        const storedRuntimeConfig = this.sessionRuntimeConfigs.get(session.id);
-        const runtimeConfig = this.resolveRuntimeConfig
-          ? await this.resolveRuntimeConfig(storedRuntimeConfig)
-          : storedRuntimeConfig;
-        if (signal.aborted) return;
+        let runtimeConfig = snapshot;
+        if (options.modelConfigSetId && this.resolveConfigSet && !snapshot) {
+          runtimeConfig = (await this.resolveConfigSet(options.modelConfigSetId)) ?? undefined;
+          if (!runtimeConfig)
+            throw new Error(`Model configuration unavailable: ${options.modelConfigSetId}`);
+        } else if (this.resolveRuntimeConfig) {
+          runtimeConfig = await this.resolveRuntimeConfig(snapshot);
+        }
+        if (signal.aborted) return { status: 'cancelled' };
         const currentModel = runtimeConfig?.model || configStore.get('model');
         if (currentModel && currentModel !== session.model) {
           session.model = currentModel;
@@ -855,9 +846,9 @@ export class SessionManager {
         // do not provide explicit options. Never consult mutable global rules
         // while the agent is running.
         setSessionPermissionRules(session.id, options.permissionRules, options.permissionPolicy);
+        let outcome: SessionTurnOutcome;
         try {
-          // Run the agent
-          await this.agentRunner.run(
+          outcome = await this.agentRunner.run(
             session,
             enhancedPrompt,
             messagesForContext,
@@ -868,9 +859,12 @@ export class SessionManager {
           clearSessionPermissionRules(session.id);
         }
 
-        if (signal.aborted) return;
+        if (signal.aborted || outcome.status !== 'succeeded') return outcome;
         if (this.extensionManager) {
-          const stableMessages = this.getMessages(session.id);
+          const stableMessages = [
+            ...existingMessages,
+            ...this.turnStore.turnMessages(options.turnId).map((row) => this.toMessage(row)),
+          ];
           this.extensionManager
             .afterSessionRun({
               session,
@@ -886,33 +880,28 @@ export class SessionManager {
         this.runSessionTitleGeneration(session, prompt, existingMessages).catch((err) =>
           logCtxError('[SessionManager] Title generation failed:', err)
         );
+        return outcome;
       } catch (error) {
-        if (signal.aborted) return;
+        if (signal.aborted) return { status: 'cancelled' };
         logCtxError('[SessionManager] Error processing prompt:', error);
         const errorText = error instanceof Error ? error.message : 'Unknown error';
-        const alreadyReportedToUser = Boolean(
-          error &&
-          typeof error === 'object' &&
-          (error as { alreadyReportedToUser?: boolean }).alreadyReportedToUser
-        );
-        if (!alreadyReportedToUser) {
-          const assistantMessage: Message = {
-            id: uuidv4(),
-            sessionId: session.id,
-            role: 'assistant',
-            content: [{ type: 'text', text: `**Error**: ${errorText}` }],
-            timestamp: Date.now(),
-          };
-          this.saveMessage(assistantMessage);
-          this.sendToRenderer({
-            type: 'stream.message',
-            payload: { sessionId: session.id, message: assistantMessage },
-          });
-        }
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          sessionId: session.id,
+          role: 'assistant',
+          content: [{ type: 'text', text: `**Error**: ${errorText}` }],
+          timestamp: Date.now(),
+        };
+        this.saveMessage(assistantMessage);
+        this.sendToRenderer({
+          type: 'stream.message',
+          payload: { sessionId: session.id, message: assistantMessage },
+        });
         this.sendToRenderer({
           type: 'error',
           payload: { message: errorText },
         });
+        return { status: 'failed', error: errorText };
       }
     }); // end runWithLogContext
   }
@@ -1012,57 +1001,140 @@ export class SessionManager {
     );
   }
 
+  restorePendingTurns(): void {
+    if (this.recovered) return;
+    const queued = this.turnStore.recover();
+    this.recovered = true;
+    for (const accepted of queued) this.scheduleTurn(accepted, true);
+  }
+
   private enqueuePrompt(
     session: Session,
     prompt: string,
     content?: ContentBlock[],
-    options?: SessionRunOptions
-  ): void {
+    options?: TurnSettings,
+    saveSession?: () => void,
+    runtimeConfig?: AgentRuntimeConfig
+  ): SessionTurn {
     const permissionPolicy =
       options?.permissionPolicy ??
       (options?.permissionRules ? 'default' : configStore.get('permissionPolicy'));
+    const settings: TurnSettings = {
+      selectedSkillNames: options?.selectedSkillNames?.slice(),
+      permissionPolicy,
+      permissionRules: structuredClone(
+        options?.permissionRules ?? getPermissionRulesForPolicy(permissionPolicy)
+      ),
+      modelConfigSetId: options?.modelConfigSetId ?? configStore.get('activeConfigSetId'),
+      denyPermissionRequests:
+        options?.denyPermissionRequests ?? this.unattendedSessions.has(session.id),
+      suppressCompletionNotification:
+        options?.suppressCompletionNotification ??
+        this.suppressedCompletionNotifications.has(session.id),
+    };
+    const accepted = {
+      acceptedAt: Date.now(),
+      turnId: uuidv4(),
+      messageId: uuidv4(),
+      sessionId: session.id,
+      prompt,
+      content: content?.length ? content : [{ type: 'text' as const, text: prompt }],
+      settings,
+    };
+    this.turnStore.accept(accepted, saveSession);
+    this.messageCache.delete(session.id);
+    return this.scheduleTurn(accepted, false, runtimeConfig);
+  }
+
+  private scheduleTurn(
+    accepted: AcceptedTurn,
+    recovered = false,
+    runtimeConfig?: AgentRuntimeConfig
+  ): SessionTurn {
+    const { sessionId, turnId, messageId, prompt, content, settings } = accepted;
+    const { turn, finish } = createSessionTurn(sessionId, turnId);
+    if (settings.denyPermissionRequests) this.unattendedSessions.add(sessionId);
+    if (settings.suppressCompletionNotification)
+      this.suppressedCompletionNotifications.add(sessionId);
     const item = {
       prompt,
       content,
-      options: {
-        ...options,
-        permissionPolicy,
-        permissionRules: options?.permissionRules ?? getPermissionRulesForPolicy(permissionPolicy),
-      },
+      recovered,
+      runtimeConfig,
+      options: { ...settings, acceptedAt: accepted.acceptedAt, turnId, messageId },
+      finish,
     };
-
-    const activeQueue = this.promptQueues.get(session.id);
+    const activeQueue = this.promptQueues.get(sessionId);
     if (activeQueue) {
       activeQueue.pending.push(item);
-      return;
+      return turn;
     }
     const queue: SessionPromptQueue = {
       pending: [item],
       controller: new AbortController(),
       idleWaiters: new Set(),
     };
-    this.promptQueues.set(session.id, queue);
-    void this.processQueue(session.id, queue).catch((error) => {
-      logError('[SessionManager] Failed to drain session queue:', session.id, error);
+    this.promptQueues.set(sessionId, queue);
+    void this.processQueue(sessionId, queue).catch((error) => {
+      logError('[SessionManager] Failed to drain session queue:', sessionId, error);
     });
+    return turn;
+  }
+
+  private settleTurn(
+    item: SessionPromptQueue['pending'][number],
+    outcome: SessionTurnOutcome
+  ): void {
+    try {
+      this.turnStore.finish(item.options.turnId, outcome);
+    } catch (error) {
+      logError('[SessionManager] Could not record turn outcome:', item.options.turnId, error);
+      item.finish({
+        status: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
+    item.finish(outcome);
   }
 
   private async processQueue(sessionId: string, queue: SessionPromptQueue): Promise<void> {
     try {
       this.updateSessionStatus(sessionId, 'running');
       for (let item = queue.pending.shift(); item; item = queue.pending.shift()) {
-        const session = this.loadSession(sessionId);
-        if (!session) break;
-        if (queue.controller.signal.aborted) queue.controller = new AbortController();
         try {
-          await this.processPrompt(
+          if (queue.controller.signal.aborted) queue.controller = new AbortController();
+          if (item.recovered) {
+            try {
+              await waitWithSignal(this.mcpReady, queue.controller.signal);
+            } catch (error) {
+              if (!queue.controller.signal.aborted) throw error;
+              item.finish({ status: 'cancelled' });
+              continue;
+            }
+          }
+          if (!this.turnStore.claim(item.options.turnId)) {
+            item.finish({ status: 'cancelled' });
+            continue;
+          }
+          queue.activeTurnId = item.options.turnId;
+          const session = this.loadSession(sessionId);
+          if (!session) throw new Error(`Session not found: ${sessionId}`);
+          const outcome = await this.processPrompt(
             session,
             item.prompt,
             item.content,
             item.options,
-            queue.controller.signal
+            queue.controller.signal,
+            item.runtimeConfig
           );
+          this.settleTurn(item, outcome);
         } catch (error) {
+          const failure = {
+            status: 'failed' as const,
+            error: error instanceof Error ? error.message : String(error),
+          };
+          this.settleTurn(item, failure);
           logError('[SessionManager] Queue processing error:', error);
           this.sendToRenderer({
             type: 'error',
@@ -1073,8 +1145,11 @@ export class SessionManager {
         }
       }
     } finally {
+      for (const item of queue.pending.splice(0)) {
+        const failure = { status: 'failed' as const, error: 'Session queue interrupted' };
+        this.settleTurn(item, failure);
+      }
       this.promptQueues.delete(sessionId);
-      this.sessionRuntimeConfigs.delete(sessionId);
       try {
         this.updateSessionStatus(sessionId, 'idle');
         if (!queue.controller.signal.aborted) this.notifySessionCompleted(sessionId);
@@ -1098,10 +1173,12 @@ export class SessionManager {
     this.titleGenerationTokens.delete(sessionId);
     const queue = this.promptQueues.get(sessionId);
     if (queue) {
-      queue.pending.length = 0;
+      this.turnStore.cancelQueued(sessionId);
+      for (const item of queue.pending.splice(0)) {
+        item.finish({ status: 'cancelled' });
+      }
       queue.controller.abort();
     }
-    this.sessionRuntimeConfigs.delete(sessionId);
     this.suppressedCompletionNotifications.delete(sessionId);
     this.agentRunner.cancel(sessionId);
     for (const entry of this.pendingPermissions.values()) {
@@ -1115,7 +1192,6 @@ export class SessionManager {
         this.sendToRenderer({ type: 'sudo.password.dismiss', payload: { toolUseId } });
       }
     }
-    this.messageCache.delete(sessionId);
     if (!queue) this.updateSessionStatus(sessionId, 'idle');
   }
 
@@ -1222,19 +1298,29 @@ export class SessionManager {
     if (!source) return null;
     const id = uuidv4();
     const now = Date.now();
-    this.db.sessions.create({
-      ...source,
-      id,
-      title: `${source.title}${titleSuffix}`.slice(0, 200),
-      agent_session_id: null,
-      openai_thread_id: null,
-      status: 'idle',
-      created_at: now,
-      updated_at: now,
-    });
-    for (const message of this.db.messages.getBySessionId(sessionId)) {
-      this.db.messages.create({ ...message, id: uuidv4(), session_id: id });
-    }
+    this.db.raw.transaction(() => {
+      this.db.sessions.create({
+        ...source,
+        id,
+        title: `${source.title}${titleSuffix}`.slice(0, 200),
+        agent_session_id: null,
+        openai_thread_id: null,
+        status: 'idle',
+        created_at: now,
+        updated_at: now,
+      });
+      const turnIds = new Map<string, string>();
+      for (const message of this.db.messages.getBySessionId(sessionId)) {
+        const messageId = uuidv4();
+        if (message.turn_id && !turnIds.has(message.turn_id))
+          turnIds.set(message.turn_id, uuidv4());
+        const turnId = message.turn_id ? turnIds.get(message.turn_id) : undefined;
+        this.db.messages.create({ ...message, id: messageId, session_id: id, turn_id: turnId });
+        if (message.turn_id && turnId && message.role === 'user') {
+          this.turnStore.copyTurn(message.turn_id, turnId, id, messageId);
+        }
+      }
+    })();
     // The copy has a user-chosen title; never auto-retitle it.
     this.sessionTitleAttempts.add(id);
     return id;
@@ -1308,6 +1394,7 @@ export class SessionManager {
   // Save message to database
   saveMessage(message: Message): void {
     this.db.messages.create({
+      turn_id: this.promptQueues.get(message.sessionId)?.activeTurnId,
       id: message.id,
       session_id: message.sessionId,
       role: message.role,
@@ -1316,6 +1403,10 @@ export class SessionManager {
       token_usage: message.tokenUsage ? JSON.stringify(message.tokenUsage) : null,
       execution_time_ms: message.executionTimeMs ?? null,
     });
+    if (this.promptQueues.has(message.sessionId)) {
+      this.messageCache.delete(message.sessionId);
+      return;
+    }
     const cached = this.messageCache.get(message.sessionId);
     if (cached) {
       cached.push(message);
@@ -1342,7 +1433,13 @@ export class SessionManager {
     }
 
     const rows = this.db.messages.getBySessionId(sessionId);
-    const messages = rows.map((row) => ({
+    const messages = rows.map((row) => this.toMessage(row));
+    this.messageCache.set(sessionId, messages);
+    return [...messages];
+  }
+
+  private toMessage(row: MessageRow): Message {
+    return {
       id: row.id,
       sessionId: row.session_id,
       role: row.role as Message['role'],
@@ -1350,9 +1447,7 @@ export class SessionManager {
       timestamp: row.timestamp,
       tokenUsage: row.token_usage ? JSON.parse(row.token_usage) : undefined,
       executionTimeMs: row.execution_time_ms ?? undefined,
-    }));
-    this.messageCache.set(sessionId, messages);
-    return [...messages];
+    };
   }
 
   private normalizeContent(raw: string): ContentBlock[] {

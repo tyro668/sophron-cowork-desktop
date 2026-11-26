@@ -20,7 +20,7 @@ import {
 } from '../config/auth-utils';
 import { log, logWarn } from '../utils/logger';
 import { normalizeGeneratedTitle } from '../session/session-title-utils';
-import { getProviderApiKey, setRuntimeApiKey } from './shared-auth';
+import { getProviderApiKey } from './shared-auth';
 import {
   ensureCodexCredentials,
   hasCodexCredentials,
@@ -186,8 +186,6 @@ export async function resolvePiAiTarget(
 ): Promise<{ model: Model<Api>; apiKey: string | undefined }> {
   const modelString = resolvePiModelString(config);
   const keyProvider = config.customProtocol || config.provider || 'anthropic';
-  const parts = modelString.split('/');
-  const provider = parts.length >= 2 ? parts[0] : keyProvider || 'anthropic';
 
   // Normalize base URL for OpenAI-compatible providers (strips copy-pasted endpoint suffixes)
   const routeProtocol = resolvePiRouteProtocol(config.provider, config.customProtocol);
@@ -253,13 +251,6 @@ export async function resolvePiAiTarget(
       throw new Error('OpenAI Codex 登录凭据不可用或刷新失败，请在 设置 → API 中重新连接。');
     }
   }
-  if (apiKey && config.provider !== 'openai-codex') {
-    await setRuntimeApiKey(provider, apiKey);
-    if (resolvedModel.provider !== provider) {
-      await setRuntimeApiKey(resolvedModel.provider, apiKey);
-    }
-  }
-
   return { model: resolvedModel as Model<Api>, apiKey: apiKey || undefined };
 }
 

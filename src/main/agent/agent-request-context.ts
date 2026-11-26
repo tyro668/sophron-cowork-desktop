@@ -1,9 +1,11 @@
+import { getCurrentTools, getToolStateChanges } from '@earendil-works/pi-ai';
 import type { Agent } from '@earendil-works/pi-agent-core';
 import type { BeforeSessionRunResult } from '../extensions/agent-runtime-extension';
 
 /** Request-only context: the SDK history contains the actual user message only. */
 export class AgentRequestContext {
   private context: BeforeSessionRunResult = {};
+  beforeRequest?: () => boolean;
   private activeTools = new Set<string>();
 
   update(context: BeforeSessionRunResult): void {
@@ -18,24 +20,31 @@ export class AgentRequestContext {
   install(agent: Agent): void {
     const previous = agent.prepareRequest;
     agent.prepareRequest = (async (request, signal) => {
+      const catalogChanged = this.beforeRequest?.();
       const previousResult = await previous?.(request, signal);
       const context = previousResult?.context ?? request.context;
       const extra = this.requestPrompt();
       const tools = agent.state.tools;
-      if (!extra) {
-        return {
-          ...previousResult,
-          context: { ...context, tools },
-        };
+      const messages = extra ? withRequestPrompt(context.messages, extra) : context.messages;
+      // Pi serializes transcript tool deltas before prepareRequest. A service can
+      // disconnect after that snapshot but before this request is sent.
+      if (catalogChanged) {
+        const delta = getToolStateChanges(getCurrentTools(messages), tools);
+        if (delta.toolsAdded.length || delta.toolsRemoved.length) {
+          return {
+            ...previousResult,
+            context: {
+              ...context,
+              tools,
+              messages: [
+                ...messages,
+                { role: 'system', content: '', timestamp: Date.now(), ...delta },
+              ],
+            },
+          };
+        }
       }
-      return {
-        ...previousResult,
-        context: {
-          ...context,
-          tools,
-          messages: withRequestPrompt(context.messages, extra),
-        },
-      };
+      return { ...previousResult, context: { ...context, tools, messages } };
     }) as Agent['prepareRequest'];
   }
 

@@ -65,11 +65,14 @@ describe('main database migrations', () => {
     const db = openRawDb();
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     for (const table of [
       'projects',
       'sessions',
       'messages',
+      'session_turns',
+      'session_history_summaries',
+      'session_tool_results',
       'llm_usage_events',
       'trace_steps',
       'scheduled_tasks',
@@ -109,7 +112,7 @@ describe('main database migrations', () => {
 
     migrateMainSchema(db);
 
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     const session = db
       .prepare('SELECT project_id, cwd, agent_session_id FROM sessions WHERE id = ?')
       .get('s1') as {
@@ -142,7 +145,7 @@ describe('main database migrations', () => {
     db.exec('DROP TABLE skills');
 
     migrateMainSchema(db);
-    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(ledgerVersions(db)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     expect(tableNames(db)).not.toContain('skills');
   });
 
@@ -172,6 +175,7 @@ describe('main database migrations', () => {
       9,
       10,
       11,
+      12,
       MAIN_SCHEMA_VERSION + 100,
     ]);
   });

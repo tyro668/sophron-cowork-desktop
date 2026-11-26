@@ -117,24 +117,22 @@ export async function getProviderApiKey(providerId: string): Promise<string | un
   return result?.auth.apiKey;
 }
 
-export async function setRuntimeApiKey(providerId: string, apiKey: string): Promise<void> {
-  const runtime = await getSharedModelRuntime();
-  if (providerId === 'openai-codex') {
-    if (runtime.getProviderAuthStatus(providerId).source === 'runtime') {
-      await runtime.removeRuntimeApiKey(providerId);
-    }
-    return;
+export async function createSessionModelRuntime(
+  modelProvider: string,
+  apiKey?: string
+): Promise<ModelRuntime> {
+  if (!apiKey || modelProvider === 'openai-codex') return getSharedModelRuntime();
+
+  // The SDK looks up the key again on each request, including retries.
+  const runtime = await ModelRuntime.create({
+    credentials: sharedCredentials,
+    refreshOnCreate: false,
+  });
+  if (!runtime.getProvider(modelProvider)) {
+    runtime.registerProvider(modelProvider, { name: modelProvider });
   }
-  // App-level provider ids (e.g. `aliyun`, `moonshot`) have no pi-ai builtin
-  // provider and are absent from models.json, so checkAuth/getAuth can never
-  // resolve a runtime key published for them — the agent session then fails
-  // with "No API key found for <provider>". Register a minimal extension
-  // provider so credential-store lookup works; request routing still uses the
-  // model's own api/baseUrl.
-  if (!runtime.getProvider(providerId)) {
-    runtime.registerProvider(providerId, { name: providerId });
-  }
-  await runtime.setRuntimeApiKey(providerId, apiKey);
+  await runtime.setRuntimeApiKey(modelProvider, apiKey);
+  return runtime;
 }
 
 export { ModelRegistry, ModelRuntime };

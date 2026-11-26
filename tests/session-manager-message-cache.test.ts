@@ -114,6 +114,28 @@ describe('SessionManager message cache', () => {
     expect(db.messages.getBySessionId).toHaveBeenCalledTimes(1);
   });
 
+  it('retains earlier messages when a tool receipt arrives after stop', () => {
+    const db = makeDb();
+    const manager = new SessionManager(db as unknown as DatabaseInstance, vi.fn());
+    const sessionId = 'stopped';
+    const message = {
+      id: 'user',
+      sessionId,
+      role: 'user' as const,
+      content: [{ type: 'text' as const, text: 'save' }],
+      timestamp: 1,
+    };
+    manager.saveMessage(message);
+    manager.stopSession(sessionId);
+    manager.saveMessage({
+      ...message,
+      id: 'receipt',
+      role: 'assistant',
+      content: [{ type: 'tool_result', toolUseId: 'save', content: 'receipt-123' }],
+    });
+    expect(manager.getMessages(sessionId).map((entry) => entry.id)).toEqual(['user', 'receipt']);
+  });
+
   it('populates cache when saveMessage is called for an uncached session', () => {
     const db = makeDb();
     // Override getBySessionId to return empty for 's2'

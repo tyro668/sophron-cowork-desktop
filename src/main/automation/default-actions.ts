@@ -1,6 +1,6 @@
 import { registerCloudSyncAction } from './cloud-sync-action';
 import { registerScriptRunAction } from './script-run-action';
-import { waitForSession } from './wait-for-session';
+import { waitForSessionTurn } from './wait-for-session';
 import type { ScriptPackageService } from './script-packages/service';
 import type { ScriptFilesGenerator } from './script-packages/generator';
 import type { AutomationStore } from './automation-store';
@@ -24,7 +24,9 @@ interface DefaultAutomationActionOptions {
   resolveModelRuntimeConfig?: (
     configSetId: string
   ) => AgentRuntimeConfig | null | Promise<AgentRuntimeConfig | null>;
-  sendSessionUpdate?: (session: Awaited<ReturnType<SessionManager['startSession']>>) => void;
+  sendSessionUpdate?: (
+    session: Awaited<ReturnType<SessionManager['startSession']>>['session']
+  ) => void;
   scriptPackages?: ScriptPackageService;
   /** Script generation agent for 执行脚本's onScriptError 'ai_repair'. */
   scriptGenerator?: ScriptFilesGenerator;
@@ -110,7 +112,7 @@ export function createDefaultAutomationActionRegistry(
         : [];
       const permissionPolicy = normalizePermissionPolicy(config.permissionPolicy);
       const title = buildScheduledTaskFallbackTitle(prompt);
-      const session = await options.sessionManager.startSession(
+      const { session, turn } = await options.sessionManager.startSession(
         title,
         prompt,
         cwd,
@@ -120,6 +122,7 @@ export function createDefaultAutomationActionRegistry(
         runtimeConfig,
         {
           suppressCompletionNotification: true,
+          modelConfigSetId: modelConfigSetId ?? undefined,
           selectedSkillNames,
           permissionPolicy,
           permissionRules: getPermissionRulesForPolicy(permissionPolicy),
@@ -133,14 +136,9 @@ export function createDefaultAutomationActionRegistry(
         dataRef: { kind: 'session', id: session.id },
       });
       if (config.completionMode !== 'fire_and_forget') {
-        await waitForSession(
-          options.sessionManager,
-          session.id,
-          Number(config.timeoutMs) || 30 * 60 * 1000,
-          now
-        );
+        await waitForSessionTurn(turn, Number(config.timeoutMs) || 30 * 60 * 1000);
       }
-      return { sessionId: session.id };
+      return { sessionId: session.id, turnId: turn.turnId };
     },
   });
 

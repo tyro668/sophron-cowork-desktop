@@ -27,7 +27,6 @@ import {
 } from '../ApiConfigSetManager';
 import { ApiModelSelectorField } from './ApiModelSelectorField';
 import { GlassSelect } from '../GlassSelect';
-import { Button, Input } from '../ui';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import { CodexAuthCard } from './CodexAuthCard';
 
@@ -38,7 +37,7 @@ interface ModelOptionItem {
 
 function ApiSectionHeader({ icon, title }: { icon: ReactNode; title: string }) {
   return (
-    <h3 className="flex h-8 items-center gap-1.5 border-b border-border-subtle bg-surface-muted/80 px-3 text-[11.5px] font-semibold text-text-secondary">
+    <h3 className="ui-group-title gap-1.5">
       <span className="flex shrink-0 text-text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
       {title}
     </h3>
@@ -48,20 +47,18 @@ function ApiSectionHeader({ icon, title }: { icon: ReactNode; title: string }) {
 function ApiFieldRow({
   label,
   children,
-  className = '',
+  valueClassName = '',
+  rowClassName = '',
 }: {
   label: string;
   children: ReactNode;
-  className?: string;
+  valueClassName?: string;
+  rowClassName?: string;
 }) {
   return (
-    <div
-      className={`grid min-h-[40px] min-w-0 grid-cols-[116px_minmax(0,1fr)] border-b border-border-subtle ${className}`}
-    >
-      <span className="flex items-center whitespace-nowrap border-r border-border-subtle bg-surface-muted/45 px-3 text-[12px] font-medium text-text-secondary">
-        {label}
-      </span>
-      <div className="flex min-w-0 items-center px-3 py-1.5">{children}</div>
+    <div className={`ui-form-row ${rowClassName}`}>
+      <span className="ui-form-label items-center">{label}</span>
+      <div className={`ui-form-value ${valueClassName}`}>{children}</div>
     </div>
   );
 }
@@ -152,7 +149,7 @@ export function SettingsAPI() {
   const connectionFailed = Boolean(diagnosticResult && !diagnosticResult.overallOk);
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface md:flex-row">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[6px] border border-border-subtle bg-surface md:flex-row">
       <ApiConfigSetManager
         variant="sidebar"
         showPendingBanner={false}
@@ -160,10 +157,10 @@ export function SettingsAPI() {
       />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-surface">
-        {/* Active scheme header */}
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-4">
+        {/* Active scheme header — matches left rail height for a continuous 1px rule */}
+        <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border-subtle bg-surface-muted px-3">
           <div className="flex min-w-0 items-center gap-2">
-            <h2 className="truncate text-[13px] font-semibold text-text-primary">
+            <h2 className="truncate text-[12.5px] font-semibold text-text-primary">
               {currentConfigSet?.name || t('api.configSet')}
             </h2>
             {isSelectedDefault && (
@@ -190,9 +187,9 @@ export function SettingsAPI() {
           />
         )}
 
-        {/* Flush form body */}
-        <div className="scrollbar-hover min-h-0 flex-1 overflow-y-auto">
-          <section>
+        {/* Flush, gapless form body */}
+        <div className="scrollbar-hover ui-form-flush min-h-0 flex-1 overflow-y-auto">
+          <section className="border-b border-border-subtle">
             <ApiSectionHeader icon={<Wifi />} title={t('api.serviceAuth')} />
 
             <ApiFieldRow label={t('api.provider')}>
@@ -212,24 +209,24 @@ export function SettingsAPI() {
                     label: presets[item]?.name || item,
                   })),
                 ]}
-                triggerClassName="h-8 w-full justify-between bg-surface px-2.5 text-[13px] text-text-primary"
+                triggerClassName="w-full justify-between text-[12.5px] text-text-primary focus-visible:ring-0"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </ApiFieldRow>
 
             {!providerUnset && provider === 'custom' && (
               <ApiFieldRow label={t('api.protocol')}>
-                <div className="inline-flex rounded-lg border border-border-subtle bg-surface-muted p-0.5">
+                <div className="grid min-h-[35px] w-full grid-cols-3 divide-x divide-border-subtle">
                   {(['anthropic', 'openai', 'gemini'] as const).map((item) => (
                     <button
                       key={item}
                       type="button"
                       aria-pressed={customProtocol === item}
                       onClick={() => changeProtocol(item)}
-                      className={`h-7 min-w-[76px] rounded-md px-3 text-[12px] font-medium transition-colors ${
+                      className={`flex items-center justify-center text-[12px] font-medium transition-colors ${
                         customProtocol === item
-                          ? 'bg-surface text-accent shadow-soft ring-1 ring-accent/25'
-                          : 'text-text-secondary hover:text-text-primary'
+                          ? 'bg-accent-muted text-accent'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                       }`}
                     >
                       {item === 'openai' ? 'OpenAI' : item === 'gemini' ? 'Gemini' : 'Anthropic'}
@@ -240,172 +237,162 @@ export function SettingsAPI() {
             )}
 
             {!providerUnset && !isSophronMode && !isCodexMode && (
-              <ApiFieldRow label={t('api.apiKey')}>
-                <div className="relative w-full">
-                  <Input
-                    id="api-key-input"
-                    type={showApiKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
-                    className="h-8 pr-9"
-                    aria-label={t('api.apiKey')}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowApiKey((visible) => !visible)}
-                    className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-text-muted transition-colors hover:text-text-primary"
-                    aria-label={showApiKey ? t('api.hideApiKey') : t('api.showApiKey')}
-                  >
-                    {showApiKey ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
+              <ApiFieldRow label={t('api.apiKey')} valueClassName="!flex-row items-stretch">
+                <input
+                  id="api-key-input"
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={currentPreset?.keyPlaceholder || t('api.enterApiKey')}
+                  className="min-w-0 flex-1 font-mono text-text-primary placeholder:font-sans placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+                  aria-label={t('api.apiKey')}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey((visible) => !visible)}
+                  className="flex w-9 shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  aria-label={showApiKey ? t('api.hideApiKey') : t('api.showApiKey')}
+                >
+                  {showApiKey ? (
+                    <EyeOff className="h-3.5 w-3.5" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                </button>
               </ApiFieldRow>
             )}
 
             {!providerUnset && isCodexMode && <CodexAuthCard />}
 
             {!providerUnset && (provider === 'custom' || isOllamaMode) && (
-              <ApiFieldRow label={t('api.baseUrl')}>
-                <div className="flex w-full min-w-0 gap-1.5">
-                  <Input
-                    id="api-base-url-input"
-                    type="url"
-                    value={baseUrl}
-                    onChange={(event) => setBaseUrl(event.target.value)}
-                    placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
-                    className="h-8 min-w-0 flex-1"
-                    aria-label={t('api.baseUrl')}
-                  />
-                  {isOllamaMode && (
-                    <Button
-                      variant="secondary"
-                      size="icon"
-                      onClick={() => void discoverLocalOllama()}
-                      disabled={isDiscoveringLocalOllama}
-                      className="shrink-0"
-                      title={t('api.discoverLocalOllama')}
-                    >
-                      {isDiscoveringLocalOllama ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Plug className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                  )}
-                </div>
+              <ApiFieldRow label={t('api.baseUrl')} valueClassName="!flex-row items-stretch">
+                <input
+                  id="api-base-url-input"
+                  type="url"
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.target.value)}
+                  placeholder={currentPreset?.baseUrl || 'https://api.example.com'}
+                  className="min-w-0 flex-1 font-mono text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+                  aria-label={t('api.baseUrl')}
+                />
+                {isOllamaMode && (
+                  <button
+                    type="button"
+                    onClick={() => void discoverLocalOllama()}
+                    disabled={isDiscoveringLocalOllama}
+                    className="ui-accent-cell w-9 shrink-0 border-l border-border-subtle !px-0"
+                    title={t('api.discoverLocalOllama')}
+                  >
+                    {isDiscoveringLocalOllama ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plug className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                )}
               </ApiFieldRow>
             )}
 
             {!providerUnset && provider === 'custom' && (
-              <div className="border-b border-border-subtle px-3 py-2.5">
-                <CommonProviderSetupsCard
-                  setups={commonProviderSetups}
-                  onApplySetup={applyCommonProviderSetup}
-                />
-              </div>
+              <CommonProviderSetupsCard
+                flush
+                setups={commonProviderSetups}
+                onApplySetup={applyCommonProviderSetup}
+              />
             )}
           </section>
 
-          <section>
+          <section className="border-b border-border-subtle">
             <ApiSectionHeader icon={<SlidersHorizontal />} title={t('api.modelInference')} />
 
             {providerUnset ? (
-              <p className="px-4 py-4 text-[12.5px] text-text-muted">
+              <p className="px-3 py-3 text-[12px] text-text-muted">
                 {t('api.selectProviderFirst')}
               </p>
             ) : (
               <>
-                <ApiFieldRow label={t('api.model')}>
-                  <div className="flex w-full min-w-0 gap-1.5">
-                    <div className="min-w-0 flex-1">
-                      <ApiModelSelectorField
-                        inputId="api-model-input"
-                        useCustomModel={useCustomModel}
-                        model={model}
-                        customModel={customModel}
-                        modelOptions={modelOptions as ModelOptionItem[]}
-                        modelInputPlaceholder={modelInputPlaceholder}
-                        onModelChange={setModel}
-                        onCustomModelChange={setCustomModel}
-                      />
-                    </div>
-                    {!isSophronMode && !isCodexMode && (
-                      <Button
-                        variant={useCustomModel ? 'primary' : 'secondary'}
-                        onClick={toggleCustomModel}
-                        className="h-8 shrink-0 px-2.5 text-[12px]"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                        <span className="hidden xl:inline">
-                          {useCustomModel ? t('api.usePreset') : t('api.customModel')}
-                        </span>
-                      </Button>
-                    )}
-                    {(isOllamaMode || provider === 'sophron' || isCodexMode) && !useCustomModel && (
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        onClick={() => void refreshModelOptions()}
-                        disabled={isRefreshingModels}
-                        className="shrink-0"
-                        title={t('api.refreshModels')}
-                      >
-                        <RefreshCw
-                          className={`h-3.5 w-3.5 ${isRefreshingModels ? 'animate-spin' : ''}`}
-                        />
-                      </Button>
-                    )}
+                <ApiFieldRow label={t('api.model')} valueClassName="!flex-row items-stretch">
+                  <div className="ui-flush-split flex min-w-0 flex-1 items-stretch">
+                    <ApiModelSelectorField
+                      flush
+                      inputId="api-model-input"
+                      useCustomModel={useCustomModel}
+                      model={model}
+                      customModel={customModel}
+                      modelOptions={modelOptions as ModelOptionItem[]}
+                      modelInputPlaceholder={modelInputPlaceholder}
+                      onModelChange={setModel}
+                      onCustomModelChange={setCustomModel}
+                    />
                   </div>
+                  {!isSophronMode && !isCodexMode && (
+                    <button
+                      type="button"
+                      onClick={toggleCustomModel}
+                      className={`inline-flex shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle px-2.5 text-[12px] font-medium transition-colors ${
+                        useCustomModel
+                          ? 'bg-accent-muted text-accent'
+                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      }`}
+                      title={useCustomModel ? t('api.usePreset') : t('api.customModel')}
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span className="hidden xl:inline">
+                        {useCustomModel ? t('api.usePreset') : t('api.customModel')}
+                      </span>
+                    </button>
+                  )}
+                  {(isOllamaMode || provider === 'sophron' || isCodexMode) && !useCustomModel && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshModelOptions()}
+                      disabled={isRefreshingModels}
+                      className="inline-flex w-9 shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                      title={t('api.refreshModels')}
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${isRefreshingModels ? 'animate-spin' : ''}`}
+                      />
+                    </button>
+                  )}
                 </ApiFieldRow>
 
-                {/* Context window & max output tokens paired cleanly side by side */}
-                <div className="grid grid-cols-1 border-b border-border-subtle lg:grid-cols-2">
-                  <div className="grid min-h-[40px] min-w-0 grid-cols-[116px_minmax(0,1fr)]">
-                    <span className="flex items-center whitespace-nowrap border-r border-border-subtle bg-surface-muted/45 px-3 text-[12px] font-medium text-text-secondary">
-                      {t('api.contextWindow')}
-                    </span>
-                    <div className="flex min-w-0 items-center px-3 py-1.5">
-                      <Input
-                        id="api-context-window-input"
-                        type="number"
-                        value={contextWindow}
-                        onChange={(event) => setContextWindow(event.target.value)}
-                        placeholder={t('api.contextWindowPlaceholder')}
-                        min={1024}
-                        step={1024}
-                        className="h-8 tabular-nums"
-                      />
-                    </div>
-                  </div>
-                  <div className="grid min-h-[40px] min-w-0 grid-cols-[116px_minmax(0,1fr)] border-t border-border-subtle lg:border-l lg:border-t-0">
-                    <span className="flex items-center whitespace-nowrap border-r border-border-subtle bg-surface-muted/45 px-3 text-[12px] font-medium text-text-secondary">
-                      {t('api.maxOutputTokens')}
-                    </span>
-                    <div className="flex min-w-0 items-center px-3 py-1.5">
-                      <Input
-                        id="api-max-tokens-input"
-                        type="number"
-                        value={maxTokens}
-                        onChange={(event) => setMaxTokens(event.target.value)}
-                        placeholder={t('api.maxOutputTokensPlaceholder')}
-                        min={256}
-                        step={256}
-                        className="h-8 tabular-nums"
-                      />
-                    </div>
-                  </div>
+                {/* Context window & max output tokens paired flush side by side */}
+                <div className="grid grid-cols-1 border-b border-border-subtle lg:grid-cols-2 lg:divide-x lg:divide-border-subtle">
+                  <ApiFieldRow label={t('api.contextWindow')} rowClassName="!border-b-0">
+                    <input
+                      id="api-context-window-input"
+                      type="number"
+                      value={contextWindow}
+                      onChange={(event) => setContextWindow(event.target.value)}
+                      placeholder={t('api.contextWindowPlaceholder')}
+                      min={1024}
+                      step={1024}
+                      className="tabular-nums text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+                    />
+                  </ApiFieldRow>
+                  <ApiFieldRow
+                    label={t('api.maxOutputTokens')}
+                    rowClassName="border-t border-border-subtle !border-b-0 lg:border-t-0"
+                  >
+                    <input
+                      id="api-max-tokens-input"
+                      type="number"
+                      value={maxTokens}
+                      onChange={(event) => setMaxTokens(event.target.value)}
+                      placeholder={t('api.maxOutputTokensPlaceholder')}
+                      min={256}
+                      step={256}
+                      className="tabular-nums text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+                    />
+                  </ApiFieldRow>
                 </div>
 
                 <ApiFieldRow label={t('api.thinkingLevel')}>
                   <div
                     role="radiogroup"
                     aria-label={t('api.thinkingLevel')}
-                    className="inline-flex rounded-lg border border-border-subtle bg-surface-muted p-0.5"
+                    className="grid min-h-[35px] w-full grid-cols-4 divide-x divide-border-subtle"
                   >
                     {(['off', 'low', 'medium', 'high'] as const).map((level) => {
                       const active =
@@ -426,10 +413,10 @@ export function SettingsAPI() {
                               setThinkingLevel(level);
                             }
                           }}
-                          className={`h-7 min-w-[58px] rounded-md px-3 text-[12px] font-medium transition-colors ${
+                          className={`flex items-center justify-center text-[12px] font-medium transition-colors ${
                             active
-                              ? 'bg-surface text-accent shadow-soft ring-1 ring-accent/25'
-                              : 'text-text-secondary hover:text-text-primary'
+                              ? 'bg-accent-muted text-accent'
+                              : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                           }`}
                         >
                           {t(`api.thinkingLevels.${level}`)}
@@ -443,7 +430,7 @@ export function SettingsAPI() {
           </section>
 
           {(diagnosticResult || isDiagnosing) && (
-            <section className="border-t border-border-subtle px-4 py-3">
+            <section className="border-b border-border-subtle p-3">
               <ApiDiagnosticsPanel
                 result={diagnosticResult}
                 isRunning={isDiagnosing}
@@ -456,35 +443,10 @@ export function SettingsAPI() {
           )}
         </div>
 
-        {/* Sticky bottom bar */}
-        <div className="flex shrink-0 flex-wrap items-center gap-2.5 border-t border-border-subtle bg-surface-muted/40 px-4 py-2.5">
-          <Button
-            variant="secondary"
-            onClick={() => void handleDiagnose()}
-            disabled={isDiagnosing || providerUnset || (requiresApiKey && !apiKey.trim())}
-            className="h-8 text-[12.5px]"
-          >
-            {isDiagnosing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Play className="h-3.5 w-3.5" />
-            )}
-            {isDiagnosing ? t('api.diagnostic.running') : t('api.testConnection')}
-          </Button>
-          {isOllamaMode && (
-            <Button
-              variant="secondary"
-              onClick={() => void handleDeepDiagnose()}
-              disabled={isDiagnosing || (requiresApiKey && !apiKey.trim())}
-              className="h-8 text-[12.5px]"
-            >
-              <Cpu className="h-3.5 w-3.5" />
-              {t('api.diagnostic.runDeepDiagnostics')}
-            </Button>
-          )}
-
+        {/* Flush, gapless bottom action bar */}
+        <div className="flex h-9 shrink-0 items-stretch border-t border-border-subtle bg-surface">
           <div
-            className={`flex min-w-[140px] flex-1 items-center gap-1.5 text-[12px] font-medium ${
+            className={`flex min-w-0 flex-1 items-center gap-1.5 px-3 text-[12px] font-medium ${
               connectionOk ? 'text-success' : connectionFailed ? 'text-error' : 'text-text-muted'
             }`}
           >
@@ -504,11 +466,37 @@ export function SettingsAPI() {
             </span>
           </div>
 
-          <Button
-            variant="primary"
+          <button
+            type="button"
+            onClick={() => void handleDiagnose()}
+            disabled={isDiagnosing || providerUnset || (requiresApiKey && !apiKey.trim())}
+            className="ui-accent-cell shrink-0 border-l border-border-subtle"
+          >
+            {isDiagnosing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            {isDiagnosing ? t('api.diagnostic.running') : t('api.testConnection')}
+          </button>
+
+          {isOllamaMode && (
+            <button
+              type="button"
+              onClick={() => void handleDeepDiagnose()}
+              disabled={isDiagnosing || (requiresApiKey && !apiKey.trim())}
+              className="ui-accent-cell shrink-0 border-l border-border-subtle"
+            >
+              <Cpu className="h-3.5 w-3.5" />
+              {t('api.diagnostic.runDeepDiagnostics')}
+            </button>
+          )}
+
+          <button
+            type="button"
             onClick={() => void handleSave()}
             disabled={!canSave}
-            className="h-8 px-3.5 text-[12.5px]"
+            className="inline-flex shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle bg-accent px-4 text-[12px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-text-muted"
           >
             {isSaving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -516,7 +504,7 @@ export function SettingsAPI() {
               <Save className="h-3.5 w-3.5" />
             )}
             {isSaving ? t('common.saving') : t('api.saveSettings')}
-          </Button>
+          </button>
         </div>
       </div>
     </div>

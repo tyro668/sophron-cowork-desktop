@@ -285,6 +285,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'screenshot_for_display',
+        annotations: { readOnlyHint: true },
         description:
           'Take a screenshot and return it as base64 image data for display in the response. Use this when you want to show key screenshots to the user in your reply. The screenshot will be embedded directly in the conversation.',
         inputSchema: {
@@ -405,6 +406,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'gui_verify_vision',
+        annotations: { readOnlyHint: true },
         description:
           'Verify GUI state using AI vision. Ask questions about what is visible on screen and get intelligent answers (e.g., "Is the game board visible?", "What is the current player shown?", "Are there any error messages?"). This tool is used to verify the state of the GUI after some operation to ensure the operation was successful (e.g., whether the click was successful, whether the text was typed, etc.).',
         inputSchema: {

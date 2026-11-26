@@ -1,3 +1,5 @@
+import { SessionResultRepository } from '../src/main/session/session-result-repository';
+import { testResultStore, harnessDatabase, temporaryDatabasePath } from './fixtures/harness-db';
 import { describe, expect, it } from 'vitest';
 import { ModelResultStore, MODEL_RESULT_MAX_CHARS } from '../src/main/agent/model-result-store';
 import { buildMcpCustomTools, buildMcpToolPacks } from '../src/main/agent/agent-runner-tools';
@@ -14,7 +16,7 @@ describe('model result budget and complete references', () => {
     '\n\t"\\'.repeat(10000),
     JSON.stringify({ ['column_' + 'c'.repeat(30000)]: 'value' }),
   ])('bounds serialized pages and reconstructs the complete original text', async (text) => {
-    const store = new ModelResultStore();
+    const store = testResultStore();
     const details = {
       task: { id: 'task-id' },
       resultTableId: 'output-id',
@@ -43,13 +45,88 @@ describe('model result budget and complete references', () => {
   });
 
   it('does not expose another conversation result reference', async () => {
-    const store = new ModelResultStore();
+    const store = testResultStore();
     const page = JSON.parse(
       textOf(store.bound({ content: [{ type: 'text', text: 'x'.repeat(10000) }], details: {} }))
     );
-    await expect(invoke(new ModelResultStore(), { resultRef: page.resultRef })).rejects.toThrow(
+    await expect(invoke(testResultStore(), { resultRef: page.resultRef })).rejects.toThrow(
       'RESULT_REF_EXPIRED'
     );
+  });
+
+  it('reads the same page after reopen and enforces session, expiry and deletion boundaries', async () => {
+    const path = temporaryDatabasePath();
+    const db = harnessDatabase(path);
+    for (const owner of ['alice', 'bob'])
+      db.raw
+        .prepare('INSERT INTO sessions(id,title,created_at,updated_at) VALUES (?,?,0,0)')
+        .run(owner, owner);
+    const text = 'prefix'.repeat(1400) + 'target-section' + 'tail'.repeat(200);
+    const store = new ModelResultStore(new SessionResultRepository(db.raw, 'alice'));
+    const result = store.bound(
+      { content: [{ type: 'text', text }], details: { committed: true } },
+      undefined,
+      'call-1'
+    );
+    const { resultRef } = JSON.parse(textOf(result));
+    const read = { resultRef, contains: 'target-section', limit: 24 };
+    const originalPage = textOf(await invoke(store, read));
+    expect(JSON.parse(originalPage)).toMatchObject({
+      offset: 8400,
+      textFragment: 'target-sectiontailtailta',
+    });
+    const index = db.raw
+      .prepare('SELECT session_id,tool_call_id,bytes FROM session_tool_results WHERE result_ref=?')
+      .get(resultRef);
+    expect(index).toMatchObject({
+      session_id: 'alice',
+      tool_call_id: 'call-1',
+      bytes: Buffer.byteLength(text) + Buffer.byteLength('{"committed":true}'),
+    });
+    db.close();
+    const reopened = harnessDatabase(path);
+    const alice = new ModelResultStore(new SessionResultRepository(reopened.raw, 'alice'));
+    const bob = new ModelResultStore(new SessionResultRepository(reopened.raw, 'bob'));
+    expect(textOf(await invoke(alice, read))).toBe(originalPage);
+    await expect(invoke(bob, read)).rejects.toThrow('RESULT_REF_EXPIRED');
+    const expiring = JSON.parse(
+      textOf(alice.bound({ content: [{ type: 'text', text }], details: {} }))
+    ).resultRef;
+    reopened.raw
+      .prepare('UPDATE session_tool_results SET expires_at=0 WHERE result_ref=?')
+      .run(expiring);
+    await expect(invoke(alice, { resultRef: expiring })).rejects.toThrow('RESULT_REF_EXPIRED');
+    reopened.sessions.delete('alice');
+    expect(reopened.raw.prepare('SELECT COUNT(*) FROM session_tool_results').pluck().get()).toBe(0);
+    await expect(invoke(alice, read)).rejects.toThrow('RESULT_REF_EXPIRED');
+  });
+
+  it('preserves structured receipts and declines new references when a session is full', async () => {
+    const db = harnessDatabase();
+    db.raw.exec("INSERT INTO sessions(id,title,created_at,updated_at) VALUES ('s','Test',0,0)");
+    const store = new ModelResultStore(new SessionResultRepository(db.raw, 's'));
+    const structuredContent = { receiptId: 'write-42', committed: true, rows: 'r'.repeat(9000) };
+    const result = {
+      content: [{ type: 'text' as const, text: 'saved' }],
+      structuredContent,
+      details: {},
+    };
+    const first = JSON.parse(textOf(store.bound(result)));
+    expect(first.evidence).toMatchObject({ receiptId: 'write-42', committed: true });
+    expect(
+      textOf(await invoke(store, { resultRef: first.resultRef, contains: '"rows"' }))
+    ).toContain('rows');
+    db.raw.prepare('UPDATE session_tool_results SET bytes=?').run(64 * 1024 * 1024);
+    const refused = JSON.parse(textOf(store.bound(result)));
+    expect(refused).toMatchObject({
+      storageError: 'RESULT_NOT_STORED',
+      evidence: { receiptId: 'write-42', committed: true },
+    });
+    expect(refused).not.toHaveProperty('resultRef');
+    expect(JSON.parse(textOf(await invoke(store, { resultRef: first.resultRef }))).resultRef).toBe(
+      first.resultRef
+    );
+    expect(db.raw.prepare('SELECT count(*) FROM session_tool_results').pluck().get()).toBe(1);
   });
 
   it('keeps small tool results unchanged', () => {
@@ -57,7 +134,7 @@ describe('model result budget and complete references', () => {
       content: [{ type: 'text' as const, text: 'status=completed' }],
       details: { id: 'r' },
     };
-    expect(new ModelResultStore().bound(result)).toBe(result);
+    expect(testResultStore().bound(result)).toBe(result);
   });
 
   it('keeps commit evidence visible even when the full evidence also exceeds the budget', async () => {
@@ -66,7 +143,7 @@ describe('model result budget and complete references', () => {
         (key) => [key, key + 'x'.repeat(180)]
       )
     );
-    const store = new ModelResultStore();
+    const store = testResultStore();
     const result = store.bound({
       content: [{ type: 'text', text: 'x'.repeat(10000) }],
       details: {
@@ -104,7 +181,7 @@ describe('model result budget and complete references', () => {
       ],
       callTool: async () => ({ content: [{ type: 'text', text: 'm'.repeat(200000) }] }),
     } as unknown as MCPManager;
-    const store = new ModelResultStore();
+    const store = testResultStore();
     let activated = false;
     const tool = store.wrap(buildMcpCustomTools(mcp), () => {
       activated = true;

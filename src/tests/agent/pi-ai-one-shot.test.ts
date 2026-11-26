@@ -106,6 +106,21 @@ describe('runPiAiOneShot', () => {
     });
   });
 
+  it('keeps concurrent one-shot routes and credentials local to their requests', async () => {
+    const config = makeConfig();
+    const tasks = ['a', 'b'].map((id) => ({
+      ...config,
+      baseUrl: `https://${id}.example.test/v1`,
+      apiKey: `task-${id}`,
+    }));
+    await Promise.all(tasks.map((task) => runPiAiOneShot('hello', '', task)));
+    await runPiAiOneShot('retry', '', tasks[0]);
+    expect(
+      completeSimpleMock.mock.calls.map(([model, , options]) => [model.baseUrl, options.apiKey])
+    ).toEqual([tasks[0], tasks[1], tasks[0]].map(({ baseUrl, apiKey }) => [baseUrl, apiKey]));
+    expect(authMocks.setRuntimeApiKey).not.toHaveBeenCalled();
+  });
+
   it('drops temperature for openai-codex models (ChatGPT backend rejects it)', async () => {
     await runPiAiOneShot(
       'hello',

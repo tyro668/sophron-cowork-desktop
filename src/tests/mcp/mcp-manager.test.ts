@@ -37,7 +37,7 @@ vi.mock('../../main/utils/shell-resolver', () => ({
   getDefaultShell: () => '/bin/bash',
 }));
 
-import { MCPManager } from '../../main/mcp/mcp-manager';
+import { MCPManager, mcpModelToolName } from '../../main/mcp/mcp-manager';
 import type { MCPServerConfig } from '../../main/mcp/mcp-manager';
 
 type TestMCPClient = {
@@ -277,7 +277,7 @@ describe('MCPManager', () => {
       expect(slowClient.listTools).toHaveBeenCalledTimes(1);
       expect(manager.getTools()).toEqual([
         {
-          name: 'mcp__Fast_Server__inspect',
+          name: mcpModelToolName('fast-server', 'inspect'),
           originalName: 'inspect',
           description: 'Fast tool',
           inputSchema: { type: 'object', properties: {}, required: undefined },

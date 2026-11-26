@@ -31,7 +31,6 @@ export function registerMcpIpc(): void {
       const mcpManager = appContext.sessionManager.getMCPManager();
       try {
         const result = await mcpManager.updateServer(config, { interactiveAuth: true });
-        appContext.sessionManager.invalidateMcpServersCache();
         if (result.authorizing) {
           log(`[MCP] Server ${config.name} saved; waiting for browser authorization`);
           return { success: true, authorizing: true };
@@ -72,7 +71,6 @@ export function registerMcpIpc(): void {
     }
     try {
       const result = await appContext.sessionManager.getMCPManager().reauthorizeServer(serverId);
-      appContext.sessionManager.invalidateMcpServersCache();
       if (result.authorizing) return { success: true, authorizing: true };
       if (result.needsAuth) return { success: true, needsAuth: true };
       return { success: true };
@@ -89,7 +87,6 @@ export function registerMcpIpc(): void {
       const mcpManager = appContext.sessionManager.getMCPManager();
       try {
         await mcpManager.removeServer(serverId);
-        appContext.sessionManager.invalidateMcpServersCache();
         log(`[MCP] Server ${serverId} removed successfully`);
       } catch (err) {
         logError('[MCP] Failed to remove server:', err);
