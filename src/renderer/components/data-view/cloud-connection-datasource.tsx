@@ -42,10 +42,10 @@ import { GlassDropdownMenu, GlassMenuItem, GlassMenuSeparator } from '../GlassDr
 import { useOptionalConfirmDialog } from '../ConfirmDialog';
 import { CloudConnectionPreviewDialog, toDataRawTablePreview } from './cloud-connection-preview';
 import { TableRefPickerDialog } from './table-ref-picker-dialog';
-import { EmptyState, fixedTabGroupWidth } from './shared';
+import { configFlushBodyClass, EmptyState, fixedTabGroupWidth } from './shared';
 import { Badge, Button, cn } from '../ui';
 import { useAppStore } from '../../store';
-import { groupClass, titleCellClass } from './raw-source-wizard';
+import { titleCellClass } from './raw-source-wizard';
 
 type Selection =
   | { kind: 'none' }
@@ -647,8 +647,8 @@ function GroupForm({
           </>
         )}
       </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        <section className={groupClass}>
+      <div className={configFlushBodyClass}>
+        <section className="ui-group ui-form-flush bg-surface">
           <div className="ui-group-title">{t('cloudConnection.ds.groupName')}</div>
           <Row label={t('cloudConnection.ds.groupName')}>
             <input
@@ -669,7 +669,7 @@ function GroupForm({
           )}
         </section>
         {group && group.tables.length === 0 && (
-          <p className="mt-3 px-1 text-[13px] text-text-muted">
+          <p className="mt-3 px-3 text-[13px] text-text-muted">
             {t('cloudConnection.ds.emptyTables')}
           </p>
         )}
@@ -742,8 +742,8 @@ function TableRefForm({
           {t('cloudConnection.ds.deleteRef')}
         </HeaderAction>
       </PaneHeader>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
-        <section className={groupClass}>
+      <div className={configFlushBodyClass}>
+        <section className="ui-group ui-form-flush bg-surface">
           <Row label={t('cloudConnection.ds.refKind')}>
             <span className="ui-flush-text">
               {table.kind === 'result'

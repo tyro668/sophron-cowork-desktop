@@ -879,7 +879,10 @@ export function ResultTableEditor({
         onValueChange={(value) => setActiveTab(value as 'data' | 'config' | 'automation')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsContent value="config" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+        <TabsContent
+          value="config"
+          className="ui-config-flush min-h-0 flex-1 overflow-y-auto bg-surface"
+        >
           <div className="grid">
             <div className="ui-group grid gap-px bg-border-subtle sm:grid-cols-2 xl:grid-cols-4">
               <StatCard

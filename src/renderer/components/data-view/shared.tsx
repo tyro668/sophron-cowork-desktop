@@ -106,6 +106,9 @@ export const toolbarPrimaryCellClass =
 export const editorHeaderRowClass =
   'flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border-subtle px-3';
 
+/** Config / detail body: child `.ui-group` cards become edge-to-edge sections. */
+export const configFlushBodyClass = 'ui-config-flush min-h-0 flex-1 overflow-auto bg-surface';
+
 export function DataToolbarButton({
   icon,
   label,

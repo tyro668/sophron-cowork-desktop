@@ -14,6 +14,7 @@ describe('result table editor matches config design c09–c12', () => {
     expect(src).toContain("t('data.resultTables.lineage.downstreamLabel')");
   });
   it('danger zone is a normal flush group with a red text cell and impact', () => {
+    expect(src).toContain('ui-config-flush min-h-0 flex-1 overflow-y-auto bg-surface');
     expect(src).not.toContain('ui-group-danger');
     expect(src).toContain('data-testid="result-danger-zone"');
     expect(src).toContain('resultTableDeleteImpact(resultTable, t)');

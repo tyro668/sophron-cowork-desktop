@@ -1449,6 +1449,23 @@
   border-color: color-mix(in srgb, var(--color-error) 35%, transparent);
 }
 
+/* Flush config / detail pages: descendant groups share one edge-to-edge sheet,
+   separated by full-width 1px rules. Default .ui-group (wizard, dialogs,
+   settings) stays an inset rounded card. */
+.ui-config-flush .ui-group {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.ui-config-flush .ui-group.ui-group-fill {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /* Editor form groups (raw / result table editors): section title row + 104px label column grid */
 .ui-group-title {
   display: flex;

@@ -13,6 +13,9 @@ describe('raw table editor matches config design c05–c08', () => {
     expect(workbench).not.toContain("'bg-accent text-accent-foreground hover:bg-accent-hover'");
   });
   it('config groups are flush with accent action cells', () => {
+    expect(workbench).toContain(
+      'ui-config-flush flex min-h-0 flex-1 flex-col overflow-hidden bg-surface'
+    );
     expect(workbench).toContain('ui-group ui-form-flush bg-surface');
     expect(workbench).toContain('data-testid="raw-source-change"');
     expect(workbench).not.toContain('!h-8 w-full justify-between rounded-lg bg-surface px-2.5');

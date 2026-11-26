@@ -869,7 +869,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:overflow-hidden">
+        <div className="ui-config-flush min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:overflow-hidden">
           <div className="min-h-0 border-b border-border-subtle md:overflow-y-auto md:border-b-0 md:border-r">
             <div>
               <ExecutionProjectPanel
