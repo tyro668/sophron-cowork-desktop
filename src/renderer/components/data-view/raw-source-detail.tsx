@@ -37,7 +37,6 @@ import {
   SELECT_CHEVRON,
   Toggle,
   cellSelectClass,
-  groupClass,
   stemOf,
   titleCellClass,
 } from './raw-source-wizard';
@@ -47,6 +46,7 @@ import {
   bottomTabBarClass,
   bottomTabListClass,
   bottomTabTriggerClass,
+  configFlushBodyClass,
   formatDateTime,
 } from './shared';
 
@@ -253,8 +253,11 @@ export function RawSourceDetail({
       </div>
 
       {tab === 'config' ? (
-        <div className="min-h-0 flex-1 overflow-auto p-2 text-[12.5px]">
-          <section className={groupClass} data-testid="raw-source-detail-source">
+        <div className={`${configFlushBodyClass} text-[12.5px]`}>
+          <section
+            className="ui-group ui-form-flush bg-surface"
+            data-testid="raw-source-detail-source"
+          >
             <div className="ui-group-title">{tr('config.sourceGroup')}</div>
             <div className="ui-form-row">
               <div className={label}>{isFolder ? tr('config.folder') : tr('config.file')}</div>
@@ -350,7 +353,10 @@ export function RawSourceDetail({
           {changingMode ? (
             modeChange.editor
           ) : (
-            <section className={groupClass} data-testid="raw-source-detail-tables">
+            <section
+              className="ui-group ui-form-flush bg-surface"
+              data-testid="raw-source-detail-tables"
+            >
               <div className="ui-group-title">
                 {tr('detail.tables')}
                 <span className="ml-2 text-[12px] font-normal text-text-muted">

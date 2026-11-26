@@ -12,7 +12,7 @@ describe('config / detail views use the flush group variant', () => {
     expect(css).toContain('border-radius: var(--radius-group);');
   });
 
-  it('applies the variant to the four config / detail bodies', () => {
+  it('applies the variant to the config / detail bodies', () => {
     expect(read('src/renderer/components/data-view/raw-table-editor-workbench.tsx')).toContain(
       'ui-config-flush'
     );
@@ -28,14 +28,17 @@ describe('config / detail views use the flush group variant', () => {
     expect(read('src/renderer/components/data-view/shared.tsx')).toContain(
       "export const configFlushBodyClass = 'ui-config-flush min-h-0 flex-1 overflow-auto bg-surface'"
     );
+    expect(read('src/renderer/components/data-view/raw-source-detail.tsx')).toContain(
+      'configFlushBodyClass'
+    );
+    expect(read('src/renderer/components/data-view/raw-source-detail.tsx')).not.toContain(
+      'groupClass'
+    );
   });
 
-  it('leaves the wizard and raw-source detail on the inset groupClass', () => {
+  it('leaves the wizard on the inset groupClass', () => {
     expect(read('src/renderer/components/data-view/raw-source-wizard.tsx')).toContain(
       "export const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface'"
-    );
-    expect(read('src/renderer/components/data-view/raw-source-detail.tsx')).toContain(
-      'className={groupClass}'
     );
     expect(read('src/renderer/components/data-view/cloud-connection-datasource.tsx')).not.toContain(
       'groupClass'
