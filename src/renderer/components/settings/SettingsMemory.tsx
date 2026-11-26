@@ -278,17 +278,14 @@ export function SettingsMemory() {
             result.commitError || !result.success
               ? result.commitError
                 ? t('memory.rebuildCommitFailed', {
-                    defaultValue: `重建提交失败：${result.commitError}`,
                     error: result.commitError,
                   })
                 : result.committedSessionCount > 0
                   ? t('memory.rebuildPartialSuccess', {
-                      defaultValue: `已重建 ${result.committedSessionCount} 个会话，${result.failedSessionCount} 个会话失败`,
                       succeeded: result.committedSessionCount,
                       failed: result.failedSessionCount,
                     })
                   : t('memory.rebuildAborted', {
-                      defaultValue: `重建未完成，原有记忆未受影响（${result.failedSessionCount} 个会话提取失败）`,
                       failed: result.failedSessionCount,
                     })
               : t('memory.rebuildSuccess'),

@@ -41,3 +41,5 @@ export { Tabs, TabsList, TabsTrigger, TabsContent, useTabsIds } from './tabs';
 export type { TabsProps, TabsTriggerProps, TabsContentProps } from './tabs';
 export { InlineBanner } from './inline-banner';
 export type { InlineBannerProps, InlineBannerTone } from './inline-banner';
+export { Kbd } from './kbd';
+export type { KbdProps } from './kbd';

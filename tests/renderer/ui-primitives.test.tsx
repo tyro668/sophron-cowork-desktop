@@ -29,7 +29,6 @@ import {
   TabsList,
   TabsTrigger,
 } from '../../src/renderer/components/ui';
-import { GlassSwitch } from '../../src/renderer/components/GlassSwitch';
 import {
   ConfirmDialogProvider,
   useConfirmDialog,
@@ -80,15 +79,6 @@ describe('Switch', () => {
     render(<Switch checked={false} onCheckedChange={onCheckedChange} aria-label="sw" />);
     fireEvent.click(screen.getByRole('switch'));
     expect(onCheckedChange).toHaveBeenCalledWith(true);
-  });
-
-  it('GlassSwitch adapter keeps the same API', () => {
-    const onCheckedChange = vi.fn();
-    render(<GlassSwitch checked={true} onCheckedChange={onCheckedChange} ariaLabel="sw" />);
-    const sw = screen.getByRole('switch');
-    expect(sw.getAttribute('aria-label')).toBe('sw');
-    fireEvent.click(sw);
-    expect(onCheckedChange).toHaveBeenCalledWith(false);
   });
 });
 

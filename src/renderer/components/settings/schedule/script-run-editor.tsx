@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileSearch, FolderOpen, PencilLine, Play } from 'lucide-react';
@@ -125,7 +126,7 @@ export function ScriptRunEditor({
         ok: false,
         durationMs: 0,
         installedDeps: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: formatIpcError(error, String(error)),
       });
     } finally {
       setTesting(false);

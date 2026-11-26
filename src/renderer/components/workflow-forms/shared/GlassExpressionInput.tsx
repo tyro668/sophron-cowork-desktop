@@ -712,15 +712,15 @@ export const exprLanguage = StreamLanguage.define({
 });
 
 const exprHighlightStyle = HighlightStyle.define([
-  { tag: tags.variableName, color: '#2563eb' },
-  { tag: tags.string, color: '#b45309' },
-  { tag: tags.number, color: '#7c3aed' },
-  { tag: tags.atom, color: '#2563eb' },
-  { tag: tags.keyword, color: '#1e1b4b', fontWeight: '600' },
-  { tag: tags.namespace, color: '#db2777', fontWeight: '600' },
-  { tag: FUNCTION_CALL_TAG, color: '#7c3aed', fontWeight: '600' },
-  { tag: tags.operator, color: '#475569' },
-  { tag: tags.punctuation, color: '#64748b' },
+  { tag: tags.variableName, color: 'var(--color-syntax-variable)' },
+  { tag: tags.string, color: 'var(--color-syntax-string)' },
+  { tag: tags.number, color: 'var(--color-syntax-number)' },
+  { tag: tags.atom, color: 'var(--color-syntax-variable)' },
+  { tag: tags.keyword, color: 'var(--color-syntax-keyword-strong)', fontWeight: '600' },
+  { tag: tags.namespace, color: 'var(--color-syntax-namespace)', fontWeight: '600' },
+  { tag: FUNCTION_CALL_TAG, color: 'var(--color-syntax-number)', fontWeight: '600' },
+  { tag: tags.operator, color: 'var(--color-text-secondary)' },
+  { tag: tags.punctuation, color: 'var(--color-text-muted)' },
 ]);
 
 const exprTheme = EditorView.theme({

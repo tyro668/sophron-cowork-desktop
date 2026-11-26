@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { isCancelledError } from '../../../shared/cancel';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -60,8 +61,7 @@ export function ChatToScriptDialog() {
         setWriteMode('update');
       })
       .catch((err: unknown) => {
-        if (!cancelled && !isCancelledError(err))
-          setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled && !isCancelledError(err)) setError(formatIpcError(err, String(err)));
       })
       .finally(() => {
         settled = true;

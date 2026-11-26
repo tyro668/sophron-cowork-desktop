@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -26,39 +26,11 @@ import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
 import { CodexAuthCard } from './CodexAuthCard';
+import { FieldRow, SettingsCard } from './SettingsSectionPrimitives';
 
 interface ModelOptionItem {
   id: string;
   name: string;
-}
-
-function SettingsCard({
-  icon,
-  title,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="ui-group min-w-0 bg-surface">
-      <h2 className="ui-group-title gap-2">
-        <span className="flex shrink-0 text-text-muted [&>svg]:h-3.5 [&>svg]:w-3.5">{icon}</span>
-        {title}
-      </h2>
-      <div>{children}</div>
-    </section>
-  );
-}
-
-function FieldRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="ui-form-row min-w-0">
-      <span className="ui-form-label items-center">{label}</span>
-      <div className="ui-form-value min-w-0">{children}</div>
-    </div>
-  );
 }
 
 export function SettingsAPI() {

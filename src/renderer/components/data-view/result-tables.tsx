@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -93,7 +94,7 @@ function useResultTableExport() {
         showToast('error', result.error);
       }
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : String(err));
+      showToast('error', formatIpcError(err, String(err)));
     } finally {
       setExportBusy(null);
     }
@@ -684,7 +685,7 @@ export function ResultTableEditor({
         setPreview(result);
         setPreviewPage(page);
       } catch (err) {
-        setPreviewError(err instanceof Error ? err.message : String(err));
+        setPreviewError(formatIpcError(err, String(err)));
       } finally {
         setPreviewLoading(false);
       }

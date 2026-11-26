@@ -24,7 +24,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useConfirmDialog } from '../ConfirmDialog';
-import { ipcErrorMessage } from '../../utils/ipc-error';
+import { ipcErrorMessage, formatIpcError } from '../../utils/ipc-error';
 import { showToast } from '../../utils/toast';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import type {
@@ -295,7 +295,7 @@ export function ScriptPackageWorkbench({
         setViewVersion(initial);
         if (initial == null) setStep('rules');
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(formatIpcError(err, String(err)));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,7 +320,7 @@ export function ScriptPackageWorkbench({
               '')
         );
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err: unknown) => setError(formatIpcError(err, String(err))));
     return () => {
       cancelled = true;
     };
@@ -541,7 +541,7 @@ export function ScriptPackageWorkbench({
         if (anchor && chat) setJob(anchor, null);
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatIpcError(err, String(err));
       markNormalizerGenerationError(log, message);
       setError(message);
       if (anchor && chat) {
@@ -605,7 +605,7 @@ export function ScriptPackageWorkbench({
         ok: false,
         durationMs: 0,
         installedDeps: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatIpcError(err, String(err)),
       });
     } finally {
       setTesting(false);
@@ -798,7 +798,7 @@ export function ScriptPackageWorkbench({
         markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatIpcError(err, String(err));
       markNormalizerGenerationError(log, message);
       setError(message);
     } finally {
@@ -818,7 +818,7 @@ export function ScriptPackageWorkbench({
       await refresh();
       if (chat?.afterPublish === 'create_automation') createAutomation(next);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setBusyVersion(null);
     }
@@ -846,7 +846,7 @@ export function ScriptPackageWorkbench({
       if (viewVersion === version)
         setViewVersion(loaded?.summary.published?.version ?? loaded?.versions[0]?.version ?? null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setDeletingVersion(null);
     }
@@ -864,7 +864,7 @@ export function ScriptPackageWorkbench({
       );
       savedMetaRef.current = { name: name.trim(), rulePrompt };
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setSaving(false);
     }

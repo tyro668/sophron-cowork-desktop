@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { isCancelledError } from '../../../shared/cancel';
 import { modesForSource } from './raw-source-detail';
 import { useInlineModeChange } from './raw-source-mode-change';
@@ -566,7 +567,7 @@ export function RawTableEditorWorkbench({
       });
       setNormalizerVersions(result.versions);
     } catch (err) {
-      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+      setCustomizeGenerationError(formatIpcError(err, String(err)));
     } finally {
       setNormalizerVersionsLoading(false);
     }
@@ -656,7 +657,7 @@ export function RawTableEditorWorkbench({
         markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatIpcError(err, String(err));
       setCustomizeGenerationError(message);
       markNormalizerGenerationError(log, message);
     } finally {
@@ -1013,7 +1014,7 @@ export function RawTableEditorWorkbench({
       }
     } catch (err) {
       // Keep the raw message: the 报错 panel strips the IPC prefix and absolute paths itself.
-      setPreviewError(err instanceof Error ? err.message : formatDataErrorMessage(err, t));
+      setPreviewError(formatDataErrorMessage(err, t));
       setPreviewRun({ versionId, durationMs: Date.now() - startedAt });
     } finally {
       setPreviewLoading(false);
@@ -1184,7 +1185,7 @@ export function RawTableEditorWorkbench({
                 }
               : { passed: true, rows: run.preview.totalRows, cols: run.preview.columns.length };
           } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = formatIpcError(err, String(err));
             setPreviewData(null);
             setPreviewError(message);
             setPreviewRun({ versionId: version.id, durationMs: Date.now() - startedAt });
@@ -1251,7 +1252,7 @@ export function RawTableEditorWorkbench({
         markNormalizerGenerationCancelled(log, t('fixError.cancelled'));
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatIpcError(err, String(err));
       markNormalizerGenerationError(log, message);
       setCustomizeGenerationError(message);
     } finally {
@@ -1304,7 +1305,7 @@ export function RawTableEditorWorkbench({
         if (ok === false) setCustomizeGenerationError(t('data.rawTables.editor.applyFailed'));
       }
     } catch (err) {
-      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+      setCustomizeGenerationError(formatIpcError(err, String(err)));
     } finally {
       setCustomizeVersionActionId(null);
     }
@@ -1368,7 +1369,7 @@ export function RawTableEditorWorkbench({
       }
       void refreshNormalizerVersions(dataProcessing.artifactId);
     } catch (err) {
-      setCustomizeGenerationError(err instanceof Error ? err.message : String(err));
+      setCustomizeGenerationError(formatIpcError(err, String(err)));
     } finally {
       setDeletingNormalizerVersionId(null);
     }

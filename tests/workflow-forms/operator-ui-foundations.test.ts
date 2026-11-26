@@ -4,9 +4,8 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { GlassFormTextInput } from '../../src/renderer/components/workflow-forms/shared/GlassFormTextInput';
-import { GlassFieldCompactSelect } from '../../src/renderer/components/workflow-forms/shared/GlassFieldCompactSelect';
+import { GlassFieldMultiSelect } from '../../src/renderer/components/workflow-forms/shared/GlassFieldMultiSelect';
 import { GlassOptionSingleSelect } from '../../src/renderer/components/workflow-forms/shared/GlassOptionSingleSelect';
-import { GlassRadioSelect } from '../../src/renderer/components/workflow-forms/shared/GlassRadioSelect';
 import { GlassRowList } from '../../src/renderer/components/workflow-forms/shared/GlassRowList';
 
 describe('operator UI foundations', () => {
@@ -20,24 +19,6 @@ describe('operator UI foundations', () => {
 
     expect(html).toContain('min-h-8');
     expect(html).toContain('text-[13px]');
-  });
-
-  it('renders radio choices with a readable size, minimum height, and selected semantics', () => {
-    const html = renderToStaticMarkup(
-      createElement(GlassRadioSelect, {
-        value: 'include',
-        options: [
-          { value: 'include', label: 'Include' },
-          { value: 'exclude', label: 'Exclude' },
-        ],
-        onChange: () => undefined,
-      })
-    );
-
-    expect(html).toContain('min-h-8');
-    expect(html).toContain('text-[13px]');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-pressed="false"');
   });
 
   it('left-aligns the selected value in ordinary option selects', () => {
@@ -74,12 +55,14 @@ describe('operator UI foundations', () => {
     expect(html).toContain('data-row-drag-handle="true"');
   });
 
-  it('keeps compact field lists within their parent when a field name is very long', () => {
+  it('keeps field lists within their parent when a field name is very long', () => {
     const html = renderToStaticMarkup(
-      createElement(GlassFieldCompactSelect, {
+      createElement(GlassFieldMultiSelect, {
         columns: [`field_${'x'.repeat(300)}`],
         selected: [],
         onChange: () => undefined,
+        borderless: true,
+        searchBordered: true,
       })
     );
 

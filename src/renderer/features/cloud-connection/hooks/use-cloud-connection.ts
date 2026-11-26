@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * 云连接状态订阅 + 统一的动作执行（busy 标记、失败 toast）。数据页与设置页共用。
  */
@@ -15,7 +16,7 @@ import { showToast } from '../../../utils/toast';
 import { cloudConnectionClient } from '../api/cloud-connection-client';
 
 export function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return formatIpcError(error, String(error));
 }
 
 export function isLiveStatus(state: CloudConnectionState | null): boolean {

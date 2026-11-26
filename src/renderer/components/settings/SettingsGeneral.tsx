@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, Monitor, Moon, Sun } from 'lucide-react';
 import { Button } from '../ui/button';
 import { formatTimestamp } from '../data-view/shared';
 import { useTranslation } from 'react-i18next';
+import { SettingsCard } from './SettingsSectionPrimitives';
 import { useAppStore } from '../../store';
 import { BrandMark } from '../BrandMark';
 
@@ -223,15 +224,6 @@ export function SettingsGeneral() {
         </p>
       )}
     </div>
-  );
-}
-
-function SettingsCard({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="ui-group bg-surface">
-      <h4 className="ui-group-title">{title}</h4>
-      {children}
-    </section>
   );
 }
 

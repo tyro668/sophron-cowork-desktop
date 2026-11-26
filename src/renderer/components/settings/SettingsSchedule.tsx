@@ -755,7 +755,6 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     const confirmed = await confirmDelete({
       message: t('schedule.deleteConfirm', {
         title: selectedAutomation.name,
-        defaultValue: '确认删除自动化「{{title}}」？',
       }),
     });
     if (!confirmed) return;

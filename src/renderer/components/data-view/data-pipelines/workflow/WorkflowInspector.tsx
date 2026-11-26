@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../../utils/ipc-error';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -305,7 +306,7 @@ export function WorkflowInspector({
       .catch((err) => {
         if (requestSeq === nodePreviewRequestSeq.current) {
           setNodePreviewData(null);
-          setNodePreviewError(err instanceof Error ? err.message : String(err));
+          setNodePreviewError(formatIpcError(err, String(err)));
         }
       })
       .finally(() => {

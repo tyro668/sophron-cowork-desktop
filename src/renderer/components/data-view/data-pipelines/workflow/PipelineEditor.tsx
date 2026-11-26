@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../../utils/ipc-error';
 import {
   detectFieldRenames,
   propagateFieldRenames,
@@ -249,7 +250,7 @@ export function PipelineEditor({
       );
       setSelectedNodeId((current) => current ?? nextWorkflow.nodes[0]?.id ?? null);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : String(err));
+      setLocalError(formatIpcError(err, String(err)));
     }
   }, [pipeline.id, resetHistory]);
 
@@ -508,7 +509,7 @@ export function PipelineEditor({
       setIsEditingPipelineTitle(false);
       await onWorkflowSaved();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : String(err));
+      setLocalError(formatIpcError(err, String(err)));
     } finally {
       setRenamingPipeline(false);
     }
@@ -1001,7 +1002,7 @@ export function PipelineEditor({
       await onWorkflowSaved();
       return saved;
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : String(err));
+      setLocalError(formatIpcError(err, String(err)));
       void flagPlanDiagnostics(toWorkflowSaveInput(workflow));
       return null;
     } finally {
@@ -1435,7 +1436,7 @@ export function PipelineEditor({
       setDslMode('export');
       loadJflowColumns();
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : String(err));
+      setLocalError(formatIpcError(err, String(err)));
     }
   }, [t, workflow, flagIncompleteNodes, pipelineTitle, formatJflowDiagnostics, loadJflowColumns]);
 
@@ -1520,7 +1521,7 @@ export function PipelineEditor({
       setLocalError(error);
       if (!error) selectSingleNode(nodeId);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : String(err));
+      setLocalError(formatIpcError(err, String(err)));
     }
   };
 

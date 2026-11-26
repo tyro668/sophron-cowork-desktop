@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 /**
  * Source detail page (design 方案 A): the same form grid as the new-source config page.
  * 数据来源 group — path (change folder/file; reveal stays in the more menu), build mode (changing it rebuilds via the wizard after
@@ -161,7 +162,7 @@ export function RawSourceDetail({
       onChanged();
     } catch (err) {
       setAutoInclude(!on);
-      setAutoError(err instanceof Error ? err.message : String(err));
+      setAutoError(formatIpcError(err, String(err)));
     } finally {
       setAutoBusy(false);
     }
@@ -649,7 +650,7 @@ function MemberDataTab({
         setPreview(result);
         setPage(next);
       } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
+        setError(formatIpcError(err, String(err)));
       } finally {
         setLoading(false);
       }

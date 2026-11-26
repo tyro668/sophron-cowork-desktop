@@ -93,7 +93,11 @@ function HunkRows({ header, lines }: { header: string; lines: ReturnType<typeof 
               className="w-5 select-none text-center"
               style={{
                 color:
-                  line.kind === 'add' ? '#1f9d55' : line.kind === 'del' ? '#d64545' : undefined,
+                  line.kind === 'add'
+                    ? 'var(--color-success)'
+                    : line.kind === 'del'
+                      ? 'var(--color-error)'
+                      : undefined,
               }}
             >
               {line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ''}

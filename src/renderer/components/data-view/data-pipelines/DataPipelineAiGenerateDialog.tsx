@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /** Every entry point starts the same persisted analyze → confirm → generate conversation. */
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -118,7 +119,7 @@ export function DataPipelineAiGenerateDialog({
         onOpenChange(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setBusy(false);
     }

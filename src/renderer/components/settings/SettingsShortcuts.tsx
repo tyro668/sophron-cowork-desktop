@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next';
+import { Kbd } from '../ui';
 
 const MOD_KEY =
   typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin' ? '⌘' : 'Ctrl';
@@ -18,14 +19,6 @@ const SHORTCUTS: Array<{ keys: string[][]; labelKey: string }> = [
   { keys: [['Delete']], labelKey: 'settings.shortcutList.deleteNode' },
   { keys: [['Esc']], labelKey: 'settings.shortcutList.escape' },
 ];
-
-function Kbd({ children }: { children: string }) {
-  return (
-    <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-border-muted bg-surface px-1.5 font-sans text-xs text-text-secondary">
-      {children}
-    </kbd>
-  );
-}
 
 /** Read-only keyboard shortcut reference (settings › 快捷键). */
 export function SettingsShortcuts() {

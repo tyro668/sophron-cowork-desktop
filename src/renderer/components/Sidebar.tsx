@@ -1,3 +1,4 @@
+import { formatIpcError } from '../utils/ipc-error';
 import { createPortal } from 'react-dom';
 import { confirmLeave } from '../utils/leave-guard';
 import { NEW_TASK_EVENT } from '../utils/new-task';
@@ -205,7 +206,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       setGlobalNotice({
         id: `desktop-auth-cancel-${Date.now()}`,
         type: 'warning',
-        message: error instanceof Error ? error.message : t('sidebar.loginFailed'),
+        message: formatIpcError(error, t('sidebar.loginFailed')),
       });
     }
   }, [isElectron, isLoginBusy, setDesktopAuthStatus, setGlobalNotice, t]);
@@ -234,9 +235,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
         type: isCancelled ? 'info' : 'error',
         message: isCancelled
           ? t('sidebar.loginCancelled')
-          : error instanceof Error
-            ? error.message
-            : t('sidebar.loginFailed'),
+          : formatIpcError(error, t('sidebar.loginFailed')),
       });
     } finally {
       setAuthBusyMode(null);
@@ -264,7 +263,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       setGlobalNotice({
         id: `desktop-auth-logout-${Date.now()}`,
         type: 'error',
-        message: error instanceof Error ? error.message : t('sidebar.logoutFailed'),
+        message: formatIpcError(error, t('sidebar.logoutFailed')),
       });
     } finally {
       setAuthBusyMode(null);

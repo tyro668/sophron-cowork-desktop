@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Cloud, KeyRound, PlugZap, Unplug } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { FieldRow } from './SettingsSectionPrimitives';
 import { useAppStore } from '../../store';
 import { showToast } from '../../utils/toast';
 import type { PersonalAnalysisConfig } from '../../types';
@@ -19,15 +20,6 @@ function maskKey(value: string) {
   if (!value) return '••••••••';
   if (value.length <= 6) return '••••••';
   return `${value.slice(0, 3)}••••${value.slice(-3)}`;
-}
-
-function FieldRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="ui-form-row">
-      <span className="ui-form-label items-center">{label}</span>
-      <div className="ui-form-value">{children}</div>
-    </div>
-  );
 }
 
 export function SettingsPersonalAnalysis() {

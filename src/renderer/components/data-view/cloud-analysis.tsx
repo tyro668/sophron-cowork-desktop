@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { Badge } from '../ui/badge';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
@@ -187,7 +188,7 @@ function isResourceNotFoundError(error: unknown) {
   const code = readErrorCode(error);
   if (code === 'RESOURCE_NOT_FOUND') return true;
 
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatIpcError(error, String(error));
   return /^\[RESOURCE_NOT_FOUND\]/.test(message) || /\bHTTP 404\b/i.test(message);
 }
 
@@ -208,7 +209,7 @@ function readErrorCode(error: unknown): string | undefined {
   const details = (error as { details?: { code?: unknown } })?.details;
   if (typeof details?.code === 'string' && details.code) return details.code;
 
-  const message = error instanceof Error ? error.message : String(error);
+  const message = formatIpcError(error, String(error));
   return message.match(/^\[([A-Z_]+)\]/)?.[1];
 }
 
@@ -433,9 +434,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
         type: isCancelled ? 'info' : 'error',
         message: isCancelled
           ? t('cloudData.loginCancelled')
-          : error instanceof Error
-            ? error.message
-            : t('cloudData.loginFailed'),
+          : formatIpcError(error, t('cloudData.loginFailed')),
       });
     } finally {
       setLoginBusy(false);

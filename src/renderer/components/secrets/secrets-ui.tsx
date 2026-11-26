@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { KeyRound, Plus, X } from 'lucide-react';
@@ -66,7 +67,7 @@ export function SecretsEditor({
       setError(null);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     }
   };
 

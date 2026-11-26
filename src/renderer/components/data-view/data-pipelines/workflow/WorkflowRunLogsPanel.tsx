@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../../utils/ipc-error';
 /**
  * Inspector "日志" tab — run history + per-node row stats. Each recorded run
  * shows seq/status/trigger/times/row totals/workflow version; selecting a run
@@ -87,7 +88,7 @@ export function WorkflowRunLogsPanel({
       })
       .catch((error) => {
         if (!cancelled) {
-          setRunsError(error instanceof Error ? error.message : String(error));
+          setRunsError(formatIpcError(error, String(error)));
         }
       });
     return () => {

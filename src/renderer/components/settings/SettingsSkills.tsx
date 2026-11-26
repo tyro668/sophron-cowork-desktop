@@ -743,7 +743,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                   <span className="min-w-0 truncate">
                     {t('skills.workspace.totalCount', {
                       count: tableItems.length,
-                      defaultValue: `共 ${tableItems.length} 个技能`,
                     })}
                   </span>
                   <div className="flex flex-shrink-0 items-center gap-2">
