@@ -5,12 +5,11 @@ import type {
   DataRawTableHealth,
   DataResultTable,
 } from '../../../../shared/contracts';
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import {
   DataRawTableRow,
   RESULT_TABLE_CONFIG_KIND,
   resultTableConfigJson,
-  parseResultTableConfig,
   storedRawTableSourceKindSql,
   tableNameFromId,
   mapRawTableRow,
@@ -132,27 +131,18 @@ export class RawTableRepository {
     );
     return rows[0] ? mapRawTableRow(rows[0]) : null;
   }
-  async upsertRawTableForPipelineOutput(
-    pipelineName: string,
-    sourcePath: string | null,
+  buildOutputMetadataWrite(
     tableName: string,
     rowCount: number,
     columnCount: number,
     outputResultTableId?: string
-  ): Promise<DataRawTable | null> {
+  ): MetadataWrite {
     if (outputResultTableId) {
-      const now = this.ctx.now();
-      const existing = await this.ctx.metaQueryRows<{ config_json: string | null }>(
-        'SELECT config_json FROM data_raw_tables WHERE id = $id LIMIT 1',
-        { id: outputResultTableId }
-      );
-      const existingConfig = parseResultTableConfig(existing[0]?.config_json ?? null);
-      await this.ctx.metaRunSql(
+      return [
         `
             UPDATE data_raw_tables
             SET source_path = $sourcePath,
                 source_kind = 'output',
-                config_json = $configJson,
                 file_count = 0,
                 table_name = $tableName,
                 row_count = $rowCount,
@@ -163,31 +153,23 @@ export class RawTableRepository {
         {
           id: outputResultTableId,
           sourcePath: `duckdb://outputs/${tableName}`,
-          configJson: resultTableConfigJson(
-            existingConfig.sourceRawTableId,
-            existingConfig.cloudAction
-          ),
           tableName,
           rowCount,
           columnCount,
-          updatedAt: now,
-        }
-      );
-      return this.requireRawTable(outputResultTableId);
+          updatedAt: this.ctx.now(),
+        },
+      ];
     }
 
-    await this.ctx.metaRunSql(
+    return [
       `
           DELETE FROM data_raw_tables
           WHERE table_name = $tableName
             AND ${storedRawTableSourceKindSql()} = 'output'
             AND coalesce(config_json, '') NOT LIKE '%"kind":"${RESULT_TABLE_CONFIG_KIND}"%'
         `,
-      { tableName }
-    );
-    void pipelineName;
-    void sourcePath;
-    return null;
+      { tableName },
+    ];
   }
   async getRawTable(id: string): Promise<DataRawTable | null> {
     const rows = await this.ctx.metaQueryRows<DataRawTableRow>(
@@ -346,7 +328,7 @@ export class RawTableRepository {
       health: health ? JSON.stringify(health) : null,
     });
   }
-  async updateRawTableAfterReimport(row: {
+  buildReimportUpdate(row: {
     id: string;
     name: string;
     sourcePath: string;
@@ -356,8 +338,8 @@ export class RawTableRepository {
     rowCount: number;
     columnCount: number;
     updatedAt: number;
-  }): Promise<void> {
-    await this.ctx.metaRunSql(
+  }): MetadataWrite {
+    return [
       `
           UPDATE data_raw_tables
           SET name = $name,
@@ -370,20 +352,10 @@ export class RawTableRepository {
               updated_at = $updatedAt
           WHERE id = $id
         `,
-      {
-        id: row.id,
-        name: row.name,
-        sourcePath: row.sourcePath,
-        sourceKind: row.sourceKind,
-        configJson: row.configJson,
-        fileCount: row.fileCount,
-        rowCount: row.rowCount,
-        columnCount: row.columnCount,
-        updatedAt: row.updatedAt,
-      }
-    );
+      row,
+    ];
   }
-  async updateResultTableForSource(row: {
+  buildResultRebindUpdate(row: {
     id: string;
     name: string | null;
     sourcePath: string;
@@ -391,8 +363,8 @@ export class RawTableRepository {
     rowCount: number;
     columnCount: number;
     updatedAt: number;
-  }): Promise<void> {
-    await this.ctx.metaRunSql(
+  }): MetadataWrite {
+    return [
       `
           UPDATE data_raw_tables
           SET name = coalesce($name, name),
@@ -405,16 +377,8 @@ export class RawTableRepository {
               updated_at = $updatedAt
           WHERE id = $id
         `,
-      {
-        id: row.id,
-        name: row.name,
-        sourcePath: row.sourcePath,
-        configJson: row.configJson,
-        rowCount: row.rowCount,
-        columnCount: row.columnCount,
-        updatedAt: row.updatedAt,
-      }
-    );
+      row,
+    ];
   }
   async updateResultTableMetadata(row: {
     id: string;

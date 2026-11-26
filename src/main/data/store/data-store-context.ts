@@ -12,7 +12,7 @@ import {
   dataFieldTypeFromDuckDbType,
   duckDbTypeForDataFieldType,
 } from '../../../shared/data-field-types';
-import { log } from '../../utils/logger';
+import { log, logWarn } from '../../utils/logger';
 import { compileTypedProjection, quoteIdentifier, toNumber } from '../operators';
 import { DataPipelineStoreOptions, isDuckDbTransactionStateError } from './data-store-records';
 import { inferDataFieldTypeFromValues } from './input-source';
@@ -22,6 +22,13 @@ import { AsyncLocalStorage } from 'async_hooks';
 import type Database from 'better-sqlite3';
 import * as fs from 'fs';
 import { dirname, join } from 'path';
+
+export type MetadataWrite = [sql: string, values: Record<string, string | number | null>];
+
+interface ExclusiveScope {
+  active: boolean;
+  afterRelease: Array<() => void>;
+}
 
 export class DataStoreContext {
   readonly dbPath: string;
@@ -36,8 +43,8 @@ export class DataStoreContext {
   metadataReadOnlyReason: string | null = null;
   metadataInitPromise: Promise<void> | null = null;
   duckInitPromise: Promise<void> | null = null;
-  exclusiveQueue: Promise<void> = Promise.resolve();
-  readonly exclusiveContext = new AsyncLocalStorage<boolean>();
+  private exclusiveQueue: Promise<void> = Promise.resolve();
+  private readonly exclusiveContext = new AsyncLocalStorage<ExclusiveScope>();
   private readonly postReadyHooks: Array<() => Promise<void>> = [];
   private postReadyPromise: Promise<void> | null = null;
 
@@ -52,7 +59,7 @@ export class DataStoreContext {
     }
   }
   async runExclusive<T>(work: () => Promise<T>, label = 'duckdb'): Promise<T> {
-    if (this.exclusiveContext.getStore()) {
+    if (this.exclusiveContext.getStore()?.active) {
       return work();
     }
     const queuedAt = Date.now();
@@ -64,8 +71,9 @@ export class DataStoreContext {
     await previous.catch(() => undefined);
     const startedAt = Date.now();
     const waitMs = startedAt - queuedAt;
+    const scope: ExclusiveScope = { active: true, afterRelease: [] };
     try {
-      return await this.exclusiveContext.run(true, work);
+      return await this.exclusiveContext.run(scope, work);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (isDuckDbTransactionStateError(message)) {
@@ -81,9 +89,24 @@ export class DataStoreContext {
           durationMs,
         });
       }
+      scope.active = false;
       release();
+      for (const notify of scope.afterRelease.splice(0)) {
+        try {
+          notify();
+        } catch (error) {
+          logWarn('[DataPipelineStore] Commit listener failed:', error);
+        }
+      }
     }
   }
+
+  notifyAfterExclusive(notify: () => void): void {
+    const scope = this.exclusiveContext.getStore();
+    if (!scope?.active) throw new Error('Commit notification requires an active write operation');
+    scope.afterRelease.push(notify);
+  }
+
   close(): void {
     try {
       this.connection?.closeSync();
@@ -272,10 +295,35 @@ export class DataStoreContext {
     );
     return rows.length > 0;
   }
-  async metaRunSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
+  private assertMetadataWritable(): void {
     if (this.metadataReadOnly) {
       throw new Error(this.metadataReadOnlyReason ?? 'Data pipeline metadata store is read-only');
     }
+  }
+
+  async commitMetadataWrites(writes: MetadataWrite[]): Promise<void> {
+    this.assertMetadataWritable();
+    const db = this.metadataDb;
+    if (db) {
+      // The app also writes chat messages on this connection. Never yield inside this transaction.
+      db.transaction(() => {
+        for (const [sql, values] of writes) db.prepare(sql).run(values);
+      })();
+      return;
+    }
+
+    await this.metaRunSql('BEGIN TRANSACTION');
+    try {
+      for (const write of writes) await this.metaRunSql(...write);
+      await this.metaRunSql('COMMIT');
+    } catch (error) {
+      await this.metaRunSql('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async metaRunSql(sql: string, values?: Record<string, string | number | null>): Promise<void> {
+    this.assertMetadataWritable();
     if (!this.metadataDb) {
       await this.runSql(sql, values);
       return;

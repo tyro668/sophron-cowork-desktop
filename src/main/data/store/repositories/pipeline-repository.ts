@@ -1,6 +1,6 @@
 /** data_pipelines row access. */
 import type { DataPipeline, DataPipelineStatus } from '../../../../shared/contracts';
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import { DataPipelineRow, mapPipelineRow } from '../data-store-records';
 
 export class PipelineRepository {
@@ -99,7 +99,7 @@ export class PipelineRepository {
     );
   }
 
-  async markPipelineCompleted(
+  buildCompletionUpdate(
     id: string,
     row: {
       nodeCount: number;
@@ -110,8 +110,8 @@ export class PipelineRepository {
       columnCount: number;
       at: number;
     }
-  ): Promise<void> {
-    await this.ctx.metaRunSql(
+  ): MetadataWrite {
+    return [
       `
           UPDATE data_pipelines
           SET status = 'completed',
@@ -136,8 +136,8 @@ export class PipelineRepository {
         columnCount: row.columnCount,
         lastRunAt: row.at,
         updatedAt: row.at,
-      }
-    );
+      },
+    ];
   }
 
   async setPipelineNodeCount(id: string, nodeCount: number, updatedAt: number): Promise<void> {

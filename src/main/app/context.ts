@@ -44,8 +44,6 @@ export interface AppContext {
   startupUpdateCheckScheduled: boolean;
   /** Tray instance (kept here to prevent GC). */
   tray: Tray | null;
-  /** Guards cleanupSandboxResources against re-entry. */
-  isCleaningUp: boolean;
   /** Current working directory (persisted between sessions). */
   currentWorkingDir: string | null;
 }
@@ -68,7 +66,6 @@ export const appContext: AppContext = {
   isInstallingUpdate: false,
   startupUpdateCheckScheduled: false,
   tray: null,
-  isCleaningUp: false,
   currentWorkingDir: null,
 };
 

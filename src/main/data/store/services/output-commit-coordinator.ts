@@ -4,7 +4,7 @@ import type { DataPipeline, DataWorkflowSaveInput } from '../../../../shared/con
 import { getWorkflowUpstreamSignature } from '../../../../shared/workflow-plan';
 import type { WorkflowNodeRunStat } from '../../data-command-types';
 import { quoteIdentifier, toNumber } from '../../operators';
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import { tableNameFromId } from '../data-store-records';
 import { RawTableRepository } from '../repositories/raw-table-repository';
 import { OutputCommitJournal } from '../repositories/output-commit-journal';
@@ -225,7 +225,6 @@ export class OutputCommitCoordinator {
       }
 
       let physicalCommitted = false;
-      let metadataTransactionStarted = false;
       try {
         // One physical transaction covers every sink so partial writes roll back.
         await this.ctx.runSql('BEGIN TRANSACTION');
@@ -254,47 +253,46 @@ export class OutputCommitCoordinator {
           await this.journal.updateOutputCommitState(sink.journalId, 'data_committed');
         }
 
-        await this.ctx.metaRunSql('BEGIN TRANSACTION');
-        metadataTransactionStarted = true;
+        const writes: MetadataWrite[] = [];
         for (const [index, sink] of sinks.entries()) {
           const finalColumnCount = sink.appendToExisting
             ? (await this.ctx.getTableColumns(sink.target.tableName)).length
             : (await this.ctx.getTableColumns(sink.stagingTable)).length;
-          await this.rawTables.upsertRawTableForPipelineOutput(
-            pipeline.name,
-            temporaryPipeline.sourcePath,
-            sink.target.tableName,
-            sink.finalRowCount,
-            finalColumnCount,
-            sink.target.outputResultTableId
+          writes.push(
+            this.rawTables.buildOutputMetadataWrite(
+              sink.target.tableName,
+              sink.finalRowCount,
+              finalColumnCount,
+              sink.target.outputResultTableId
+            )
           );
           if (index === 0) {
-            await this.pipelines.markPipelineCompleted(id, {
-              nodeCount: runtimeWorkflow.nodes.length,
-              sourcePath: temporaryPipeline.sourcePath,
-              sourceRawTableId,
-              resultTable: sink.target.tableName,
-              rowCount: sink.finalRowCount,
-              columnCount: finalColumnCount,
-              at: completedAt,
-            });
+            writes.push(
+              this.pipelines.buildCompletionUpdate(id, {
+                nodeCount: runtimeWorkflow.nodes.length,
+                sourcePath: temporaryPipeline.sourcePath,
+                sourceRawTableId,
+                resultTable: sink.target.tableName,
+                rowCount: sink.finalRowCount,
+                columnCount: finalColumnCount,
+                at: completedAt,
+              })
+            );
           }
         }
-        if (watermarkUpdates && watermarkUpdates.length > 0) {
-          await this.watermarks.upsertPipelineWatermark(id, watermarkUpdates);
-        }
-        if (nodeStats && nodeStats.length > 0) {
-          await this.runStats.persistPipelineNodeStats(id, runId ?? commitId, nodeStats);
-        }
-        for (const sink of sinks) {
-          await this.journal.updateOutputCommitState(sink.journalId, 'metadata_committed');
-        }
-        await this.ctx.metaRunSql('COMMIT');
-        metadataTransactionStarted = false;
+        const watermarkWrites = this.watermarks.buildWatermarkWrites(id, watermarkUpdates ?? []);
+        const statsWrites = this.runStats.buildNodeStatWrites(
+          id,
+          runId ?? commitId,
+          nodeStats ?? []
+        );
+        const journalWrites = sinks.map((sink) =>
+          this.journal.buildStateUpdate(sink.journalId, 'metadata_committed')
+        );
+        await this.ctx.commitMetadataWrites(
+          writes.concat(watermarkWrites, statsWrites, journalWrites)
+        );
       } catch (error) {
-        if (metadataTransactionStarted) {
-          await this.ctx.metaRunSql('ROLLBACK').catch(() => undefined);
-        }
         const message = error instanceof Error ? error.message : String(error);
         const unrestoredSinks = new Set<string>();
         if (physicalCommitted) {
@@ -350,11 +348,7 @@ export class OutputCommitCoordinator {
         .map((sink) => sink.target.outputResultTableId)
         .filter((rawTableId): rawTableId is string => Boolean(rawTableId));
       if (committedRawTableIds.length > 0) {
-        try {
-          this.onOutputsCommitted?.(committedRawTableIds);
-        } catch {
-          // Listener errors must never fail the commit.
-        }
+        this.ctx.notifyAfterExclusive(() => this.onOutputsCommitted?.(committedRawTableIds));
       }
       return this.pipelines.requirePipeline(id);
     }, `commitValidatedPipelineOutput:${id}`);

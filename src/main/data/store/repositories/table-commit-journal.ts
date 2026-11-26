@@ -1,5 +1,5 @@
 /** data_table_commits journal row access. */
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import { DataTableCommitRow } from '../data-store-records';
 
 export class TableCommitJournal {
@@ -40,12 +40,15 @@ export class TableCommitJournal {
       `SELECT * FROM data_table_commits WHERE state NOT IN ('completed', 'failed')`
     );
   }
-  async updateCommitState(id: string, state: string, error: string | null = null) {
-    await this.ctx.metaRunSql(
+  buildStateUpdate(id: string, state: string, error: string | null = null): MetadataWrite {
+    return [
       `UPDATE data_table_commits
        SET state = $state, error = $error, updated_at = $updatedAt
        WHERE id = $id`,
-      { id, state, error, updatedAt: this.ctx.now() }
-    );
+      { id, state, error, updatedAt: this.ctx.now() },
+    ];
+  }
+  async updateCommitState(id: string, state: string, error: string | null = null): Promise<void> {
+    await this.ctx.metaRunSql(...this.buildStateUpdate(id, state, error));
   }
 }

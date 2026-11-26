@@ -1,5 +1,5 @@
 /** data_output_commits journal row access. */
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import { DataOutputCommitRow } from '../data-store-records';
 
 export class OutputCommitJournal {
@@ -69,12 +69,19 @@ export class OutputCommitJournal {
     }
     return { generatedAt: Number(row.created_at), workflowSignature };
   }
-  async updateOutputCommitState(id: string, state: string, error: string | null = null) {
-    await this.ctx.metaRunSql(
+  buildStateUpdate(id: string, state: string, error: string | null = null): MetadataWrite {
+    return [
       `UPDATE data_output_commits
        SET state = $state, error = $error, updated_at = $updatedAt
        WHERE id = $id`,
-      { id, state, error, updatedAt: this.ctx.now() }
-    );
+      { id, state, error, updatedAt: this.ctx.now() },
+    ];
+  }
+  async updateOutputCommitState(
+    id: string,
+    state: string,
+    error: string | null = null
+  ): Promise<void> {
+    await this.ctx.metaRunSql(...this.buildStateUpdate(id, state, error));
   }
 }

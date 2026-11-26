@@ -16,7 +16,7 @@ import type {
 import { normalizeCsvEncoding, withCsvReadPath } from '../csv-encoding';
 import { duckDbTypeForDataFieldType } from '../../../../shared/data-field-types';
 import { quoteIdentifier, toNumber, quoteValueIdentifier } from '../../operators';
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 import {
   resultTableConfigJson,
   tableNameFromId,
@@ -260,18 +260,17 @@ export class RawTableService {
         operation: 'reimport',
         stagingTable: replacementTable,
         targetTable: rawTable.tableName,
-        writeMetadata: () =>
-          this.rawTables.updateRawTableAfterReimport({
-            id: rawTable.id,
-            name: name || rawTable.name,
-            sourcePath,
-            sourceKind,
-            configJson: JSON.stringify(prepared.config),
-            fileCount: prepared.fileCount,
-            rowCount: prepared.rowCount,
-            columnCount: prepared.columnCount,
-            updatedAt: now,
-          }),
+        metadataUpdate: this.rawTables.buildReimportUpdate({
+          id: rawTable.id,
+          name: name || rawTable.name,
+          sourcePath,
+          sourceKind,
+          configJson: JSON.stringify(prepared.config),
+          fileCount: prepared.fileCount,
+          rowCount: prepared.rowCount,
+          columnCount: prepared.columnCount,
+          updatedAt: now,
+        }),
       });
       if (this.sources && isCloudRawTableConfig(prepared.config)) {
         await this.sources.markCloudSource(rawTable.id);
@@ -382,16 +381,15 @@ export class RawTableService {
           operation: 'rebind_output',
           stagingTable,
           targetTable: resultTable.tableName,
-          writeMetadata: () =>
-            this.rawTables.updateResultTableForSource({
-              id: resultTable.id,
-              name: nextName,
-              sourcePath: `raw-table://${sourceRawTable.id}`,
-              configJson: resultTableConfigJson(sourceRawTable.id, resultTable.cloudAction),
-              rowCount,
-              columnCount,
-              updatedAt: this.ctx.now(),
-            }),
+          metadataUpdate: this.rawTables.buildResultRebindUpdate({
+            id: resultTable.id,
+            name: nextName,
+            sourcePath: `raw-table://${sourceRawTable.id}`,
+            configJson: resultTableConfigJson(sourceRawTable.id, resultTable.cloudAction),
+            rowCount,
+            columnCount,
+            updatedAt: this.ctx.now(),
+          }),
         });
       } catch (error) {
         await this.ctx.dropTableIfExists(stagingTable).catch(() => undefined);
@@ -429,7 +427,7 @@ export class RawTableService {
     operation: 'reimport' | 'rebind_output';
     stagingTable: string;
     targetTable: string;
-    writeMetadata: () => Promise<void>;
+    metadataUpdate: MetadataWrite;
   }): Promise<void> {
     const journalId = uuidv4();
     const targetExisted = await this.ctx.physicalTableExists(input.targetTable);
@@ -446,7 +444,6 @@ export class RawTableService {
     });
 
     let physicalCommitted = false;
-    let metadataTransactionStarted = false;
     try {
       await this.ctx.runSql('BEGIN TRANSACTION');
       if (backupTable) {
@@ -462,18 +459,11 @@ export class RawTableService {
       physicalCommitted = true;
       await this.tableCommits.updateCommitState(journalId, 'data_committed');
 
-      await this.ctx.metaRunSql('BEGIN TRANSACTION');
-      metadataTransactionStarted = true;
-      await input.writeMetadata();
-      // Mark the journal inside the metadata transaction so the state
-      // flips atomically with the rawTable row it describes.
-      await this.tableCommits.updateCommitState(journalId, 'metadata_committed');
-      await this.ctx.metaRunSql('COMMIT');
-      metadataTransactionStarted = false;
+      await this.ctx.commitMetadataWrites([
+        input.metadataUpdate,
+        this.tableCommits.buildStateUpdate(journalId, 'metadata_committed'),
+      ]);
     } catch (error) {
-      if (metadataTransactionStarted) {
-        await this.ctx.metaRunSql('ROLLBACK').catch(() => undefined);
-      }
       const message = error instanceof Error ? error.message : String(error);
       let restored = false;
       if (physicalCommitted) {
@@ -516,11 +506,7 @@ export class RawTableService {
     }
     await this.ctx.dropTableIfExists(input.stagingTable).catch(() => undefined);
     await this.tableCommits.updateCommitState(journalId, 'completed').catch(() => undefined);
-    try {
-      this.onTableCommitted?.(input.rawTableId, input.operation);
-    } catch {
-      // Listener errors must never fail the commit.
-    }
+    this.ctx.notifyAfterExclusive(() => this.onTableCommitted?.(input.rawTableId, input.operation));
   }
   private async restoreTableCommit(input: {
     targetTable: string;

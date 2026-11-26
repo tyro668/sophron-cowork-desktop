@@ -379,18 +379,14 @@ export class WorkflowExecutor {
       if (outputMode === 'temporary') {
         return { resultTable, rowCount, columnCount, sourceRawTableId: null };
       }
-      const rawTable = await this.rawTables.upsertRawTableForPipelineOutput(
-        pipeline.name,
-        sourcePath,
-        resultTable,
-        rowCount,
-        columnCount
+      await this.ctx.metaRunSql(
+        ...this.rawTables.buildOutputMetadataWrite(resultTable, rowCount, columnCount)
       );
       return {
         resultTable,
         rowCount,
         columnCount,
-        sourceRawTableId: rawTable?.id ?? pipeline.sourceRawTableId,
+        sourceRawTableId: pipeline.sourceRawTableId,
       };
     } finally {
       await this.ctx.dropTableIfExists(stagingTable);
@@ -784,15 +780,14 @@ export class WorkflowExecutor {
     }
     const sourceRawTableId =
       (await this.binding.findWorkflowSourceRawTableId(nodes)) ?? pipeline.sourceRawTableId;
-    const rawTable = await this.rawTables.upsertRawTableForPipelineOutput(
-      pipeline.name,
-      sourcePath,
-      resultTable,
-      rowCount,
-      columnCount,
-      outputTarget.outputResultTableId
+    await this.ctx.metaRunSql(
+      ...this.rawTables.buildOutputMetadataWrite(
+        resultTable,
+        rowCount,
+        columnCount,
+        outputTarget.outputResultTableId
+      )
     );
-    void rawTable;
     return {
       resultTable,
       rowCount,

@@ -1,6 +1,6 @@
 /** data_pipeline_node_run_stats row access (stats keyed by run, pruned with run retention). */
 import type { WorkflowNodeRunStat } from '../../data-command-types';
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 
 const STATS_SELECT = `SELECT node_id, node_type, input_rows, input_rows_by_handle_json,
        output_rows, dropped_rows, rejected_rows, sample_json, run_id
@@ -42,32 +42,39 @@ export class RunStatsRepository {
    * Inserts stats under their run id. Pruning is the caller's job
    * (data_pipeline_runs retention sweeps the stats of removed runs).
    */
+  buildNodeStatWrites(
+    pipelineId: string,
+    runId: string,
+    stats: WorkflowNodeRunStat[]
+  ): MetadataWrite[] {
+    return stats.map((stat) => [
+      `INSERT OR REPLACE INTO data_pipeline_node_run_stats
+           (pipeline_id, run_id, node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
+         VALUES ($pipelineId, $runId, $nodeId, $nodeType, $inputRows, $inputRowsByHandleJson, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
+      {
+        pipelineId,
+        runId,
+        nodeId: stat.nodeId,
+        nodeType: stat.nodeType,
+        inputRows: stat.inputRows,
+        inputRowsByHandleJson: stat.inputRowsByHandle
+          ? JSON.stringify(stat.inputRowsByHandle)
+          : null,
+        outputRows: stat.outputRows,
+        droppedRows: stat.droppedRows ?? 0,
+        rejectedRows: stat.rejectedRows ?? 0,
+        sampleJson: stat.sample && stat.sample.length > 0 ? JSON.stringify(stat.sample) : null,
+        createdAt: this.ctx.now(),
+      },
+    ]);
+  }
   async persistPipelineNodeStats(
     pipelineId: string,
     runId: string,
     stats: WorkflowNodeRunStat[]
   ): Promise<void> {
-    for (const stat of stats) {
-      await this.ctx.metaRunSql(
-        `INSERT OR REPLACE INTO data_pipeline_node_run_stats
-           (pipeline_id, run_id, node_id, node_type, input_rows, input_rows_by_handle_json, output_rows, dropped_rows, rejected_rows, sample_json, created_at)
-         VALUES ($pipelineId, $runId, $nodeId, $nodeType, $inputRows, $inputRowsByHandleJson, $outputRows, $droppedRows, $rejectedRows, $sampleJson, $createdAt)`,
-        {
-          pipelineId,
-          runId,
-          nodeId: stat.nodeId,
-          nodeType: stat.nodeType,
-          inputRows: stat.inputRows,
-          inputRowsByHandleJson: stat.inputRowsByHandle
-            ? JSON.stringify(stat.inputRowsByHandle)
-            : null,
-          outputRows: stat.outputRows,
-          droppedRows: stat.droppedRows ?? 0,
-          rejectedRows: stat.rejectedRows ?? 0,
-          sampleJson: stat.sample && stat.sample.length > 0 ? JSON.stringify(stat.sample) : null,
-          createdAt: this.ctx.now(),
-        }
-      );
+    for (const write of this.buildNodeStatWrites(pipelineId, runId, stats)) {
+      await this.ctx.metaRunSql(...write);
     }
   }
   /** Stats of one specific run. */

@@ -1,5 +1,5 @@
 /** data_pipeline_watermarks row access. Watermarks are keyed by source fingerprint too. */
-import { DataStoreContext } from '../data-store-context';
+import { DataStoreContext, type MetadataWrite } from '../data-store-context';
 
 export interface WatermarkUpdate {
   nodeId: string;
@@ -40,13 +40,14 @@ export class WatermarkRepository {
     const value = row.watermark_value;
     return { value: value === null || value === undefined ? null : String(value), reset: false };
   }
-  async upsertPipelineWatermark(pipelineId: string, updates: WatermarkUpdate[]): Promise<void> {
+  buildWatermarkWrites(pipelineId: string, updates: WatermarkUpdate[]): MetadataWrite[] {
+    const writes: MetadataWrite[] = [];
     for (const update of updates) {
-      await this.ctx.metaRunSql(
+      writes.push([
         `DELETE FROM data_pipeline_watermarks WHERE pipeline_id = $pipelineId AND node_id = $nodeId`,
-        { pipelineId, nodeId: update.nodeId }
-      );
-      await this.ctx.metaRunSql(
+        { pipelineId, nodeId: update.nodeId },
+      ]);
+      writes.push([
         `INSERT INTO data_pipeline_watermarks
            (pipeline_id, node_id, column_name, watermark_value, updated_at, source_fingerprint)
          VALUES ($pipelineId, $nodeId, $column, $value, $updatedAt, $fingerprint)`,
@@ -57,8 +58,9 @@ export class WatermarkRepository {
           value: update.value,
           updatedAt: this.ctx.now(),
           fingerprint: update.fingerprint,
-        }
-      );
+        },
+      ]);
     }
+    return writes;
   }
 }

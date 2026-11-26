@@ -31,17 +31,8 @@ export function withTimeout<T>(
   }) as Promise<T>;
 }
 
-/**
- * Cleanup all sandbox resources
- * Called on app quit (both Windows and macOS)
- */
-export async function cleanupSandboxResources(): Promise<void> {
-  if (appContext.isCleaningUp) {
-    log('[App] Cleanup already in progress, skipping...');
-    return;
-  }
-  appContext.isCleaningUp = true;
-
+async function cleanupAppResources(): Promise<void> {
+  appContext.automationScheduler?.stop();
   stopNavServer();
   backgroundRepairs.stop();
   const aborted = abortAllAiRuns();
@@ -178,16 +169,24 @@ export function registerAppLifecycle(): void {
     });
   }
 
-  // Handle app quit - window-all-closed (primary for Windows/Linux)
-  app.on('window-all-closed', async () => {
+  let pendingQuit: Promise<void> | undefined;
+  let readyToQuit = false;
+
+  function quitAfterCleanup(): Promise<void> {
+    pendingQuit ??= Promise.resolve()
+      .then(cleanupAppResources)
+      .catch((error) => logError('[App] Quit cleanup failed:', error))
+      .then(() => {
+        readyToQuit = true;
+        app.quit();
+      });
+    return pendingQuit;
+  }
+
+  app.on('window-all-closed', () => {
     if (process.platform !== 'darwin' || process.env.VITE_DEV_SERVER_URL) {
-      // On Windows/Linux, closing all windows means quit.
-      // On macOS dev mode, also quit — so vite-plugin-electron can restart cleanly
-      // without the old process holding the single-instance lock.
-      await cleanupSandboxResources();
-      app.quit();
+      return quitAfterCleanup();
     }
-    // On macOS production, keep app alive — cleanup happens in before-quit
   });
 
   // Handle SIGTERM/SIGINT (e.g. pkill) — route through app.quit() for clean shutdown
@@ -196,41 +195,31 @@ export function registerAppLifecycle(): void {
   }
 
   // Handle app quit - before-quit (for macOS Cmd+Q and other quit methods)
-  app.on('before-quit', async (event) => {
-    if (appContext.isInstallingUpdate || appContext.updateService?.isInstalling()) {
+  app.on('before-quit', (event) => {
+    if (readyToQuit || appContext.isInstallingUpdate || appContext.updateService?.isInstalling()) {
       return;
     }
-    if (!appContext.isCleaningUp) {
-      // In dev mode, exit quickly — no need for async sandbox cleanup
-      if (process.env.VITE_DEV_SERVER_URL) {
-        stopNavServer();
-        try {
-          appContext.dataPipelineStore?.close();
-          appContext.dataPipelineStore = null;
-        } catch {
-          /* best-effort */
-        }
-        try {
-          closeDatabase();
-        } catch {
-          /* best-effort */
-        } finally {
-          appContext.appDatabase = null;
-        }
-        closeLogFile();
-        appContext.tray?.destroy();
-        appContext.tray = null;
-        return;
-      }
-      // Set the flag immediately before any await to prevent re-entrant cleanup
-      appContext.isCleaningUp = true;
-      event.preventDefault();
+    if (process.env.VITE_DEV_SERVER_URL && !pendingQuit) {
+      stopNavServer();
       try {
-        await cleanupSandboxResources();
-      } catch (error) {
-        logError('[App] before-quit cleanup failed, forcing quit:', error);
+        appContext.dataPipelineStore?.close();
+        appContext.dataPipelineStore = null;
+      } catch {
+        /* best-effort */
       }
-      app.quit();
+      try {
+        closeDatabase();
+      } catch {
+        /* best-effort */
+      } finally {
+        appContext.appDatabase = null;
+      }
+      closeLogFile();
+      appContext.tray?.destroy();
+      appContext.tray = null;
+      return;
     }
+    event.preventDefault();
+    return quitAfterCleanup();
   });
 }
