@@ -171,6 +171,7 @@
       "count": "{{count}} raw tables",
       "create": "New raw table",
       "add": "Add raw table",
+      "addMenu": "Open add menu",
       "import": "Import raw table",
       "empty": "No raw tables",
       "loading": "Loading raw tables...",

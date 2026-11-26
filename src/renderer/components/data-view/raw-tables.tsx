@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CalendarClock,
+  ChevronDown,
   CloudDownload,
   Eye,
   FileCode2,
@@ -18,6 +19,13 @@ import {
 import type { DataRawTable, DataGroup, DataRawSource } from '../../types';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
+import { cn } from '../ui';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { RawTableAutomations } from './table-automations';
 import {
@@ -41,6 +49,68 @@ import {
 import { RawTableEditorWorkbench, type RawTableEditorProps } from './raw-table-editor-workbench';
 import { RawTableTree } from './raw-table-tree';
 export { childDisplayName, groupBySource, mergeParts, type MergePart } from './raw-table-tree';
+
+function RawTableAddSplitButton({
+  onCreate,
+  onAddFromCloud,
+  createDisabled,
+  disabled,
+}: {
+  onCreate: () => void;
+  onAddFromCloud: () => void;
+  createDisabled?: boolean;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <div
+      className="flex h-full flex-shrink-0 items-stretch border-l border-border-subtle"
+      data-testid="raw-table-add-split"
+    >
+      <button
+        type="button"
+        data-testid="raw-table-add-button"
+        onClick={onCreate}
+        disabled={createDisabled || disabled}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' && !disabled) {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className={cn(tabBarNewCellClass, 'border-l-0')}
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {t('data.rawTables.add')}
+      </button>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            data-testid="raw-table-add-menu-trigger"
+            disabled={disabled}
+            aria-label={t('data.rawTables.addMenu')}
+            className="inline-flex h-full w-8 flex-shrink-0 items-center justify-center border-l border-border-subtle text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" data-testid="raw-table-add-menu">
+          <DropdownMenuItem
+            data-testid="raw-table-add-from-cloud"
+            disabled={disabled}
+            className="gap-2"
+            onSelect={onAddFromCloud}
+          >
+            <CloudDownload className="h-3.5 w-3.5" />
+            {t('schedule.cloudInput.addFromCloud')}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
 
 export function RawTablesPanel({
   rawTables,
@@ -142,18 +212,14 @@ export function RawTablesPanel({
     <div className="flex h-full min-h-0 flex-col bg-transparent">
       <div className={`${flatToolbarRowClass} justify-between`}>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          {(isLoading || hasRows || searchQuery.trim()) && (
-            <TabBarAction>
-              <button
-                onClick={onCreate}
-                disabled={isCreateDisabled || bulkBusy}
-                className={tabBarNewCellClass}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {t('data.rawTables.add')}
-              </button>
-            </TabBarAction>
-          )}
+          <TabBarAction>
+            <RawTableAddSplitButton
+              onCreate={onCreate}
+              onAddFromCloud={() => navigateToAutomation({ newRawTableName: '' })}
+              createDisabled={isCreateDisabled}
+              disabled={bulkBusy}
+            />
+          </TabBarAction>
           <DataTableSearch
             value={searchQuery}
             onChange={onSearchChange}
@@ -162,12 +228,6 @@ export function RawTablesPanel({
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <DataToolbarButton
-            icon={<CloudDownload className="h-3.5 w-3.5" />}
-            label={t('schedule.cloudInput.addFromCloud')}
-            disabled={bulkBusy}
-            onClick={() => navigateToAutomation({ newRawTableName: '' })}
-          />
           {hasSelection && (
             <>
               <DataToolbarButton

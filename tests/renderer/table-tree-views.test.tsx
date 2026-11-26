@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import './i18n-test';
 import { RawTablesPanel } from '../../src/renderer/components/data-view/raw-tables';
+import { useAppStore } from '../../src/renderer/store';
 import { ResultTablesPanel } from '../../src/renderer/components/data-view/result-tables';
 import type { DataResultTable, DataGroup, DataRawSource } from '../../src/shared/contracts';
 
@@ -55,6 +56,41 @@ const resultTable: DataResultTable = {
 };
 
 const noop = vi.fn();
+
+function renderRawTablesPanel(overrides: Partial<Parameters<typeof RawTablesPanel>[0]> = {}) {
+  (window as { electronAPI?: unknown }).electronAPI = { data: {} };
+  return render(
+    <RawTablesPanel
+      rawTables={[member('t1', '经营 / 目标'), member('t2', '经营 / 销售')]}
+      sources={[source]}
+      onOpenSource={noop}
+      drafts={[]}
+      groups={[rawGroup]}
+      groupCounts={{ 'g:rg1': 2 }}
+      groupPages={{}}
+      totalRawTables={2}
+      searchQuery=""
+      isLoading={false}
+      onSearchChange={noop}
+      onCreate={noop}
+      onRefresh={noop}
+      onPreviewRawTable={noop}
+      onDelete={noop}
+      onDeleteAll={noop}
+      onDeleteDraft={noop}
+      onEditDraft={noop}
+      onEditRawTable={noop}
+      onCreatePipelineFromTable={noop}
+      onAssignToGroup={noop}
+      onRenameGroup={noop}
+      onDeleteGroup={noop}
+      onGroupPageChange={noop}
+      isCreateDisabled={false}
+      actionId={null}
+      {...overrides}
+    />
+  );
+}
 
 describe('reusable table trees in existing views', () => {
   it('renders the 原始表 page with folder and source grouping after the tree extract', () => {
@@ -146,5 +182,39 @@ describe('reusable table trees in existing views', () => {
     expect(table?.classList.contains('data-list-table-fill')).toBe(true);
     expect(filler.querySelectorAll('td')).toHaveLength(1);
     expect(filler.querySelector('td')?.getAttribute('colspan')).toBe('4');
+  });
+
+  it('merges 新增原始表 and 从云端添加 into a split button', async () => {
+    const onCreate = vi.fn();
+    const navigateToTableAutomation = vi.fn();
+    const previous = useAppStore.getState().navigateToTableAutomation;
+    useAppStore.setState({ navigateToTableAutomation });
+    try {
+      renderRawTablesPanel({ onCreate });
+      const addButton = screen.getByTestId('raw-table-add-button');
+      expect(addButton.textContent).toContain('Add raw table');
+      expect(screen.getByTestId('raw-table-add-menu-trigger').getAttribute('aria-haspopup')).toBe(
+        'menu'
+      );
+      expect(screen.queryByRole('menuitem', { name: 'Add from cloud' })).toBeNull();
+      await act(async () => {
+        fireEvent.click(addButton);
+      });
+      expect(onCreate).toHaveBeenCalledTimes(1);
+
+      const trigger = screen.getByTestId('raw-table-add-menu-trigger');
+      await act(async () => {
+        fireEvent.keyDown(trigger, { key: 'Enter' });
+      });
+      const item = await screen.findByRole('menuitem', { name: /Add from cloud/ });
+      expect(item).toBeTruthy();
+      expect(trigger.getAttribute('aria-expanded')).toBe('true');
+      await act(async () => {
+        fireEvent.click(item);
+      });
+      expect(navigateToTableAutomation).toHaveBeenCalledWith({ newRawTableName: '' });
+    } finally {
+      useAppStore.setState({ navigateToTableAutomation: previous });
+    }
   });
 });

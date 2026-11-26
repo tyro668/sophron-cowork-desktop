@@ -59,7 +59,13 @@ describe('tab bar 新建 action', () => {
       'src/renderer/components/settings/schedule/listPanels.tsx',
     ]) {
       const src = fs.readFileSync(path.resolve(process.cwd(), f), 'utf8');
-      expect(src).toContain('className={tabBarNewCellClass}');
+      expect(src).toContain('tabBarNewCellClass');
     }
+    const rawTables = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/renderer/components/data-view/raw-tables.tsx'),
+      'utf8'
+    );
+    expect(rawTables).toContain('data-testid="raw-table-add-split"');
+    expect(rawTables).toContain("cn(tabBarNewCellClass, 'border-l-0')");
   });
 });
