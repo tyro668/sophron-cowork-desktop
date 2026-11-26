@@ -10,6 +10,8 @@ describe('config / detail views use the flush group variant', () => {
     expect(css).toContain('.ui-config-flush .ui-group');
     expect(css).toContain('margin: var(--space-group) var(--space-inset) 0;');
     expect(css).toContain('border-radius: var(--radius-group);');
+    expect(css).toContain('.ui-config-flush .ui-form-row');
+    expect(css).toMatch(/\.ui-config-flush \.ui-form-row[^{]*\{[^}]*padding-right: 10px;/s);
   });
 
   it('applies the variant to the config / detail bodies', () => {

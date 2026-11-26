@@ -381,7 +381,7 @@ function TableAutomations({
     <div
       role="group"
       aria-label={t('data.resultTables.automation.triggerCondition')}
-      className="flex flex-wrap items-center gap-x-4 gap-y-2"
+      className="flex flex-wrap items-center gap-x-4 gap-y-2 px-[10px]"
     >
       <label className="flex items-center gap-2 text-[13px] text-text-secondary">
         <input

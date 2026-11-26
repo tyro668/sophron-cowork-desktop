@@ -1466,6 +1466,15 @@
   box-shadow: none;
 }
 
+/* Full-width 1px rules stay, but row content keeps a 10px inset from the
+   pane edge — same as .ui-form-flush label padding — so flush controls
+   (select chevrons, trailing accent cells, checkboxes) do not kiss the edge. */
+.ui-config-flush .ui-form-row,
+.ui-config-flush .ui-group:not(.ui-group-fill) > ul,
+.ui-config-flush .ui-group:not(.ui-group-fill) > .flex:has(> .ui-group-title) {
+  padding-right: 10px;
+}
+
 /* Editor form groups (raw / result table editors): section title row + 104px label column grid */
 .ui-group-title {
   display: flex;
