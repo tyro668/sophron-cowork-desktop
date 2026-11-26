@@ -1,3 +1,4 @@
+import { mcpClient } from '../../features/mcp/api/mcp-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -46,7 +47,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   // Auto-refresh
   const loadPresets = useCallback(async () => {
     try {
-      const loaded = (await window.electronAPI.mcp.getPresets()) as Record<string, MCPPreset>;
+      const loaded = (await mcpClient.getPresets()) as Record<string, MCPPreset>;
       setPresets(loaded || {});
     } catch (err) {
       console.error('Failed to load presets:', err);
@@ -55,7 +56,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
   const loadServers = useCallback(async () => {
     try {
-      const loaded = (await window.electronAPI.mcp.getServers()) as MCPServerConfig[];
+      const loaded = (await mcpClient.getServers()) as MCPServerConfig[];
       setServers(loaded || []);
       setError('');
     } catch (err) {
@@ -66,7 +67,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
   const loadStatuses = useCallback(async () => {
     try {
-      const loaded = (await window.electronAPI.mcp.getServerStatus()) as MCPServerStatus[];
+      const loaded = (await mcpClient.getServerStatus()) as MCPServerStatus[];
       setStatuses(loaded || []);
     } catch (err) {
       console.error('Failed to load statuses:', err);
@@ -75,7 +76,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
 
   const loadTools = useCallback(async () => {
     try {
-      const loaded = (await window.electronAPI.mcp.getTools()) as MCPToolInfo[];
+      const loaded = (await mcpClient.getTools()) as MCPToolInfo[];
       setTools(loaded || []);
     } catch (err) {
       console.error('Failed to load tools:', err);
@@ -160,7 +161,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
     setIsLoading(true);
     setError('');
     try {
-      const result = await window.electronAPI.mcp.saveServer(server);
+      const result = await mcpClient.saveServer(server);
       if (result && !result.success && result.error) {
         setError(result.error);
         // Keep form open so the user can see and act on the error
@@ -186,7 +187,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
     if (!confirmed) return;
     setIsLoading(true);
     try {
-      await window.electronAPI.mcp.deleteServer(serverId);
+      await mcpClient.deleteServer(serverId);
       await loadAll();
     } catch (err) {
       setError(formatIpcError(err, t('mcp.deleteServerFailed')));
@@ -202,7 +203,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   async function handleReauthorize(serverId: string) {
     setIsLoading(true);
     try {
-      const result = await window.electronAPI.mcp.reauthorize(serverId);
+      const result = await mcpClient.reauthorize(serverId);
       if (result && !result.success && result.error) {
         setError(result.error);
         return;
@@ -221,7 +222,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   async function handleCancelAuth(serverId: string) {
     setIsLoading(true);
     try {
-      await window.electronAPI.mcp.cancelAuthorization(serverId);
+      await mcpClient.cancelAuthorization(serverId);
       showToast('success', t('mcp.authorizationCancelled'));
       await loadAll();
     } catch (err) {
@@ -551,7 +552,7 @@ function ServerCard({
                         ? t('mcp.needsAuth')
                         : serverStatus === 'connecting'
                           ? `⏳ ${t('mcp.connecting')}`
-                          : t('mcp.disabled', { defaultValue: 'Disabled' })}
+                          : t('mcp.disabled')}
               </div>
               {(serverStatus === 'authorizing' ||
                 serverStatus === 'needs_auth' ||

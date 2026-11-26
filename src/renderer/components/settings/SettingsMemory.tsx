@@ -1,3 +1,4 @@
+import { memoryClient } from '../../features/memory/api/memory-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { useEffect, useMemo, useState } from 'react';
@@ -78,10 +79,10 @@ export function SettingsMemory() {
   const enabled = overview?.enabled ?? appConfig?.memoryEnabled ?? true;
 
   const refreshOverview = async () => {
-    const nextOverview = await window.electronAPI.memory.getOverview(currentWorkspace || undefined);
+    const nextOverview = await memoryClient.getOverview(currentWorkspace || undefined);
     setOverview(nextOverview);
     try {
-      setInjections(await window.electronAPI.memory.listInjections(1));
+      setInjections(await memoryClient.listInjections(1));
     } catch {
       setInjections([]);
     }
@@ -89,8 +90,8 @@ export function SettingsMemory() {
 
   const refreshMemoryEntries = async () => {
     const [nextCoreEntries, nextProjectEntries] = await Promise.all([
-      window.electronAPI.memory.listCoreEntries(),
-      window.electronAPI.memory.listProjectEntries(currentWorkspace || undefined),
+      memoryClient.listCoreEntries(),
+      memoryClient.listProjectEntries(currentWorkspace || undefined),
     ]);
     setCoreEntries(nextCoreEntries);
     setProjectEntries(nextProjectEntries);
@@ -106,10 +107,10 @@ export function SettingsMemory() {
       try {
         const [nextOverview, nextCoreEntries, nextProjectEntries, nextInjections] =
           await Promise.all([
-            window.electronAPI.memory.getOverview(currentWorkspace || undefined),
-            window.electronAPI.memory.listCoreEntries(),
-            window.electronAPI.memory.listProjectEntries(currentWorkspace || undefined),
-            window.electronAPI.memory.listInjections(1),
+            memoryClient.getOverview(currentWorkspace || undefined),
+            memoryClient.listCoreEntries(),
+            memoryClient.listProjectEntries(currentWorkspace || undefined),
+            memoryClient.listInjections(1),
           ]);
         if (!cancelled) {
           setOverview(nextOverview);
@@ -195,7 +196,7 @@ export function SettingsMemory() {
 
   const handleToggle = () => {
     void runBusyAction(async () => {
-      await window.electronAPI.memory.setEnabled(!enabled);
+      await memoryClient.setEnabled(!enabled);
       await refreshOverview();
     });
   };
@@ -205,14 +206,8 @@ export function SettingsMemory() {
       const updates = { confidence: 1, status: 'active' as const };
       const updated =
         record.kind === 'core'
-          ? await window.electronAPI.memory.updateCoreEntry(
-              (record.raw as CoreMemoryEntry).combinedKey,
-              updates
-            )
-          : await window.electronAPI.memory.updateProjectEntry(
-              (record.raw as ProjectMemoryEntry).id,
-              updates
-            );
+          ? await memoryClient.updateCoreEntry((record.raw as CoreMemoryEntry).combinedKey, updates)
+          : await memoryClient.updateProjectEntry((record.raw as ProjectMemoryEntry).id, updates);
       if (!updated) {
         throw new Error(t('memory.deleteEntryNotFound'));
       }
@@ -229,7 +224,7 @@ export function SettingsMemory() {
       if (!confirmed) return;
       await runBusyAction(async () => {
         if (record.kind === 'core') {
-          const result = await window.electronAPI.memory.deleteCoreEntry(
+          const result = await memoryClient.deleteCoreEntry(
             (record.raw as CoreMemoryEntry).combinedKey
           );
           if (!result.success) {
@@ -241,7 +236,7 @@ export function SettingsMemory() {
             )
           );
         } else {
-          const result = await window.electronAPI.memory.deleteProjectEntry(
+          const result = await memoryClient.deleteProjectEntry(
             (record.raw as ProjectMemoryEntry).id
           );
           if (!result.success) {
@@ -267,7 +262,7 @@ export function SettingsMemory() {
       });
       if (!confirmed) return;
       await runBusyAction(async () => {
-        const result = await window.electronAPI.memory.rebuildWorkspace(currentWorkspace);
+        const result = await memoryClient.rebuildWorkspace(currentWorkspace);
         await refreshAll();
         // Three honest outcomes: a commit-layer failure, a fully abandoned
         // candidate (nothing was applied — the old generation is intact), or

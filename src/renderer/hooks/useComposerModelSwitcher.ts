@@ -1,3 +1,4 @@
+import { configClient } from '../features/config/api/config-client';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -40,8 +41,8 @@ export function useComposerModelSwitcher({
         }
 
         const result = builtinModel
-          ? await window.electronAPI.config.selectBuiltinModel({ model: builtinModel })
-          : await window.electronAPI.config.switchSet({ id: configSetId });
+          ? await configClient.selectBuiltinModel({ model: builtinModel })
+          : await configClient.switchSet({ id: configSetId });
         if (result.success) {
           setAppConfig(result.config);
           setIsConfigured(Boolean(result.config.isConfigured));

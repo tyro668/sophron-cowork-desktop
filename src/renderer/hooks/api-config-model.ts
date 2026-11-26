@@ -201,7 +201,7 @@ export function isLegacyOllamaConfig(
   }
 }
 
-export function providerSupportsLiveModelRefresh(provider: string): boolean {
+export function canProviderRefreshModels(provider: string): boolean {
   return provider === 'ollama' || provider === 'sophron' || provider === 'openai-codex';
 }
 

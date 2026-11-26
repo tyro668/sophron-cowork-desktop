@@ -1,3 +1,4 @@
+import { mcpClient } from '../features/mcp/api/mcp-client';
 import { handleNewlineShortcut } from '../utils/composer-keys';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -433,7 +434,7 @@ export function ChatView() {
     if (isElectron && typeof window !== 'undefined' && window.electronAPI) {
       const loadConnectors = async () => {
         try {
-          const statuses = await window.electronAPI.mcp.getServerStatus();
+          const statuses = await mcpClient.getServerStatus();
           const active =
             (
               statuses as Array<{ id: string; name: string; connected: boolean; toolCount: number }>

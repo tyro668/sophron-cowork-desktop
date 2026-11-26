@@ -8,7 +8,7 @@ import { Button } from './ui/button';
 
 type PendingConfigSetAction = { type: 'select' | 'switch'; targetSetId: string };
 
-interface ApiConfigSetManagerProps {
+export interface ApiConfigSetManagerProps {
   configSets: ApiConfigSet[];
   activeConfigSetId: string;
   selectedConfigSetId: string;
@@ -26,6 +26,51 @@ interface ApiConfigSetManagerProps {
   onCancelPendingAction: () => void;
   onSaveAndContinuePendingAction: () => Promise<void> | void;
   onDiscardAndContinuePendingAction: () => Promise<void> | void;
+}
+
+export interface ApiConfigSetStateLike {
+  configSets: ApiConfigSet[];
+  activeConfigSetId: string;
+  selectedConfigSetId: string;
+  currentConfigSet: ApiConfigSet | null;
+  pendingConfigSetAction: PendingConfigSetAction | null;
+  pendingConfigSet: ApiConfigSet | null;
+  hasUnsavedChanges: boolean;
+  isMutatingConfigSet: boolean;
+  isSaving: boolean;
+  requestSelectConfigSet: ApiConfigSetManagerProps['onSelectSet'];
+  requestConfigSetSwitch: ApiConfigSetManagerProps['onSwitchSet'];
+  requestCreateBlankConfigSet: ApiConfigSetManagerProps['onRequestCreateBlankSet'];
+  renameConfigSet: ApiConfigSetManagerProps['onRenameSet'];
+  deleteConfigSet: ApiConfigSetManagerProps['onDeleteSet'];
+  cancelPendingConfigSetAction: ApiConfigSetManagerProps['onCancelPendingAction'];
+  saveAndContinuePendingConfigSetAction: ApiConfigSetManagerProps['onSaveAndContinuePendingAction'];
+  discardAndContinuePendingConfigSetAction: ApiConfigSetManagerProps['onDiscardAndContinuePendingAction'];
+}
+
+/** Map `useApiConfigState` return fields to `ApiConfigSetManagerProps`. */
+export function pickApiConfigSetManagerProps(
+  state: ApiConfigSetStateLike
+): ApiConfigSetManagerProps {
+  return {
+    configSets: state.configSets,
+    activeConfigSetId: state.activeConfigSetId,
+    selectedConfigSetId: state.selectedConfigSetId,
+    currentConfigSet: state.currentConfigSet,
+    pendingConfigSetAction: state.pendingConfigSetAction,
+    pendingConfigSet: state.pendingConfigSet,
+    hasUnsavedChanges: state.hasUnsavedChanges,
+    isMutatingConfigSet: state.isMutatingConfigSet,
+    isSaving: state.isSaving,
+    onSelectSet: state.requestSelectConfigSet,
+    onSwitchSet: state.requestConfigSetSwitch,
+    onRequestCreateBlankSet: state.requestCreateBlankConfigSet,
+    onRenameSet: state.renameConfigSet,
+    onDeleteSet: state.deleteConfigSet,
+    onCancelPendingAction: state.cancelPendingConfigSetAction,
+    onSaveAndContinuePendingAction: state.saveAndContinuePendingConfigSetAction,
+    onDiscardAndContinuePendingAction: state.discardAndContinuePendingConfigSetAction,
+  };
 }
 
 export function ApiConfigSetManager({

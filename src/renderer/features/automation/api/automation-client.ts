@@ -3,19 +3,14 @@
  * `window.electronAPI.automation` calls with availability checks.
  */
 import type { ElectronApi } from '../../../../shared/contracts/electron-api';
+import { isElectronNamespaceAvailable, requireElectronNamespace } from '../../../utils/ipc-client';
 
 type AutomationApi = ElectronApi['automation'];
 
-function api(): AutomationApi {
-  const bridge = window.electronAPI?.automation;
-  if (!bridge) throw new Error('Automation IPC bridge is unavailable');
-  return bridge;
-}
+const api = () => requireElectronNamespace('automation');
 
 export const automationClient = {
-  isAvailable(): boolean {
-    return typeof window !== 'undefined' && Boolean(window.electronAPI?.automation);
-  },
+  isAvailable: () => isElectronNamespaceAvailable('automation'),
   list: (...args: Parameters<AutomationApi['list']>) => api().list(...args),
   get: (...args: Parameters<AutomationApi['get']>) => api().get(...args),
   create: (...args: Parameters<AutomationApi['create']>) => api().create(...args),

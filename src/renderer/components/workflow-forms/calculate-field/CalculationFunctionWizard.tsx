@@ -830,14 +830,14 @@ function FormulaText({ text }: { text: string }) {
       {parts.map((part, i) => {
         if (!part) return null;
         let cls = '';
-        if (part.startsWith('[')) cls = 'text-[#2563eb]';
-        else if (part.startsWith("'")) cls = 'text-[#b45309]';
-        else if (/^\d/.test(part)) cls = 'text-[#7c3aed]';
+        if (part.startsWith('[')) cls = 'text-[var(--color-syntax-variable)]';
+        else if (part.startsWith("'")) cls = 'text-[var(--color-syntax-string)]';
+        else if (/^\d/.test(part)) cls = 'text-[var(--color-syntax-number)]';
         else if (/^[A-Za-z_]/.test(part)) {
           const next = text.slice(parts.slice(0, i + 1).join('').length).trimStart();
           cls = next.startsWith('(')
-            ? 'font-semibold text-[#7c3aed]'
-            : 'font-semibold text-[#1e1b4b]';
+            ? 'font-semibold text-[var(--color-syntax-number)]'
+            : 'font-semibold text-[var(--color-syntax-keyword-strong)]';
         }
         return (
           <span key={i} className={cls}>

@@ -40,13 +40,13 @@ describe('memory integration wiring', () => {
     expect(preload).toContain('memory: createMemoryApi()');
     expect(memoryApi).toContain("ipcRenderer.invoke('memory.search'");
     expect(memoryApi).toContain("ipcRenderer.invoke('memory.listFiles')");
-    expect(memorySettings).toContain('window.electronAPI.memory.listCoreEntries');
-    expect(memorySettings).toContain('window.electronAPI.memory.listProjectEntries');
-    expect(memorySettings).toContain('window.electronAPI.memory.deleteCoreEntry');
-    expect(memorySettings).toContain('window.electronAPI.memory.deleteProjectEntry');
-    expect(memorySettings).toContain('window.electronAPI.memory.rebuildWorkspace');
+    expect(memorySettings).toContain('memoryClient.listCoreEntries');
+    expect(memorySettings).toContain('memoryClient.listProjectEntries');
+    expect(memorySettings).toContain('memoryClient.deleteCoreEntry');
+    expect(memorySettings).toContain('memoryClient.deleteProjectEntry');
+    expect(memorySettings).toContain('memoryClient.rebuildWorkspace');
     expect(memorySettings).toContain('failedSessionCount');
-    expect(memorySettings).not.toContain('window.electronAPI.memory.readFile');
+    expect(memorySettings).not.toContain('memoryClient.readFile');
     expect(memorySettings).not.toContain('promptIterationRounds');
   });
 

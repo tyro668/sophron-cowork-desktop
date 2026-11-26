@@ -24,8 +24,13 @@ describe('Sidebar task actions', () => {
 
 describe('Sidebar login dialog', () => {
   it('shows the read-only sign-in server from the auth status', () => {
-    expect(source).toContain("t('sidebar.loginAddressLabel')");
-    expect(source).toContain('{desktopAuthStatus.apiOrigin}');
+    const loginDialogSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/renderer/components/sidebar/SidebarLoginDialog.tsx'),
+      'utf8'
+    );
+    expect(source).toContain('apiOrigin={desktopAuthStatus?.apiOrigin}');
+    expect(loginDialogSource).toContain("t('sidebar.loginAddressLabel')");
+    expect(loginDialogSource).toContain('{apiOrigin}');
   });
 });
 

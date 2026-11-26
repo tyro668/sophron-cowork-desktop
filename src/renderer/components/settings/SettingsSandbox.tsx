@@ -1,3 +1,5 @@
+import { configClient } from '../../features/config/api/config-client';
+import { sandboxClient } from '../../features/sandbox/api/sandbox-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -81,10 +83,7 @@ export function SettingsSandbox() {
     async function initialize() {
       try {
         // Load both config and status in parallel
-        const [cfg, s] = await Promise.all([
-          window.electronAPI.config.get(),
-          window.electronAPI.sandbox.getStatus(),
-        ]);
+        const [cfg, s] = await Promise.all([configClient.get(), sandboxClient.getStatus()]);
 
         if (cancelled) return;
 
@@ -112,7 +111,7 @@ export function SettingsSandbox() {
 
   async function loadStatus() {
     try {
-      const s = await window.electronAPI.sandbox.getStatus();
+      const s = await sandboxClient.getStatus();
       setStatus(s);
       setError(null);
     } catch (err) {
@@ -131,7 +130,7 @@ export function SettingsSandbox() {
     setSuccess(null);
 
     try {
-      const result = await window.electronAPI.config.save({ sandboxEnabled: nextEnabled });
+      const result = await configClient.save({ sandboxEnabled: nextEnabled });
       const persistedEnabled = result.config.sandboxEnabled !== false;
       setSandboxEnabled(persistedEnabled);
       await loadStatus();
@@ -157,13 +156,13 @@ export function SettingsSandbox() {
     try {
       // Fresh check based on platform - this forces a re-check on the backend
       if (isWindows) {
-        await window.electronAPI.sandbox.checkWSL();
+        await sandboxClient.checkWSL();
       } else if (isMac) {
-        await window.electronAPI.sandbox.checkLima();
+        await sandboxClient.checkLima();
       }
 
       // Get full status after check
-      const fullStatus = await window.electronAPI.sandbox.getStatus();
+      const fullStatus = await sandboxClient.getStatus();
       setStatus(fullStatus);
 
       setSuccess({ text: t('sandbox.statusRefreshed') });
@@ -184,9 +183,9 @@ export function SettingsSandbox() {
     try {
       let result = false;
       if (isWindows && status.wsl?.distro) {
-        result = await window.electronAPI.sandbox.installNodeInWSL(status.wsl.distro);
+        result = await sandboxClient.installNodeInWSL(status.wsl.distro);
       } else if (isMac) {
-        result = await window.electronAPI.sandbox.installNodeInLima();
+        result = await sandboxClient.installNodeInLima();
       }
 
       if (result) {
@@ -215,9 +214,9 @@ export function SettingsSandbox() {
     try {
       let result = false;
       if (isWindows && status.wsl?.distro) {
-        result = await window.electronAPI.sandbox.installPythonInWSL(status.wsl.distro);
+        result = await sandboxClient.installPythonInWSL(status.wsl.distro);
       } else if (isMac) {
-        result = await window.electronAPI.sandbox.installPythonInLima();
+        result = await sandboxClient.installPythonInLima();
       }
 
       if (result) {
@@ -243,7 +242,7 @@ export function SettingsSandbox() {
     setSuccess(null);
 
     try {
-      const result = await window.electronAPI.sandbox.retrySetup();
+      const result = await sandboxClient.retrySetup();
       if (result.success) {
         setSuccess({ text: t('sandbox.setupComplete') });
         setTimeout(async () => {
@@ -267,7 +266,7 @@ export function SettingsSandbox() {
     setSuccess(null);
 
     try {
-      const result = await window.electronAPI.sandbox.startLimaInstance();
+      const result = await sandboxClient.startLimaInstance();
       if (result) {
         setSuccess({ text: t('sandbox.limaStarted') });
         setTimeout(async () => {
@@ -291,7 +290,7 @@ export function SettingsSandbox() {
     setSuccess(null);
 
     try {
-      const result = await window.electronAPI.sandbox.stopLimaInstance();
+      const result = await sandboxClient.stopLimaInstance();
       if (result) {
         setSuccess({ text: t('sandbox.limaStopped') });
         setTimeout(async () => {

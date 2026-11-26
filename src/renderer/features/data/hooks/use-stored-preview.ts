@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Stored-table preview dialog: open/loading/error/data/page/target state and
  * the preview fetches for input tables and output tables. Dialog-local error
@@ -32,7 +33,7 @@ export function useStoredPreview() {
       });
       setStoredPreviewData(preview);
     } catch (err) {
-      setStoredPreviewError(err instanceof Error ? err.message : String(err));
+      setStoredPreviewError(formatIpcError(err, String(err)));
     } finally {
       setStoredPreviewLoading(false);
     }

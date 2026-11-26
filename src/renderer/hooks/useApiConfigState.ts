@@ -1,3 +1,4 @@
+import { configClient } from '../features/config/api/config-client';
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -42,7 +43,7 @@ import {
   normalizeThinkingLevel,
   profileKeyFromProvider,
   profileKeyToProvider,
-  providerSupportsLiveModelRefresh,
+  canProviderRefreshModels,
   resolveProfileModelOptions,
   protocolLabel,
   providerTabLabel,
@@ -94,43 +95,39 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         ? 'gemini'
         : 'anthropic';
 
-  const [state, dispatch] = useReducer(
-    apiConfigReducer,
-    undefined,
-    (): ApiConfigState => ({
-      presets: FALLBACK_PROVIDER_PRESETS,
-      profiles: initialBootstrap.snapshot.profiles,
-      activeProfileKey: initialBootstrap.snapshot.activeProfileKey,
-      providerUnset:
-        initialBootstrap.configSets.find((set) => set.id === initialBootstrap.activeConfigSetId)
-          ?.provider === '',
-      configSets: initialBootstrap.configSets,
-      activeConfigSetId: initialBootstrap.activeConfigSetId,
-      selectedConfigSetId: initialBootstrap.activeConfigSetId,
-      pendingConfigSetAction: null,
-      isMutatingConfigSet: false,
-      lastCustomProtocol: initialLastCustomProtocol,
-      enableThinking: Boolean(initialConfig?.enableThinking),
-      thinkingLevel: normalizeThinkingLevel(initialConfig?.thinkingLevel, 'medium'),
-      discoveredModels: {},
-      isLoadingConfig: true,
-      savedDraftSignature: '',
-      isSaving: false,
-      isTesting: false,
-      isRefreshingModels: false,
-      isDiscoveringLocalOllama: false,
-      errorText: '',
-      errorKey: null,
-      errorValues: undefined,
-      successText: '',
-      successKey: null,
-      successValues: undefined,
-      lastSaveCompletedAt: 0,
-      testResult: null,
-      diagnosticResult: null,
-      isDiagnosing: false,
-    })
-  );
+  const [state, dispatch] = useReducer(apiConfigReducer, undefined, (): ApiConfigState => ({
+    presets: FALLBACK_PROVIDER_PRESETS,
+    profiles: initialBootstrap.snapshot.profiles,
+    activeProfileKey: initialBootstrap.snapshot.activeProfileKey,
+    providerUnset:
+      initialBootstrap.configSets.find((set) => set.id === initialBootstrap.activeConfigSetId)
+        ?.provider === '',
+    configSets: initialBootstrap.configSets,
+    activeConfigSetId: initialBootstrap.activeConfigSetId,
+    selectedConfigSetId: initialBootstrap.activeConfigSetId,
+    pendingConfigSetAction: null,
+    isMutatingConfigSet: false,
+    lastCustomProtocol: initialLastCustomProtocol,
+    enableThinking: Boolean(initialConfig?.enableThinking),
+    thinkingLevel: normalizeThinkingLevel(initialConfig?.thinkingLevel, 'medium'),
+    discoveredModels: {},
+    isLoadingConfig: true,
+    savedDraftSignature: '',
+    isSaving: false,
+    isTesting: false,
+    isRefreshingModels: false,
+    isDiscoveringLocalOllama: false,
+    errorText: '',
+    errorKey: null,
+    errorValues: undefined,
+    successText: '',
+    successKey: null,
+    successValues: undefined,
+    lastSaveCompletedAt: 0,
+    testResult: null,
+    diagnosticResult: null,
+    isDiagnosing: false,
+  }));
 
   // Destructure state for convenience — avoids `state.X` in every expression
   const {
@@ -226,7 +223,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     profiles[activeProfileKey] || defaultProfileForKey(activeProfileKey, presets);
   const modelPreset = modelPresetForProfile(activeProfileKey, presets);
   const currentPreset = modelPreset;
-  const usesDiscoveredModelOptions = providerSupportsLiveModelRefresh(provider);
+  const usesDiscoveredModelOptions = canProviderRefreshModels(provider);
   const hasDiscoveredModelOptions =
     usesDiscoveredModelOptions &&
     Object.prototype.hasOwnProperty.call(discoveredModels, activeProfileKey);
@@ -641,9 +638,9 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       dispatch({ type: 'SET_IS_LOADING_CONFIG', payload: true });
       try {
         const loadedPresets = isElectron
-          ? await window.electronAPI.config.getPresets()
+          ? await configClient.getPresets()
           : FALLBACK_PROVIDER_PRESETS;
-        const config = initialConfig || (isElectron ? await window.electronAPI.config.get() : null);
+        const config = initialConfig || (isElectron ? await configClient.get() : null);
         if (cancelled) {
           return;
         }
@@ -744,7 +741,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           ? baseUrl.trim()
           : (baseUrl.trim() || currentPreset.baseUrl || '').trim();
 
-      const result = await window.electronAPI.config.test({
+      const result = await configClient.test({
         provider,
         apiKey: apiKey.trim(),
         baseUrl: resolvedBaseUrl || undefined,
@@ -804,7 +801,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
 
         const finalModel = useCustomModel ? customModel.trim() : model;
 
-        const result = await window.electronAPI.config.diagnose({
+        const result = await configClient.diagnose({
           provider,
           apiKey: apiKey.trim(),
           baseUrl: resolvedBaseUrl || undefined,
@@ -840,7 +837,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   }, [handleDiagnose]);
 
   const refreshModelOptions = useCallback(async () => {
-    if (!isElectron || !providerSupportsLiveModelRefresh(provider)) {
+    if (!isElectron || !canProviderRefreshModels(provider)) {
       return [];
     }
 
@@ -851,7 +848,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: true });
     clearError();
     try {
-      const models = await window.electronAPI.config.listModels({
+      const models = await configClient.listModels({
         provider,
         apiKey: apiKey.trim(),
         baseUrl: requestedBaseUrl || undefined,
@@ -966,7 +963,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       }
 
       try {
-        const result = await window.electronAPI.config.discoverLocal({
+        const result = await configClient.discoverLocal({
           baseUrl: requestedBaseUrl || undefined,
         });
         const latestTarget = latestOllamaTargetRef.current;
@@ -1105,10 +1102,10 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
         };
 
         const isEditingDefaultSet = selectedConfigSetId === activeConfigSetId;
-        if (!isEditingDefaultSet && isElectron && window.electronAPI?.config?.updateSet) {
+        if (!isEditingDefaultSet && isElectron && configClient.isAvailable()) {
           // Editing a non-default set: persist into that set only, keeping the
           // default set untouched.
-          const result = await window.electronAPI.config.updateSet({
+          const result = await configClient.updateSet({
             id: selectedConfigSetId,
             updates: payload,
           });
@@ -1118,7 +1115,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
           if (onSave) {
             await onSave(savePayload);
           } else {
-            const result = await window.electronAPI.config.save(savePayload);
+            const result = await configClient.save(savePayload);
             applyPersistedConfigToStore(result.config, presets);
           }
         }
@@ -1180,7 +1177,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
       clearError();
       try {
-        const result = await window.electronAPI.config.switchSet({ id: setId });
+        const result = await configClient.switchSet({ id: setId });
         // Setting the default also brings that set into the editor.
         applyPersistedConfigToStore(result.config, presets, setId);
         return true;
@@ -1269,7 +1266,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
       clearError();
       try {
-        const result = await window.electronAPI.config.createSet({
+        const result = await configClient.createSet({
           name: trimmed,
           mode: payload.mode,
           fromSetId: payload.mode === 'clone' ? activeConfigSetId : undefined,
@@ -1393,7 +1390,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
       clearError();
       try {
-        const result = await window.electronAPI.config.renameSet({ id, name: trimmed });
+        const result = await configClient.renameSet({ id, name: trimmed });
         applyPersistedConfigToStore(result.config, presets);
         showSuccessKey('api.configSetRenamed');
         setTimeout(() => clearSuccessMessage(), 1500);
@@ -1430,7 +1427,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
       dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
       clearError();
       try {
-        const result = await window.electronAPI.config.deleteSet({ id });
+        const result = await configClient.deleteSet({ id });
         applyPersistedConfigToStore(result.config, presets);
         showSuccessKey('api.configSetDeleted');
         setTimeout(() => clearSuccessMessage(), 1500);

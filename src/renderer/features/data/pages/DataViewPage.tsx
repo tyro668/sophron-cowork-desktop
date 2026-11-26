@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 import { useDataWorkspaceActivation } from '../hooks/use-data-workspace-activation';
 /**
  * Data workspace page — composition layer. Wires the domain hooks together
@@ -330,7 +331,7 @@ export function DataViewPage() {
                       showToast('error', bindResult.error);
                     }
                   } catch (error) {
-                    showToast('error', error instanceof Error ? error.message : String(error));
+                    showToast('error', formatIpcError(error, String(error)));
                   }
                 }
                 setSourceWizard(null);

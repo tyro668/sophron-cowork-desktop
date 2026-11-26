@@ -1,3 +1,4 @@
+import { logsClient } from '../../features/logs/api/logs-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -22,10 +23,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   const loadLogs = useCallback(async () => {
     try {
-      const [files, dir] = await Promise.all([
-        window.electronAPI.logs.getAll(),
-        window.electronAPI.logs.getDirectory(),
-      ]);
+      const [files, dir] = await Promise.all([logsClient.getAll(), logsClient.getDirectory()]);
       setLogFiles(files || []);
       setLogsDirectory(dir || '');
     } catch (err) {
@@ -35,7 +33,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   const loadDevLogsStatus = useCallback(async () => {
     try {
-      const result = await window.electronAPI.logs.isEnabled();
+      const result = await logsClient.isEnabled();
       if (result.success && typeof result.enabled === 'boolean') {
         setDevLogsEnabled(result.enabled);
       }
@@ -60,7 +58,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
     setIsLoading(true);
     try {
       const newEnabled = !devLogsEnabled;
-      const result = await window.electronAPI.logs.setEnabled(newEnabled);
+      const result = await logsClient.setEnabled(newEnabled);
       if (result.success) {
         setDevLogsEnabled(newEnabled);
         showToast('success', newEnabled ? t('logs.devLogsEnabled') : t('logs.devLogsDisabled'));
@@ -77,7 +75,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
   async function handleExport() {
     setIsLoading(true);
     try {
-      const result = await window.electronAPI.logs.export();
+      const result = await logsClient.export();
       if (result.success) {
         showToast('success', t('logs.exportSuccess', { path: result.path }));
       } else {
@@ -93,7 +91,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
   async function handleOpen() {
     setIsLoading(true);
     try {
-      await window.electronAPI.logs.open();
+      await logsClient.open();
     } catch (err) {
       showToast('error', formatIpcError(err, t('logs.exportFailed')));
     } finally {
@@ -110,7 +108,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
     setIsLoading(true);
     try {
-      const result = await window.electronAPI.logs.clear();
+      const result = await logsClient.clear();
       if (result.success) {
         showToast('success', t('logs.clearSuccess', { count: result.deletedCount }));
         await loadLogs();
@@ -179,7 +177,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
               <div className="flex items-center gap-2">
                 <button
                   className="min-w-0 truncate font-mono text-xs text-text-secondary text-left hover:text-accent hover:underline cursor-pointer bg-transparent border-none p-0"
-                  onClick={() => window.electronAPI.logs.open()}
+                  onClick={() => logsClient.open()}
                   title={t('logs.openFolder')}
                 >
                   {logsDirectory}

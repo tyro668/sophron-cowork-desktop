@@ -48,7 +48,7 @@ describe('config / detail views use the flush group variant', () => {
   });
 
   it('leaves the wizard on the inset groupClass', () => {
-    expect(read('src/renderer/components/data-view/raw-source-wizard.tsx')).toContain(
+    expect(read('src/renderer/components/data-view/raw-source-wizard/shared.tsx')).toContain(
       "export const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface'"
     );
     expect(read('src/renderer/components/data-view/cloud-connection-datasource.tsx')).not.toContain(

@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 import { useEffect, useState } from 'react';
 import { dataClient } from '../api/data-client';
 
@@ -30,7 +31,7 @@ export function usePipelineGenerationInputs(enabled: boolean) {
     };
     void load()
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setError(formatIpcError(err, String(err)));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

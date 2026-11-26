@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Editor state for the data workspace: which pipeline / raw-table draft /
  * rawTable / output table is being edited, the focused items injected by
@@ -99,7 +100,7 @@ export function useDataViewEditors(deps: {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(formatIpcError(err, String(err)));
           setOutputEditorRawTables([]);
         }
       })

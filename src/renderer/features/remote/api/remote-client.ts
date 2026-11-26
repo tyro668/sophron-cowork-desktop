@@ -3,19 +3,14 @@
  * `window.electronAPI.remote` calls with availability checks.
  */
 import type { ElectronApi } from '../../../../shared/contracts/electron-api';
+import { isElectronNamespaceAvailable, requireElectronNamespace } from '../../../utils/ipc-client';
 
 type RemoteApi = ElectronApi['remote'];
 
-function api(): RemoteApi {
-  const bridge = window.electronAPI?.remote;
-  if (!bridge) throw new Error('Remote IPC bridge is unavailable');
-  return bridge;
-}
+const api = () => requireElectronNamespace('remote');
 
 export const remoteClient = {
-  isAvailable(): boolean {
-    return typeof window !== 'undefined' && Boolean(window.electronAPI?.remote);
-  },
+  isAvailable: () => isElectronNamespaceAvailable('remote'),
   getConfig: () => api().getConfig(),
   getStatus: () => api().getStatus(),
   getPairedUsers: () => api().getPairedUsers(),

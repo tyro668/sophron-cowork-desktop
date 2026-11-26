@@ -378,7 +378,7 @@ describe('api config state helpers', () => {
 
   it('wires local Ollama discovery through the shared config hook', () => {
     const source = fs.readFileSync(hookPath, 'utf8');
-    expect(source).toContain('window.electronAPI.config.discoverLocal({');
+    expect(source).toContain('configClient.discoverLocal({');
     expect(source).toContain('baseUrl: requestedBaseUrl || undefined');
     expect(source).toContain("showErrorKey('api.localOllamaNotFound')");
     expect(source).toContain("showSuccessKey('api.localOllamaDiscovered'");

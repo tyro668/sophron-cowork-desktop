@@ -20,7 +20,7 @@ import { VISIBLE_API_PROVIDER_OPTIONS } from '../../../shared/api-model-presets'
 import { useApiConfigState } from '../../hooks/useApiConfigState';
 import type { ProviderType } from '../../types';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
-import { ApiConfigSetManager } from '../ApiConfigSetManager';
+import { ApiConfigSetManager, pickApiConfigSetManagerProps } from '../ApiConfigSetManager';
 import { ApiModelSelectorField } from './ApiModelSelectorField';
 import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
@@ -36,6 +36,7 @@ interface ModelOptionItem {
 export function SettingsAPI() {
   const { t } = useTranslation();
   const [showApiKey, setShowApiKey] = useState(false);
+  const apiConfigState = useApiConfigState();
   const {
     provider,
     providerUnset,
@@ -60,13 +61,7 @@ export function SettingsAPI() {
     isOllamaMode,
     requiresApiKey,
     commonProviderSetups,
-    configSets,
-    activeConfigSetId,
-    selectedConfigSetId,
-    currentConfigSet,
     pendingConfigSetAction,
-    pendingConfigSet,
-    hasUnsavedChanges,
     isMutatingConfigSet,
     setApiKey,
     setBaseUrl,
@@ -81,14 +76,6 @@ export function SettingsAPI() {
     changeProvider,
     clearProviderSelection,
     changeProtocol,
-    requestConfigSetSwitch,
-    requestSelectConfigSet,
-    requestCreateBlankConfigSet,
-    cancelPendingConfigSetAction,
-    saveAndContinuePendingConfigSetAction,
-    discardAndContinuePendingConfigSetAction,
-    renameConfigSet,
-    deleteConfigSet,
     handleSave,
     refreshModelOptions,
     discoverLocalOllama,
@@ -96,7 +83,7 @@ export function SettingsAPI() {
     isDiagnosing,
     handleDiagnose,
     handleDeepDiagnose,
-  } = useApiConfigState();
+  } = apiConfigState;
 
   if (isLoadingConfig) {
     return (
@@ -124,25 +111,7 @@ export function SettingsAPI() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <ApiConfigSetManager
-        configSets={configSets}
-        activeConfigSetId={activeConfigSetId}
-        selectedConfigSetId={selectedConfigSetId}
-        currentConfigSet={currentConfigSet}
-        pendingConfigSetAction={pendingConfigSetAction}
-        pendingConfigSet={pendingConfigSet}
-        hasUnsavedChanges={hasUnsavedChanges}
-        isMutatingConfigSet={isMutatingConfigSet}
-        isSaving={isSaving}
-        onSelectSet={requestSelectConfigSet}
-        onSwitchSet={requestConfigSetSwitch}
-        onRequestCreateBlankSet={requestCreateBlankConfigSet}
-        onRenameSet={renameConfigSet}
-        onDeleteSet={deleteConfigSet}
-        onCancelPendingAction={cancelPendingConfigSetAction}
-        onSaveAndContinuePendingAction={saveAndContinuePendingConfigSetAction}
-        onDiscardAndContinuePendingAction={discardAndContinuePendingConfigSetAction}
-      />
+      <ApiConfigSetManager {...pickApiConfigSetManagerProps(apiConfigState)} />
 
       <div>
         <SettingsCard icon={<Wifi className="h-4.5 w-4.5" />} title={t('api.serviceAuth')}>

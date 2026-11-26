@@ -1,3 +1,4 @@
+import { sandboxClient } from '../features/sandbox/api/sandbox-client';
 /**
  * SandboxSetupDialog - Shows sandbox initialization progress at app startup
  * Supports light/dark theme
@@ -58,7 +59,7 @@ export function SandboxSetupDialog({ progress, onComplete }: Props) {
     }
     setIsRetrying(true);
     try {
-      const result = await window.electronAPI.sandbox.retryLimaSetup();
+      const result = await sandboxClient.retryLimaSetup();
       if (!result?.success) {
         setIsRetrying(false);
       }

@@ -38,7 +38,7 @@ import {
   EmptyState,
   flatToolbarRowClass,
   LoadingState,
-  matchesSearchText,
+  isMatchingSearchText,
 } from './shared';
 import { NormalizerManagerDialog } from './normalizer-manager-dialog';
 import {
@@ -185,7 +185,7 @@ export function RawTablesPanel({
   const [normalizersOpen, setNormalizersOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
   const filteredDrafts = useMemo(
-    () => drafts.filter((draft) => matchesSearchText(draft.name, searchQuery)),
+    () => drafts.filter((draft) => isMatchingSearchText(draft.name, searchQuery)),
     [drafts, searchQuery]
   );
   const draftCount = filteredDrafts.length;

@@ -3,7 +3,7 @@ import { X, Key, Server, Cpu, CheckCircle, Edit3, Plug, RefreshCw } from 'lucide
 import { useTranslation } from 'react-i18next';
 import type { AppConfig, ApiTestResult } from '../types';
 import { useApiConfigState } from '../hooks/useApiConfigState';
-import { ApiConfigSetManager } from './ApiConfigSetManager';
+import { ApiConfigSetManager, pickApiConfigSetManagerProps } from './ApiConfigSetManager';
 import { ApiModelSelectorField } from './settings/ApiModelSelectorField';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -61,6 +61,11 @@ export function ConfigModal({
   isFirstRun,
 }: ConfigModalProps) {
   const { t } = useTranslation();
+  const apiConfigState = useApiConfigState({
+    enabled: isOpen,
+    initialConfig,
+    onSave,
+  });
   const {
     provider,
     customProtocol,
@@ -83,14 +88,6 @@ export function ConfigModal({
     isOllamaMode,
     requiresApiKey,
     commonProviderSetups,
-    configSets,
-    activeConfigSetId,
-    selectedConfigSetId,
-    currentConfigSet,
-    pendingConfigSetAction,
-    pendingConfigSet,
-    hasUnsavedChanges,
-    isMutatingConfigSet,
     setApiKey,
     setBaseUrl,
     setModel,
@@ -99,24 +96,12 @@ export function ConfigModal({
     applyCommonProviderSetup,
     changeProvider,
     changeProtocol,
-    requestConfigSetSwitch,
-    requestSelectConfigSet,
-    requestCreateBlankConfigSet,
-    cancelPendingConfigSetAction,
-    saveAndContinuePendingConfigSetAction,
-    discardAndContinuePendingConfigSetAction,
-    renameConfigSet,
-    deleteConfigSet,
     handleSave,
     handleTest,
     refreshModelOptions,
     discoverLocalOllama,
     shouldShowOllamaManualModelToggle,
-  } = useApiConfigState({
-    enabled: isOpen,
-    initialConfig,
-    onSave,
-  });
+  } = apiConfigState;
 
   useEffect(() => {
     if (!lastSaveCompletedAt) {
@@ -217,25 +202,7 @@ export function ConfigModal({
       {/* Content */}
       <div className="ui-dialog-pad flex flex-col gap-2.5 p-5 flex-1 overflow-y-auto bg-surface">
         {/* Config Set Switcher */}
-        <ApiConfigSetManager
-          configSets={configSets}
-          activeConfigSetId={activeConfigSetId}
-          selectedConfigSetId={selectedConfigSetId}
-          currentConfigSet={currentConfigSet}
-          pendingConfigSetAction={pendingConfigSetAction}
-          pendingConfigSet={pendingConfigSet}
-          hasUnsavedChanges={hasUnsavedChanges}
-          isMutatingConfigSet={isMutatingConfigSet}
-          isSaving={isSaving}
-          onSelectSet={requestSelectConfigSet}
-          onSwitchSet={requestConfigSetSwitch}
-          onRequestCreateBlankSet={requestCreateBlankConfigSet}
-          onRenameSet={renameConfigSet}
-          onDeleteSet={deleteConfigSet}
-          onCancelPendingAction={cancelPendingConfigSetAction}
-          onSaveAndContinuePendingAction={saveAndContinuePendingConfigSetAction}
-          onDiscardAndContinuePendingAction={discardAndContinuePendingConfigSetAction}
-        />
+        <ApiConfigSetManager {...pickApiConfigSetManagerProps(apiConfigState)} />
 
         <section className="ui-group">
           <div className="ui-form-row">

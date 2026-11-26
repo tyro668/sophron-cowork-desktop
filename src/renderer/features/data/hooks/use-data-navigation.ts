@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Deep-link navigation for the data workspace: reacts to the app store's
  * pending data navigation targets (pipeline / input table / output table / tab)
@@ -139,7 +140,7 @@ export function useDataNavigation(deps: {
     void run()
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(formatIpcError(err, String(err)));
         }
       })
       .finally(() => {

@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Server state for the data dashboard: pipelines, output tables, summary counts,
  * run stats, and their pagination. Owns `loadDashboard` and the request
@@ -154,7 +155,7 @@ export function useDataDashboard(deps: {
         }
       } catch (err) {
         if (requestSeq === dashboardRequestSeq.current) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(formatIpcError(err, String(err)));
         }
       } finally {
         if (requestSeq === dashboardRequestSeq.current) {

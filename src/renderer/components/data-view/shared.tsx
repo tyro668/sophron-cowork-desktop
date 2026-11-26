@@ -495,7 +495,7 @@ export function getTablePageCount(count: number): number {
   return Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
 }
 
-export function matchesSearchText(value: string, query: string): boolean {
+export function isMatchingSearchText(value: string, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
   return value.toLowerCase().includes(normalizedQuery);

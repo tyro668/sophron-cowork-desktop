@@ -1,3 +1,4 @@
+import { configClient } from '../../features/config/api/config-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -19,7 +20,7 @@ export function CodexAuthCard() {
 
   const refresh = useCallback(async () => {
     try {
-      setStatus(await window.electronAPI.config.codexAuthStatus());
+      setStatus(await configClient.codexAuthStatus());
     } catch {
       setStatus(null);
     }
@@ -49,7 +50,7 @@ export function CodexAuthCard() {
     setBusy('login');
     setError('');
     try {
-      const result = await window.electronAPI.config.codexLogin();
+      const result = await configClient.codexLogin();
       setStatus(result.status);
       if (!result.success) {
         setError(result.error || t('api.codexLoginFailed'));
@@ -66,7 +67,7 @@ export function CodexAuthCard() {
     setBusy('import');
     setError('');
     try {
-      const result = await window.electronAPI.config.codexImportCli();
+      const result = await configClient.codexImportCli();
       setStatus(result.status);
       if (!result.success) {
         setError(result.error || t('api.codexCliNotFound'));
@@ -82,7 +83,7 @@ export function CodexAuthCard() {
     setBusy('logout');
     setError('');
     try {
-      const result = await window.electronAPI.config.codexLogout();
+      const result = await configClient.codexLogout();
       setStatus(result.status);
       if (!result.success) {
         setError(result.error || t('api.codexLoginFailed'));
@@ -96,7 +97,7 @@ export function CodexAuthCard() {
 
   const submitManualCode = useCallback(() => {
     if (!prompt) return;
-    void window.electronAPI.config.codexSubmitLoginCode({
+    void configClient.codexSubmitLoginCode({
       requestId: prompt.requestId,
       code: manualCode.trim(),
     });

@@ -488,9 +488,9 @@ function renderPickerTableRow(
   const sourceKind = table.sourceKind ?? 'excel';
   const typeIcon =
     sourceKind === 'folder' ? (
-      <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+      <Folder className="h-4 w-4 flex-shrink-0 text-text-secondary" />
     ) : sourceKind === 'excel' ? (
-      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
     ) : sourceKind === 'csv' ? (
       <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
     ) : (
@@ -563,11 +563,11 @@ function renderPageTableRow(
   const sourceMeta = cloudMirror ? getCloudMirrorSourceMeta() : getRawTableSourceMeta(sourceKind);
   const parts = rawTable && !isChild ? mergeParts(rawTable) : null;
   const typeIcon = cloudMirror ? (
-    <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+    <CloudDownload className="h-4 w-4 flex-shrink-0 text-accent" />
   ) : parts && sourceKind === 'folder' ? (
-    <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+    <Folder className="h-4 w-4 flex-shrink-0 text-text-secondary" />
   ) : sourceKind === 'excel' ? (
-    <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+    <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
   ) : sourceKind === 'csv' ? (
     <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
   ) : (
@@ -704,15 +704,15 @@ function renderSourceRow(
   const selected = ctx.activeId === `source:${source.id}`;
   const icon =
     source.sourceKind === 'cloud' ? (
-      <CloudDownload className="h-4 w-4 flex-shrink-0 text-sky-500" />
+      <CloudDownload className="h-4 w-4 flex-shrink-0 text-accent" />
     ) : source.sourceKind === 'folder' ? (
-      <Folder className="h-4 w-4 flex-shrink-0 text-amber-500" />
+      <Folder className="h-4 w-4 flex-shrink-0 text-text-secondary" />
     ) : source.sourceKind === 'csv' ? (
       <FileText className="h-4 w-4 flex-shrink-0 text-accent" />
     ) : source.buildMode === 'excel_per_sheet' ? (
-      <ExcelMultiSheetIcon className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+      <ExcelMultiSheetIcon className="h-4 w-4 flex-shrink-0 text-accent" />
     ) : (
-      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-emerald-600" />
+      <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />
     );
   if (ctx.isPicker) {
     return (
@@ -825,10 +825,10 @@ function renderSourceRow(
 }
 
 function rawPickerIcon(sourceKind: string | undefined) {
-  if (sourceKind === 'folder') return <Folder className="h-4 w-4 text-amber-500" />;
-  if (sourceKind === 'excel') return <FileSpreadsheet className="h-4 w-4 text-emerald-600" />;
+  if (sourceKind === 'folder') return <Folder className="h-4 w-4 text-text-secondary" />;
+  if (sourceKind === 'excel') return <FileSpreadsheet className="h-4 w-4 text-accent" />;
   if (sourceKind === 'csv') return <FileText className="h-4 w-4 text-accent" />;
-  if (sourceKind === 'cloud') return <CloudDownload className="h-4 w-4 text-sky-500" />;
+  if (sourceKind === 'cloud') return <CloudDownload className="h-4 w-4 text-accent" />;
   return <Table2 className="h-4 w-4 text-accent" />;
 }
 

@@ -17,7 +17,7 @@ import { errorText } from '../../features/cloud-connection/hooks/use-cloud-conne
 import { Button, Dialog, DialogBody, DialogFooter, DialogHeader, DialogTitle, cn } from '../ui';
 import { ResultTableTree } from './result-table-tree';
 import { RawTableTree, childDisplayName } from './raw-table-tree';
-import { matchesSearchText } from './shared';
+import { isMatchingSearchText } from './shared';
 
 export type TableRefKind = 'raw' | 'result';
 
@@ -118,9 +118,9 @@ export function TableRefPickerDialog({
     return rawTables.filter((table) => {
       const sourceName = table.sourceId ? (sourceById.get(table.sourceId)?.name ?? '') : '';
       return (
-        matchesSearchText(table.name, q) ||
-        matchesSearchText(rawGroupName(table.groupId), q) ||
-        matchesSearchText(sourceName, q)
+        isMatchingSearchText(table.name, q) ||
+        isMatchingSearchText(rawGroupName(table.groupId), q) ||
+        isMatchingSearchText(sourceName, q)
       );
     });
   }, [query, rawTables, rawGroupName, sourceById]);
@@ -130,7 +130,8 @@ export function TableRefPickerDialog({
     if (!q) return resultTables;
     return resultTables.filter(
       (table) =>
-        matchesSearchText(table.name, q) || matchesSearchText(resultGroupName(table.groupId), q)
+        isMatchingSearchText(table.name, q) ||
+        isMatchingSearchText(resultGroupName(table.groupId), q)
     );
   }, [query, resultTables, resultGroupName]);
 

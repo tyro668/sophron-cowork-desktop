@@ -37,7 +37,11 @@
     "viewRawDetails": "View raw details",
     "durationMs": "{{value}} ms",
     "durationSec": "{{value}} s",
-    "durationMinSec": "{{minutes}}m {{seconds}}s"
+    "durationMinSec": "{{minutes}}m {{seconds}}s",
+    "previous": "Previous",
+    "next": "Next",
+    "selectAll": "Select all",
+    "copy": "Copy"
   },
   "welcome": {
     "title": "Welcome to sophron cowork",
@@ -413,7 +417,8 @@
         "viewResult": "View result",
         "viewCodeAdvanced": "Code (advanced)",
         "refreshDone": "Refreshed",
-        "generationOutputCancelled": "Cancelled"
+        "generationOutputCancelled": "Cancelled",
+        "sourceKindFolder": "Folder"
       },
       "status": {
         "available": "Available",
@@ -2990,7 +2995,8 @@
         "ollama_model_not_listed": "Model {{model}} is not in the endpoint model list. Pick a detected model or switch to manual entry.",
         "ollama_model_loading": "Model {{model}} may still be loading. Try the deep check again in a moment.",
         "model_cold_start": "The model may still be loading into GPU/CPU memory. Large models (7B+) can take 30–120 seconds on first use. Try again shortly."
-      }
+      },
+      "skipped": "Skipped"
     },
     "manageConfigSets": "Manage other configurations",
     "configSetLabel": "Profile",
@@ -3168,7 +3174,8 @@
     "headers": "Headers",
     "headerNamePlaceholder": "Authorization",
     "headerValuePlaceholder": "Bearer <token>",
-    "noHeaders": "No headers configured"
+    "noHeaders": "No headers configured",
+    "disabled": "Disabled"
   },
   "credentials": {
     "envVars": "Environment Variables",
@@ -3467,7 +3474,8 @@
     "skillMenuHint": "↑↓ select · Enter insert · Esc close",
     "skillMenuCount": "{{count}} items",
     "modelGroupCurrent": "Current",
-    "manageModels": "Manage model configs…"
+    "manageModels": "Manage model configs…",
+    "imageProcessFailed": "Failed to process image. Please try again."
   },
   "context": {
     "progress": "Progress",
@@ -4084,7 +4092,8 @@
     "runFilter1d": "Last 24 hours",
     "runFilter7d": "Last 7 days",
     "runFilter30d": "Last 30 days",
-    "runSearch": "Search runs…"
+    "runSearch": "Search runs…",
+    "runFailed": "Run failed"
   },
   "remote": {
     "title": "Remote Control",

@@ -266,7 +266,7 @@ export function GlassDataGridPreview({
         )}
         <button
           type="button"
-          aria-label={t('common.previous', 'Previous')}
+          aria-label={t('common.previous')}
           onClick={() => onPageChange?.(safeCurrentPage - 1)}
           disabled={isLoading || !onPageChange || safeCurrentPage <= 1}
           className="inline-flex w-10 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
@@ -293,7 +293,7 @@ export function GlassDataGridPreview({
         ))}
         <button
           type="button"
-          aria-label={t('common.next', 'Next')}
+          aria-label={t('common.next')}
           onClick={() => onPageChange?.(safeCurrentPage + 1)}
           disabled={isLoading || !onPageChange || safeCurrentPage >= pageCount}
           className="inline-flex w-10 items-center justify-center border-l text-text-muted transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"

@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Server state for the raw-tables tab: the rawTables page, total count,
  * loading flag, and `loadRawTables` with its own request-sequence guard.
@@ -93,7 +94,7 @@ export function useRawTables(deps: {
         }
       } catch (err) {
         if (requestSeq === rawTablesRequestSeq.current) {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(formatIpcError(err, String(err)));
         }
       } finally {
         if (requestSeq === rawTablesRequestSeq.current) {

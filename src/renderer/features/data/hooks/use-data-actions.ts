@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../../utils/ipc-error';
 /**
  * Command layer for the data workspace: every user action that talks to the
  * backend lives here, expressed against the domain hooks' state + actions.
@@ -23,7 +24,7 @@ import type {
 } from '../../../types';
 import type { ConfirmDialogOptions } from '../../../components/ConfirmDialog';
 import type { AssignGroupTarget, DataListGroup } from '../../../components/data-view/group-ui';
-import { DATA_DELETE_BATCH_SIZE, matchesSearchText } from '../../../components/data-view/shared';
+import { DATA_DELETE_BATCH_SIZE, isMatchingSearchText } from '../../../components/data-view/shared';
 import { getOperatorCatalog } from '../../../components/data-view/data-pipelines/workflow/operator-catalog';
 import { buildWorkflowStarterGraph } from '../../../components/data-view/data-pipelines/workflow/workflow-starter';
 import { dataClient } from '../api/data-client';
@@ -180,7 +181,7 @@ export function useDataActions(deps: DataActionsDeps) {
         dashboard.setLastRunFailure(null);
         await loadDashboard();
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+        const message = formatIpcError(err, String(err));
         dashboard.setLastRunFailure({
           message,
           at: Date.now(),
@@ -609,7 +610,7 @@ export function useDataActions(deps: DataActionsDeps) {
   const handleDeleteAllRawTables = useCallback(async () => {
     if (!dataClient.has('deleteRawTable')) return;
     const draftIds = drafts.drafts
-      .filter((draft) => matchesSearchText(draft.name, ui.searchQuery))
+      .filter((draft) => isMatchingSearchText(draft.name, ui.searchQuery))
       .map((draft) => draft.id);
     const count = rawTables.totalRawTables + draftIds.length;
     if (count <= 0) return;

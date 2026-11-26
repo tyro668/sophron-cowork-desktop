@@ -1,3 +1,4 @@
+import { skillsClient } from '../../features/skills/api/skills-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -222,10 +223,10 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
   const loadSkills = useCallback(async (silent = false) => {
     try {
-      const skillsResult = await window.electronAPI.skills.getAll();
+      const skillsResult = await skillsClient.getAll();
       setSkills(skillsResult || []);
       try {
-        setUsageCounts((await window.electronAPI.skills.getUsageCounts?.(7)) ?? {});
+        setUsageCounts((await skillsClient.getUsageCounts?.(7)) ?? {});
       } catch {
         setUsageCounts({});
       }
@@ -253,13 +254,13 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
           setIsPluginLoadingMore(true);
         }
         const [catalog, installed] = await Promise.all([
-          window.electronAPI.plugins.listCatalog({
+          skillsClient.plugins.listCatalog({
             installableOnly: false,
             source: 'skillhub',
             page: nextPage,
             pageSize: SKILLHUB_MARKET_PAGE_SIZE,
           }),
-          window.electronAPI.plugins.listInstalled(),
+          skillsClient.plugins.listInstalled(),
         ]);
         const nextCatalog = catalog || [];
         setPlugins((current) => {
@@ -330,14 +331,14 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       if (!folderPath) return;
 
       setIsLoading(true);
-      const validation = await window.electronAPI.skills.validate(folderPath);
+      const validation = await skillsClient.validate(folderPath);
 
       if (!validation.valid) {
         setError({ text: `Invalid skill folder: ${validation.errors.join(', ')}` });
         return;
       }
 
-      const result = await window.electronAPI.skills.install(folderPath);
+      const result = await skillsClient.install(folderPath);
       if (result.success) {
         await loadSkills();
         setError(null);
@@ -358,7 +359,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
 
     setIsLoading(true);
     try {
-      await window.electronAPI.skills.delete(skillId);
+      await skillsClient.delete(skillId);
       await loadSkills();
     } catch (err) {
       setError({ text: formatIpcError(err, t('skills.failedToDelete')) });
@@ -370,7 +371,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   async function handleToggleEnabled(skill: Skill) {
     setIsLoading(true);
     try {
-      await window.electronAPI.skills.setEnabled(skill.id, !skill.enabled);
+      await skillsClient.setEnabled(skill.id, !skill.enabled);
       await loadSkills();
       setError(null);
     } catch (err) {
@@ -383,7 +384,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   async function handleOpenSkillPath(skill: Skill) {
     setIsLoading(true);
     try {
-      const result = await window.electronAPI.skills.openSkillPath(skill.id);
+      const result = await skillsClient.openSkillPath(skill.id);
       if (!result.success) {
         setError({ text: result.error || t('skills.skillPathOpenFailed') });
         return;
@@ -404,14 +405,14 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
     try {
       if (plugin.catalogSource === 'skillhub') {
         const slug = plugin.skillHubSlug ?? installTarget.replace(/^skillhub:/i, '');
-        const result = await window.electronAPI.skills.installFromSkillHub(slug);
+        const result = await skillsClient.installFromSkillHub(slug);
         await loadSkills();
         await loadPlugins();
         setSuccess({ text: t('skills.skillHubInstallSuccess', { name: result.skill.name }) });
         return;
       }
 
-      const result = await window.electronAPI.plugins.install(installTarget);
+      const result = await skillsClient.plugins.install(installTarget);
       await loadSkills();
       await loadPlugins();
       setSuccess({ text: t('skills.pluginInstallSuccess', { name: result.plugin.name }) });

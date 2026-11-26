@@ -88,10 +88,11 @@ export function mergedParts(table: DataRawTable): string[] {
 }
 
 function SourceIcon({ source, className }: { source: DataRawSource; className: string }) {
-  if (source.sourceKind === 'folder') return <Folder className={`${className} text-amber-500`} />;
-  if (source.sourceKind === 'cloud') return <Cloud className={`${className} text-sky-500`} />;
-  if (source.sourceKind === 'csv') return <FileText className={`${className} text-emerald-600`} />;
-  return <FileSpreadsheet className={`${className} text-emerald-600`} />;
+  if (source.sourceKind === 'folder')
+    return <Folder className={`${className} text-text-secondary`} />;
+  if (source.sourceKind === 'cloud') return <Cloud className={`${className} text-accent`} />;
+  if (source.sourceKind === 'csv') return <FileText className={`${className} text-accent`} />;
+  return <FileSpreadsheet className={`${className} text-accent`} />;
 }
 
 export function RawSourceDetail({

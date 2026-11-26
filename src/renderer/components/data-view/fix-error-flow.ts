@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import i18n from '../../i18n/config';
 import { cancelledError, isCancelledError } from '../../../shared/cancel';
 import { formatLocation, runAutoFixLoop, type FixErrorReport } from '../../../shared/fix-error';
@@ -155,7 +156,7 @@ export async function runFixFlow(options: {
       try {
         verdict = await options.verify(fixed);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = formatIpcError(error, String(error));
         verdict = { passed: false, failure: { message, error: message } };
       }
       lastVerify = verdict;
