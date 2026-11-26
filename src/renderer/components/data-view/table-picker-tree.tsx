@@ -6,7 +6,7 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '../ui';
-import { PickerCheck } from './raw-table-tree';
+import { PickerCheck } from './picker-check';
 
 export type TablePickerNodeKind = 'group' | 'source' | 'table';
 
