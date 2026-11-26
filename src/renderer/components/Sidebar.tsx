@@ -1,5 +1,19 @@
 import { formatIpcError } from '../utils/ipc-error';
+import { authClient } from '../features/auth/api/auth-client';
+import { automationClient } from '../features/automation/api/automation-client';
+import { updateClient } from '../features/update/api/update-client';
+import { SidebarAuthAccountMenu, SidebarAuthAvatar } from './sidebar/SidebarAuthAvatarAndMenu';
+import { SidebarBatchSelectBar } from './sidebar/SidebarBatchSelectBar';
+import { SidebarCollapsedRail } from './sidebar/SidebarCollapsedRail';
+import { SidebarFooter } from './sidebar/SidebarFooter';
 import { SidebarLoginDialog } from './sidebar/SidebarLoginDialog';
+import { SidebarRenameDialog } from './sidebar/SidebarRenameDialog';
+import {
+  readStoredPinnedSessions,
+  readStoredProjectExpansion,
+  writeStoredPinnedSessions,
+  writeStoredProjectExpansion,
+} from './sidebar/sidebar-storage';
 import { createPortal } from 'react-dom';
 import { confirmLeave } from '../utils/leave-guard';
 import { NEW_TASK_EVENT } from '../utils/new-task';
@@ -13,13 +27,6 @@ import {
   Moon,
   Sun,
   Monitor,
-  ChevronDown,
-  Settings,
-  LogIn,
-  LogOut,
-  ChartNoAxesCombined,
-  Loader2,
-  CircleDollarSign,
   Search as SearchIcon,
   Plus,
   Layers,
@@ -27,7 +34,6 @@ import {
   Clock3,
   ListChecks,
   Check,
-  Minus,
   MoreHorizontal,
   PencilLine,
   Folder,
@@ -43,7 +49,7 @@ import {
 import { useConfirmDialog } from './ConfirmDialog';
 import type { AppUpdateState } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
-import { Badge, Button, Dialog, DialogHeader, DialogTitle, Input } from './ui';
+import { Button } from './ui';
 import { BrandMark } from './BrandMark';
 import {
   buildSessionProjectGroups,
@@ -51,9 +57,7 @@ import {
   type SessionProjectGroup,
 } from '../utils/sidebar-project-groups';
 
-const SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY = 'sophron.sidebar.projectExpansion.v1';
 const SIDEBAR_EDGE_DRAG_THRESHOLD = 56;
-const SIDEBAR_PINNED_STORAGE_KEY = 'sophron.sidebar.pinnedSessions.v1';
 
 export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }) {
   const { t } = useTranslation();
@@ -93,9 +97,8 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   /** 转成脚本 in 任务操作: anchor of the latest qualifying turn per session (null = none). */
   const [scriptTurnBySession, setScriptTurnBySession] = useState<Record<string, string | null>>({});
   const loadScriptTurn = useCallback((sessionId: string) => {
-    const api = window.electronAPI?.automation?.scripts;
-    if (!api?.chatTurns) return;
-    void api
+    if (!automationClient.isAvailable()) return;
+    void automationClient.scripts
       .chatTurns(sessionId)
       .then((turns) => turns[turns.length - 1]?.anchorId ?? null)
       .catch(() => null)
@@ -197,11 +200,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const refreshDesktopAuthStatus = useDesktopAuthConnection(isElectron);
 
   const handleCancelLoginClick = useCallback(async () => {
-    if (!isElectron || !window.electronAPI?.auth || !isLoginBusy) return;
+    if (!isElectron || !authClient.isAvailable() || !isLoginBusy) return;
 
     setAuthBusyMode(null);
     try {
-      const status = await window.electronAPI.auth.cancelLogin();
+      const status = await authClient.cancelLogin();
       setDesktopAuthStatus(status);
     } catch (error) {
       setGlobalNotice({
@@ -213,7 +216,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   }, [isElectron, isLoginBusy, setDesktopAuthStatus, setGlobalNotice, t]);
 
   const handleLoginEntryClick = useCallback(async () => {
-    if (!isElectron || !window.electronAPI?.auth || desktopAuthStatus.authenticated) {
+    if (!isElectron || !authClient.isAvailable() || desktopAuthStatus.authenticated) {
       return;
     }
 
@@ -227,7 +230,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     setAuthBusyMode('login');
     setLoginDialogHidden(false);
     try {
-      const status = await window.electronAPI.auth.login();
+      const status = await authClient.login();
       setDesktopAuthStatus(status);
     } catch (error) {
       const isCancelled = error instanceof Error && error.message === 'Login cancelled';
@@ -253,11 +256,11 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   ]);
 
   const handleLogoutClick = useCallback(async () => {
-    if (!isElectron || !window.electronAPI?.auth || isAuthBusy) return;
+    if (!isElectron || !authClient.isAvailable() || isAuthBusy) return;
 
     setAuthBusyMode('logout');
     try {
-      const status = await window.electronAPI.auth.logout();
+      const status = await authClient.logout();
       setDesktopAuthStatus(status);
       setAuthMenuOpen(false);
     } catch (error) {
@@ -293,16 +296,17 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   }, []);
 
   useEffect(() => {
+    if (!updateClient.isAvailable()) return;
     let cancelled = false;
-    window.electronAPI?.update
-      ?.getState()
+    updateClient
+      .getState()
       .then((state) => {
         if (!cancelled && state) {
           setUpdateState(state);
         }
       })
       .catch(() => undefined);
-    const cleanup = window.electronAPI?.update?.onState((state) => {
+    const cleanup = updateClient.onState((state) => {
       setUpdateState(state);
     });
     return () => {
@@ -616,8 +620,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   };
 
   const handleUpdateBadgeClick = useCallback(async () => {
+    if (!updateClient.isAvailable()) return;
     try {
-      const state = await window.electronAPI?.update?.checkAndInstall();
+      const state = await updateClient.checkAndInstall();
       if (state) {
         setUpdateState(state);
       }
@@ -626,14 +631,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
     }
   }, []);
 
-  const [pinnedSessionIds, setPinnedSessionIds] = useState<Set<string>>(() => {
-    try {
-      const raw = window.localStorage.getItem(SIDEBAR_PINNED_STORAGE_KEY);
-      return new Set(raw ? (JSON.parse(raw) as string[]) : []);
-    } catch {
-      return new Set();
-    }
-  });
+  const [pinnedSessionIds, setPinnedSessionIds] = useState<Set<string>>(() =>
+    readStoredPinnedSessions()
+  );
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const { confirmDelete } = useConfirmDialog();
@@ -643,11 +643,7 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       const next = new Set(prev);
       if (next.has(sessionId)) next.delete(sessionId);
       else next.add(sessionId);
-      try {
-        window.localStorage.setItem(SIDEBAR_PINNED_STORAGE_KEY, JSON.stringify([...next]));
-      } catch {
-        // ignore storage failures
-      }
+      writeStoredPinnedSessions(next);
       return next;
     });
   }, []);
@@ -955,69 +951,32 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const isDataPageActive = mainView === 'data' && !showSettings;
   const isSkillsPageActive = mainView === 'skills' && !showSettings;
   const isAutomationPageActive = mainView === 'automation' && !showSettings;
-  const renderAuthAvatar = (containerClassName: string, iconClassName: string) => {
-    const showAnalyticsAvatar = desktopAuthStatus.authenticated && !canUseAuthAvatar && !isAuthBusy;
-
-    return (
-      <span
-        className={`flex flex-shrink-0 items-center justify-center overflow-hidden rounded-full border ${
-          showAnalyticsAvatar
-            ? 'border-accent/25 bg-accent-muted text-accent shadow-soft'
-            : 'border-border-subtle bg-background text-text-secondary'
-        } ${containerClassName}`}
-      >
-        {isAuthBusy ? (
-          <Loader2 className={`${iconClassName} animate-spin`} />
-        ) : canUseAuthAvatar ? (
-          <img
-            src={authAvatarUrl}
-            alt={t('sidebar.accountAvatar')}
-            className="h-full w-full object-cover"
-            onError={() => handleAuthAvatarError(authAvatarUrl)}
-          />
-        ) : desktopAuthStatus.authenticated ? (
-          <span className="relative flex h-full w-full items-center justify-center">
-            <span className="absolute inset-0 bg-accent-muted" />
-            <span className="absolute left-[18%] top-[22%] h-1.5 w-1.5 rounded-full bg-accent/35" />
-            <span className="absolute bottom-[20%] right-[18%] h-2 w-2 rounded-full bg-accent-muted" />
-            <ChartNoAxesCombined className={`relative z-10 ${iconClassName}`} />
-          </span>
-        ) : (
-          <LogIn className={iconClassName} />
-        )}
-      </span>
-    );
-  };
+  const renderAuthAvatar = (containerClassName: string, iconClassName: string) => (
+    <SidebarAuthAvatar
+      authenticated={desktopAuthStatus.authenticated}
+      isAuthBusy={isAuthBusy}
+      canUseAuthAvatar={canUseAuthAvatar}
+      authAvatarUrl={authAvatarUrl}
+      containerClassName={containerClassName}
+      iconClassName={iconClassName}
+      onAvatarError={handleAuthAvatarError}
+    />
+  );
   const authAccountMenu = (
-    <div className="w-64 p-1.5">
-      <div className="flex items-center gap-3 rounded-lg px-2.5 py-2">
-        {renderAuthAvatar('h-9 w-9', 'h-4 w-4')}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold leading-5 text-text-primary">
-            {authDisplayName || t('sidebar.loggedIn')}
-          </div>
-          {desktopAuthStatus.connectionStatus === 'disconnected' && (
-            <div className="text-xs text-text-muted">{authSecondaryText}</div>
-          )}
-        </div>
-      </div>
-      <div className="mx-1 my-1 h-px bg-border-subtle" />
-      <div className="mx-1 mb-1 flex items-center justify-between gap-3 rounded-lg bg-surface px-2.5 py-2 text-[12px]">
-        <span className="flex min-w-0 items-center gap-2 font-medium text-text-secondary">
-          <CircleDollarSign className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-          <span className="truncate">{authCreditsLabel}</span>
-        </span>
-        <span className="flex-shrink-0 font-semibold text-text-primary">{authCreditsText}</span>
-      </div>
-      <GlassMenuItem
-        danger
-        disabled={isLogoutBusy}
-        icon={<LogOut className="h-3.5 w-3.5" />}
-        onSelect={() => void handleLogoutClick()}
-      >
-        {t('sidebar.logout')}
-      </GlassMenuItem>
-    </div>
+    <SidebarAuthAccountMenu
+      authenticated={desktopAuthStatus.authenticated}
+      isDisconnected={desktopAuthStatus.connectionStatus === 'disconnected'}
+      isAuthBusy={isAuthBusy}
+      isLogoutBusy={isLogoutBusy}
+      canUseAuthAvatar={canUseAuthAvatar}
+      authAvatarUrl={authAvatarUrl}
+      authDisplayName={authDisplayName}
+      authSecondaryText={authSecondaryText}
+      authCreditsLabel={authCreditsLabel}
+      authCreditsText={authCreditsText}
+      onAvatarError={handleAuthAvatarError}
+      onLogout={() => void handleLogoutClick()}
+    />
   );
 
   const navItemShape = 'mx-2.5 h-9 px-2.5';
@@ -1055,176 +1014,46 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
 
   if (sidebarCollapsed) {
     return (
-      <aside className="relative flex h-full w-[4.25rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
-        {/* macOS traffic lights overlay the top of the rail — keep the strip clear + draggable */}
-        {isMac && (
-          <div
-            data-testid="mac-sidebar-titlebar-row"
-            className="titlebar-drag h-12 shrink-0 border-b border-border-subtle"
-          />
-        )}
-        {!isMac && titlebarBrandSlot && createPortal(renderBrand(true), titlebarBrandSlot)}
-        <div className="px-2.5 pt-3 pb-3 flex flex-col items-center gap-2 border-b border-border-subtle">
-          <Button
-            variant="primary"
-            size="icon"
-            onClick={handleNewSession}
-            className="rounded-xl shadow-soft"
-            title={t('sidebar.newTask')}
-            aria-label={t('sidebar.newTask')}
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-          <button
-            onClick={handleDataPage}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-              isDataPageActive
-                ? 'bg-accent-muted text-accent'
-                : 'text-text-secondary hover:bg-surface-hover'
-            }`}
-            title={t('mainNav.data')}
-          >
-            <Layers className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleSkillsPage}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-              isSkillsPageActive
-                ? 'bg-accent-muted text-accent'
-                : 'text-text-secondary hover:bg-surface-hover'
-            }`}
-            title={t('mainNav.skills')}
-          >
-            <Package className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleAutomationPage}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors ${
-              isAutomationPageActive
-                ? 'bg-accent-muted text-accent'
-                : 'text-text-secondary hover:bg-surface-hover'
-            }`}
-            title={t('mainNav.automation')}
-          >
-            <Clock3 className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center px-3 py-4">
-          {!forceCollapsed && (
-            <button
-              onClick={toggleSidebar}
-              className="rounded-2xl px-2 py-3 text-[11px] leading-4 text-center text-text-muted hover:bg-surface-hover transition-colors"
-              title={t('sidebar.expandToView')}
-            >
-              {t('sidebar.expandToView')}
-            </button>
-          )}
-        </div>
-
-        <div className="border-t border-border-subtle py-2 flex flex-col items-center gap-2">
-          {desktopAuthStatus.authenticated ? (
-            <GlassDropdownMenu
-              open={authMenuOpen}
-              onOpenChange={handleAuthMenuOpenChange}
-              align="start"
-              side="top"
-              sideOffset={6}
-              contentClassName="p-0"
-              trigger={
-                <button
-                  disabled={isLogoutBusy}
-                  className="relative flex h-9 w-full items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
-                  title={t('sidebar.accountMenu')}
-                >
-                  {renderAuthAvatar('h-5 w-5', 'h-4 w-4')}
-                  <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-success" />
-                </button>
-              }
-            >
-              {authAccountMenu}
-            </GlassDropdownMenu>
-          ) : (
-            <button
-              onClick={handleLoginEntryClick}
-              disabled={isAuthBusy && !isLoginBusy}
-              className="relative flex h-9 w-full items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
-              title={isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
-            >
-              {renderAuthAvatar('h-5 w-5 border-0 bg-transparent', 'h-4 w-4')}
-            </button>
-          )}
-          <button
-            onClick={toggleTheme}
-            className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary"
-            title={t('sidebar.themeToggle')}
-          >
-            {themeIcon}
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="w-full h-9 flex items-center justify-center hover:bg-surface-hover transition-colors text-text-secondary relative"
-            title={t('sidebar.settings')}
-          >
-            <Settings className="w-4 h-4" />
-            {!isConfigured && (
-              <span className="absolute right-2 top-2 w-1.5 h-1.5 rounded-full bg-accent" />
-            )}
-          </button>
-        </div>
-        {edgeHandle}
-      </aside>
+      <SidebarCollapsedRail
+        isMac={isMac}
+        forceCollapsed={forceCollapsed}
+        titlebarBrandSlot={titlebarBrandSlot}
+        renderBrand={renderBrand}
+        isDataPageActive={isDataPageActive}
+        isSkillsPageActive={isSkillsPageActive}
+        isAutomationPageActive={isAutomationPageActive}
+        authenticated={desktopAuthStatus.authenticated}
+        authMenuOpen={authMenuOpen}
+        isAuthBusy={isAuthBusy}
+        isLoginBusy={isLoginBusy}
+        isLogoutBusy={isLogoutBusy}
+        isConfigured={isConfigured}
+        themeIcon={themeIcon}
+        authAccountMenu={authAccountMenu}
+        edgeHandle={edgeHandle}
+        renderAuthAvatar={renderAuthAvatar}
+        onNewSession={() => void handleNewSession()}
+        onDataPage={() => void handleDataPage()}
+        onSkillsPage={() => void handleSkillsPage()}
+        onAutomationPage={() => void handleAutomationPage()}
+        onToggleSidebar={toggleSidebar}
+        onAuthMenuOpenChange={handleAuthMenuOpenChange}
+        onLoginEntryClick={() => void handleLoginEntryClick()}
+        onToggleTheme={toggleTheme}
+        onOpenSettings={() => setShowSettings(true)}
+      />
     );
   }
 
   return (
     <aside className="relative flex h-full w-[19rem] shrink-0 flex-col border-r border-border-subtle bg-background-secondary">
-      <Dialog
+      <SidebarRenameDialog
         open={renameDialog !== null}
-        onOpenChange={(open) => {
-          if (!open) setRenameDialog(null);
-        }}
-        ariaLabel={t('sidebar.renameTaskTitle')}
-        className="ui-dialog-pad max-w-sm"
-      >
-        <DialogHeader>
-          <DialogTitle>{t('sidebar.renameTaskTitle')}</DialogTitle>
-        </DialogHeader>
-        <div className="ui-group bg-surface">
-          <div className="ui-form-row">
-            <span className="ui-form-label items-center">{t('sidebar.taskNameLabel')}</span>
-            <div className="ui-form-value">
-              <Input
-                data-autofocus
-                aria-label={t('sidebar.taskNameLabel')}
-                value={renameDialog?.title ?? ''}
-                onChange={(event) =>
-                  setRenameDialog((cur) => (cur ? { ...cur, title: event.target.value } : cur))
-                }
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    submitRenameDialog();
-                  }
-                }}
-                className="h-8 text-[13px]"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="ui-footer-split">
-          <Button variant="ghost" onClick={() => setRenameDialog(null)}>
-            {t('common.cancel')}
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!renameDialog?.title.trim()}
-            onClick={submitRenameDialog}
-          >
-            {t('common.confirm')}
-          </Button>
-        </div>
-      </Dialog>
+        title={renameDialog?.title ?? ''}
+        onTitleChange={(title) => setRenameDialog((cur) => (cur ? { ...cur, title } : cur))}
+        onClose={() => setRenameDialog(null)}
+        onSubmit={submitRenameDialog}
+      />
       {isMac ? (
         /* macOS: one 48px drag row shared with the traffic lights (centered via
            trafficLightPosition), name only — same height as the right-side tab/title bar. */
@@ -1500,178 +1329,36 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       </div>
 
       {isSelectMode ? (
-        <div className="border-t border-border-subtle bg-surface px-3 py-3">
-          {showDeleteConfirm ? (
-            <div className="rounded-xl border border-error/25 bg-error/10 px-3 py-2.5">
-              <div className="flex items-start gap-2">
-                <Trash2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-error" />
-                <p className="min-w-0 flex-1 text-[12px] leading-4 text-text-primary">
-                  {t('sidebar.batchDeleteConfirm', { count: selectedIds.size })}
-                </p>
-              </div>
-              <div className="mt-2.5 flex items-center justify-end gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
-                  {t('sidebar.cancel')}
-                </Button>
-                <Button variant="danger" size="sm" onClick={handleBatchDelete}>
-                  {t('sidebar.confirmDelete')}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between px-0.5">
-                <button
-                  onClick={toggleSelectAll}
-                  className="group flex items-center gap-2 text-[12px] font-medium text-text-secondary transition-colors hover:text-text-primary"
-                >
-                  <span
-                    aria-hidden
-                    className={`flex h-4 w-4 items-center justify-center rounded-md border transition-colors ${
-                      allVisibleSelected || someVisibleSelected
-                        ? 'border-accent bg-accent text-accent-foreground'
-                        : 'border-border-muted bg-surface group-hover:border-accent/50'
-                    }`}
-                  >
-                    {allVisibleSelected ? (
-                      <Check className="h-3 w-3" strokeWidth={3} />
-                    ) : someVisibleSelected ? (
-                      <Minus className="h-3 w-3" strokeWidth={3} />
-                    ) : null}
-                  </span>
-                  {allVisibleSelected ? t('sidebar.deselectAll') : t('sidebar.selectAll')}
-                </button>
-                <Badge tone={selectedIds.size > 0 ? 'accent' : 'default'}>
-                  {t('sidebar.nSelected', { count: selectedIds.size })}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="md"
-                  className="flex-1 rounded-xl"
-                  onClick={exitSelectMode}
-                >
-                  {t('sidebar.cancel')}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="md"
-                  className="flex-1 rounded-xl"
-                  disabled={selectedIds.size === 0}
-                  onClick={() => setShowDeleteConfirm(true)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {t('common.delete')}
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        <SidebarBatchSelectBar
+          showDeleteConfirm={showDeleteConfirm}
+          selectedCount={selectedIds.size}
+          allVisibleSelected={allVisibleSelected}
+          someVisibleSelected={someVisibleSelected}
+          onCancelDeleteConfirm={() => setShowDeleteConfirm(false)}
+          onRequestDeleteConfirm={() => setShowDeleteConfirm(true)}
+          onConfirmBatchDelete={handleBatchDelete}
+          onToggleSelectAll={toggleSelectAll}
+          onExitSelectMode={exitSelectMode}
+        />
       ) : (
-        <div className="border-t border-border-subtle">
-          <div className={`flex h-12 w-full items-center items-stretch pl-3.5`}>
-            {desktopAuthStatus.authenticated ? (
-              <GlassDropdownMenu
-                open={authMenuOpen}
-                onOpenChange={handleAuthMenuOpenChange}
-                align="start"
-                side="top"
-                sideOffset={6}
-                contentClassName="p-0"
-                trigger={
-                  <button
-                    disabled={isLogoutBusy}
-                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
-                    title={t('sidebar.accountMenu')}
-                  >
-                    {renderAuthAvatar('h-8 w-8', 'h-4 w-4')}
-                    <span
-                      className={`flex min-w-0 flex-1 ${desktopAuthStatus.connectionStatus === 'disconnected' ? 'flex-col' : 'items-center gap-3'}`}
-                    >
-                      <span className="min-w-0 truncate text-[13px] font-medium text-text-primary">
-                        {authDisplayName || t('sidebar.loggedIn')}
-                      </span>
-                      <span className="text-[12px] font-medium text-text-muted">
-                        {authSecondaryText}
-                      </span>
-                    </span>
-                  </button>
-                }
-              >
-                {authAccountMenu}
-              </GlassDropdownMenu>
-            ) : (
-              <button
-                onClick={handleLoginEntryClick}
-                disabled={isAuthBusy && !isLoginBusy}
-                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-2 text-left text-text-secondary transition-colors hover:text-text-primary disabled:cursor-wait disabled:opacity-70"
-                title={isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
-              >
-                {renderAuthAvatar('h-8 w-8', 'h-4 w-4')}
-                <span className="min-w-0 flex-shrink-0 text-[13px] font-medium text-text-primary">
-                  {isLoginBusy ? t('sidebar.cancelLogin') : t('sidebar.login')}
-                </span>
-                <span className="min-w-0 truncate text-[12px] font-medium text-text-muted">
-                  {authSecondaryText}
-                </span>
-              </button>
-            )}
-
-            <GlassDropdownMenu
-              align="end"
-              side="top"
-              sideOffset={6}
-              trigger={
-                <button
-                  className={`inline-flex flex-shrink-0 items-center gap-1 px-2 text-[12px] text-text-secondary h-full px-3 transition-colors hover:bg-surface-hover hover:text-text-primary`}
-                  title={t('sidebar.themeToggle')}
-                >
-                  {settings.theme === 'dark' ? (
-                    <Moon className="h-3.5 w-3.5" />
-                  ) : settings.theme === 'light' ? (
-                    <Sun className="h-3.5 w-3.5" />
-                  ) : (
-                    <Monitor className="h-3.5 w-3.5" />
-                  )}
-                  {settings.theme === 'dark'
-                    ? t('general.themeDark')
-                    : settings.theme === 'light'
-                      ? t('general.themeLight')
-                      : t('general.themeSystem')}
-                  <ChevronDown className="h-3 w-3 text-text-muted" />
-                </button>
-              }
-            >
-              {(
-                [
-                  ['light', t('general.themeLight'), Sun],
-                  ['dark', t('general.themeDark'), Moon],
-                  ['system', t('general.themeSystem'), Monitor],
-                ] as const
-              ).map(([value, label, Icon]) => (
-                <GlassMenuItem
-                  key={value}
-                  icon={<Icon className="h-3.5 w-3.5" />}
-                  selected={settings.theme === value}
-                  onSelect={() => updateSettings({ theme: value })}
-                >
-                  {label}
-                </GlassMenuItem>
-              ))}
-            </GlassDropdownMenu>
-            <button
-              onClick={() => setShowSettings(true)}
-              className={`relative flex flex-shrink-0 items-center justify-center text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary h-full w-10`}
-              title={t('sidebar.settings')}
-            >
-              <Settings className="h-4 w-4" />
-              {!isConfigured && (
-                <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent" />
-              )}
-            </button>
-          </div>
-        </div>
+        <SidebarFooter
+          authenticated={desktopAuthStatus.authenticated}
+          isDisconnected={desktopAuthStatus.connectionStatus === 'disconnected'}
+          authMenuOpen={authMenuOpen}
+          isAuthBusy={isAuthBusy}
+          isLoginBusy={isLoginBusy}
+          isLogoutBusy={isLogoutBusy}
+          authDisplayName={authDisplayName}
+          authSecondaryText={authSecondaryText}
+          authAccountMenu={authAccountMenu}
+          theme={settings.theme}
+          isConfigured={isConfigured}
+          renderAuthAvatar={renderAuthAvatar}
+          onAuthMenuOpenChange={handleAuthMenuOpenChange}
+          onLoginEntryClick={() => void handleLoginEntryClick()}
+          onSelectTheme={(theme) => updateSettings({ theme })}
+          onOpenSettings={() => setShowSettings(true)}
+        />
       )}
       <SidebarLoginDialog
         open={isLoginBusy && !loginDialogHidden}
@@ -1682,41 +1369,6 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
       {edgeHandle}
     </aside>
   );
-}
-
-function readStoredProjectExpansion(): Record<string, boolean> {
-  if (typeof window === 'undefined') return {};
-
-  try {
-    const raw = window.localStorage.getItem(SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY);
-    if (!raw) return {};
-
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-
-    const expansion: Record<string, boolean> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      if (typeof value === 'boolean') {
-        expansion[key] = value;
-      }
-    }
-    return expansion;
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredProjectExpansion(projectExpansion: Record<string, boolean>) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    window.localStorage.setItem(
-      SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY,
-      JSON.stringify(projectExpansion)
-    );
-  } catch {
-    // Ignore storage failures so sidebar navigation remains usable.
-  }
 }
 
 /** Cmd+N on macOS, Ctrl+N elsewhere; no Shift/Alt and no auto-repeat. */

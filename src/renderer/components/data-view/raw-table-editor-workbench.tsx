@@ -5,28 +5,29 @@ import { useInlineModeChange } from './raw-source-mode-change';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
-import { ColumnTypeOverridesEditor, RawTableConfigRow } from './ColumnTypeOverridesEditor';
+import { RawTableConfigRow } from './ColumnTypeOverridesEditor';
 export { RawTableConfigRow };
 import {
   FixContinueActionCells,
   GenerateActionCells,
   WorkbenchStepBreadcrumb,
 } from './WorkbenchActionBarCells';
-import { Dialog } from '../ui/dialog';
-import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
+import { CustomizeReviewCodePane } from './raw-table-editor/CustomizeReviewCodePane';
+import { CustomizeReviewResultPane } from './raw-table-editor/CustomizeReviewResultPane';
+import { CustomizeRulesStep } from './raw-table-editor/CustomizeRulesStep';
+import { NormalizerVersionsDialog } from './raw-table-editor/NormalizerVersionsDialog';
+import { ParsingDetailSection } from './raw-table-editor/ParsingDetailSection';
+import { useSecretReview } from '../secrets/secrets-ui';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
-  Copy,
   Eye,
   EyeOff,
   FileCode2,
   History,
-  Info,
   PencilLine,
-  Plus,
   RefreshCw,
   Sparkles,
   Trash2,
@@ -43,9 +44,6 @@ import type {
   DataRawSourceBuildMode,
   DataRawSourceCreateResult,
   DataRawTableConfig,
-  DataRawTableExcelConfig,
-  DataRawTableCsvConfig,
-  DataRawTableFolderConfig,
   DataNormalizerProjectFile,
   DataRawTableNormalizerArtifactVersion,
   DataRawTableNormalizerDraftProgressEvent,
@@ -56,16 +54,13 @@ import type {
 } from '../../types';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
-import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
-import { LlmPromptComposer } from '../LlmPromptComposer';
+import { getAgentModelLabel } from '../AgentModelSelector';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { dataClient } from '../../features/data/api/data-client';
 import {
   RAW_TABLE_PREVIEW_PAGE_SIZE,
-  RawTableCheckbox,
-  RawTableSelect,
   RawTableStatusBadge,
   formatCloudMirrorLocation,
   formatDateTime,
@@ -80,12 +75,9 @@ import {
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { CodePreview, getCodePreviewLanguageLabel } from './raw-table-code-preview';
 import { RawTableGenerationConsole } from './raw-table-generation-console';
-import { NormalizerProjectTree, RawTableVersionHistoryPanel } from './raw-table-version-history';
 import { RawTablePreviewDialog } from './raw-table-preview-dialog';
 import { FixErrorPanel, type AutoFixRounds } from './fix-error-panel';
-import { CodeDiffView, fileDiffStats } from './code-diff-view';
 import {
   createFixLog,
   failureHistoryItem,
@@ -1784,107 +1776,19 @@ export function RawTableEditorWorkbench({
                   data-testid="raw-customize-pane"
                 >
                   {customizeStep === 'rules' ? (
-                    <>
-                      <div className="ui-form-row min-h-0 flex-1">
-                        <div
-                          className="ui-form-label items-start pt-2.5"
-                          title={t('data.rawTables.editor.rulePromptHint')}
-                        >
-                          {t('data.rawTables.editor.ruleLabel')}
-                          <span className="ml-0.5 text-error">*</span>
-                        </div>
-                        <div className="ui-form-value relative min-h-0">
-                          <LlmPromptComposer
-                            value={dataProcessing.rulePrompt}
-                            onChange={(rulePrompt) => patchCustomizeDataProcessing({ rulePrompt })}
-                            selectedSkillNames={customizeSelectedSkillNames}
-                            onSelectedSkillNamesChange={(selectedSkillNames) =>
-                              patchCustomizeDataProcessing({ selectedSkillNames })
-                            }
-                            onSkillSelectionCommit={({ value, selectedSkillNames }) =>
-                              patchCustomizeDataProcessing({
-                                rulePrompt: value,
-                                selectedSkillNames,
-                              })
-                            }
-                            appConfig={appConfig}
-                            placeholder={t('data.rawTables.editor.rulePromptPlaceholder')}
-                            disabled={isBusy || !rawTable}
-                            maxLength={4000}
-                            className="ui-composer-flush min-h-0 flex-1 pb-6"
-                            textareaClassName="h-full"
-                            skillMenuPlacement="bottom"
-                          />
-                          <span
-                            className="pointer-events-none absolute bottom-2 right-2.5 text-[11px] tabular-nums text-text-muted"
-                            data-testid="raw-customize-prompt-count"
-                          >
-                            {dataProcessing.rulePrompt.length} / 4000
-                          </span>
-                        </div>
-                      </div>
-                      <RawTableConfigRow label={t('data.rawTables.editor.customizeModelLabel')}>
-                        <AgentModelSelector
-                          open={customizeModelMenuOpen}
-                          onOpenChange={setCustomizeModelMenuOpen}
-                          appConfig={appConfig}
-                          selectedConfigSetId={
-                            selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
-                          }
-                          fallbackLabel={t('chat.noModel')}
-                          disabled={isBusy || !rawTable}
-                          align="start"
-                          triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"
-                          onSelect={(configSetId) =>
-                            patchCustomizeDataProcessing({
-                              modelConfigSetId: configSetId,
-                              model: getAgentModelLabel(appConfig, '', configSetId),
-                            })
-                          }
-                        />
-                      </RawTableConfigRow>
-                      <RawTableConfigRow label={t('secrets.label')}>
-                        <SecretsEditor
-                          kind="normalizer"
-                          ownerId={dataProcessing.artifactId}
-                          refreshKey={secretsKey}
-                          disabled={isBusy}
-                        />
-                      </RawTableConfigRow>
-                      <RawTableConfigRow label={t('data.rawTables.editor.examplesLabel')}>
-                        <div className="flex min-h-[35px] flex-wrap items-center gap-1.5 px-2.5 py-1.5">
-                          {(
-                            [
-                              'exampleMergeHeaders',
-                              'exampleSplitMultiHeaders',
-                              'exampleDeduplicateColumns',
-                              'exampleExpandMergedCells',
-                              'exampleDateNormalize',
-                            ] as const
-                          ).map((key) => {
-                            const example = t(`data.rawTables.editor.${key}`);
-                            return (
-                              <button
-                                key={key}
-                                type="button"
-                                disabled={isBusy || !rawTable || customizeGenerating}
-                                onClick={() =>
-                                  patchCustomizeDataProcessing({
-                                    rulePrompt: dataProcessing.rulePrompt.trim()
-                                      ? `${dataProcessing.rulePrompt.replace(/\s+$/, '')}\n${example}`
-                                      : example,
-                                  })
-                                }
-                                className="inline-flex h-6 items-center gap-1 rounded border border-accent/25 bg-surface px-2 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Plus className="h-3 w-3" />
-                                {example}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </RawTableConfigRow>
-                    </>
+                    <CustomizeRulesStep
+                      dataProcessing={dataProcessing}
+                      selectedSkillNames={customizeSelectedSkillNames}
+                      appConfig={appConfig}
+                      disabled={isBusy || !rawTable}
+                      isBusy={isBusy}
+                      generating={customizeGenerating}
+                      modelMenuOpen={customizeModelMenuOpen}
+                      selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
+                      secretsKey={secretsKey}
+                      onModelMenuOpenChange={setCustomizeModelMenuOpen}
+                      onPatchProcessing={patchCustomizeDataProcessing}
+                    />
                   ) : null}
 
                   {customizeStep === 'generate' ? (
@@ -1901,222 +1805,39 @@ export function RawTableEditorWorkbench({
                   ) : null}
 
                   {customizeStep === 'review' && reviewView === 'result' ? (
-                    <div
-                      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-                      data-testid="raw-customize-result"
-                    >
-                      <div className="flex h-9 flex-shrink-0 items-center gap-2 border-b border-border-subtle px-2.5 text-[12.5px]">
-                        {previewLoading || !previewRun ? (
-                          <span className="inline-flex items-center gap-1.5 text-text-muted">
-                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                            {t('data.rawTables.editor.resultRunning')}
-                          </span>
-                        ) : previewFailedHere && normalizerReport ? (
-                          <>
-                            <XCircle className="h-3.5 w-3.5 flex-shrink-0 text-error" />
-                            <span
-                              className="min-w-0 flex-1 truncate text-error"
-                              title={normalizerReport.message}
-                            >
-                              {t('fixError.previewFailed', { reason: normalizerReport.message })}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setPreviewOpen(true)}
-                              data-testid="raw-result-fix"
-                              className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-error/30 px-2.5 text-[12px] font-medium text-error hover:bg-error/10"
-                            >
-                              <Wand2 className="h-3.5 w-3.5" />
-                              {t('data.rawTables.editor.abnormalFix')}
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <Check className="h-3.5 w-3.5 flex-shrink-0 text-success" />
-                            <span
-                              className="min-w-0 flex-1 truncate text-text-primary"
-                              data-testid="raw-result-explain"
-                            >
-                              {showingFix && fixInfo
-                                ? fixInfo.text
-                                : t('data.rawTables.editor.resultExplain', {
-                                    rows: previewData?.totalRows ?? 0,
-                                    cols: previewData?.columns.length ?? 0,
-                                  })}
-                            </span>
-                            <span className="flex-shrink-0 font-medium text-text-secondary">
-                              {t('data.rawTables.editor.resultLooksRight')}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={openUserFix}
-                              data-testid="raw-result-wrong"
-                              className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded border border-border-subtle px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
-                            >
-                              <Wand2 className="h-3.5 w-3.5" />
-                              {t('data.rawTables.editor.resultWrong')}
-                            </button>
-                          </>
-                        )}
-                      </div>
-                      <div className="ui-group ui-group-fill flex min-h-0 flex-1 flex-col overflow-hidden bg-[var(--data-grid-cell-surface)]">
-                        <GlassDataGridPreview
-                          preview={previewFailedHere ? null : previewData}
-                          isLoading={previewLoading}
-                          error={null}
-                          currentPage={previewPage}
-                          onPageChange={(page) => void previewCustomizeDraft(page, true)}
-                          edgeToEdge
-                          labels={{
-                            loading: t('data.rawTables.editor.previewLoading'),
-                            empty: t('data.rawTables.editor.previewEmpty'),
-                            total: (count) => t('data.rawTables.editor.previewTotal', { count }),
-                            pageSize: (count) =>
-                              t('data.rawTables.editor.previewPageSize', { count }),
-                          }}
-                        />
-                      </div>
-                    </div>
+                    <CustomizeReviewResultPane
+                      previewLoading={previewLoading}
+                      hasPreviewRun={Boolean(previewRun)}
+                      previewFailed={previewFailedHere}
+                      normalizerReport={normalizerReport}
+                      previewData={previewData}
+                      previewPage={previewPage}
+                      fixInfoText={showingFix && fixInfo ? fixInfo.text : undefined}
+                      onOpenFixDialog={() => setPreviewOpen(true)}
+                      onOpenUserFix={openUserFix}
+                      onPageChange={(page) => void previewCustomizeDraft(page, true)}
+                    />
                   ) : customizeStep === 'review' ? (
-                    normalizerProjectFiles.length === 0 ? (
-                      <div className="flex min-h-0 flex-1 items-center justify-center bg-surface">
-                        <div className="flex flex-col items-center gap-2 px-6 text-center">
-                          <FileCode2 className="h-6 w-6 text-text-muted" />
-                          <span className="text-[13px] font-medium text-text-secondary">
-                            {t('data.rawTables.editor.noProjectFiles')}
-                          </span>
-                          <span className="text-xs text-text-muted">
-                            {t('data.rawTables.editor.selectedFileEmpty')}
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className={`grid min-h-0 flex-1 grid-rows-[36px_minmax(0,1fr)] ${
-                          showingFix
-                            ? 'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'
-                            : 'grid-cols-[minmax(0,1fr)_92px_240px_40px]'
-                        }`}
-                        data-testid="raw-customize-review"
-                      >
-                        <div className="flex min-w-0 items-center gap-2 border-b border-border-subtle px-2.5">
-                          <FileCode2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                          <span
-                            className="min-w-0 truncate font-mono text-xs font-medium text-text-primary"
-                            title={selectedNormalizerFile?.path}
-                          >
-                            {selectedNormalizerFile?.path ??
-                              t('data.rawTables.editor.noProjectFiles')}
-                          </span>
-                          {selectedNormalizerFile ? (
-                            <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-text-muted">
-                              {showingFix && codeView === 'diff'
-                                ? (() => {
-                                    const stats = fileDiffStats(
-                                      fixInfo?.baseFiles.find(
-                                        (file) => file.path === selectedNormalizerFile.path
-                                      )?.content,
-                                      selectedNormalizerFile.content
-                                    );
-                                    return `+${stats.added} −${stats.removed} · ${getCodePreviewLanguageLabel(selectedNormalizerFile.path)}`;
-                                  })()
-                                : t('data.rawTables.editor.codeFileMeta', {
-                                    lines: selectedNormalizerFile.content.split('\n').length,
-                                    language: getCodePreviewLanguageLabel(
-                                      selectedNormalizerFile.path
-                                    ),
-                                  })}
-                            </span>
-                          ) : null}
-                        </div>
-                        {showingFix ? (
-                          <div className="flex border-b border-l border-border-subtle">
-                            <GlassSelect
-                              ariaLabel={t('fixError.viewDiff')}
-                              value={codeView}
-                              onValueChange={(value) => setCodeView(value as 'diff' | 'full')}
-                              options={[
-                                { value: 'diff', label: t('fixError.viewDiff') },
-                                { value: 'full', label: t('fixError.viewFull') },
-                              ]}
-                              triggerClassName="h-full w-full justify-between rounded-none border-0 bg-transparent px-2.5 text-xs text-text-primary shadow-none"
-                              contentClassName="w-[var(--radix-select-trigger-width)]"
-                            />
-                          </div>
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={!selectedNormalizerFile}
-                          data-testid="raw-customize-copy-code"
-                          onClick={() => {
-                            if (selectedNormalizerFile) {
-                              void navigator.clipboard?.writeText(selectedNormalizerFile.content);
-                              setCodeCopied(true);
-                              window.setTimeout(() => setCodeCopied(false), 1500);
-                            }
-                          }}
-                          className={`inline-flex items-center justify-center gap-1.5 border-b border-l border-border-subtle text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-40 ${
-                            codeCopied ? 'text-success' : 'text-text-secondary hover:text-accent'
-                          }`}
-                          title={
-                            codeCopied
-                              ? t('data.rawTables.editor.copiedCode')
-                              : t('data.rawTables.editor.copyCode')
-                          }
-                        >
-                          {codeCopied ? (
-                            <Check className="h-3.5 w-3.5" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                          {codeCopied
-                            ? t('data.rawTables.editor.copiedShort')
-                            : t('data.rawTables.editor.copyShort')}
-                        </button>
-                        <div className="flex items-center border-b border-l border-border-subtle px-2.5 text-xs font-semibold text-text-primary">
-                          {t('data.rawTables.editor.projectStructure')}
-                        </div>
-                        <div className="flex items-center justify-center border-b border-border-subtle text-xs tabular-nums text-text-muted">
-                          {normalizerProjectFiles.length}
-                        </div>
-                        <div
-                          className={`${showingFix ? 'col-span-3' : 'col-span-2'} flex min-h-0 min-w-0 flex-col overflow-hidden`}
-                        >
-                          {showingFix && codeView === 'diff' && selectedNormalizerFile ? (
-                            <CodeDiffView
-                              before={
-                                fixInfo?.baseFiles.find(
-                                  (file) => file.path === selectedNormalizerFile.path
-                                )?.content
-                              }
-                              after={selectedNormalizerFile.content}
-                              t={t}
-                            />
-                          ) : (
-                            <CodePreview
-                              file={selectedNormalizerFile}
-                              t={t}
-                              focusLine={
-                                focusLine && focusLine.path === selectedNormalizerFile?.path
-                                  ? focusLine.line
-                                  : undefined
-                              }
-                            />
-                          )}
-                        </div>
-                        <div className="col-span-2 min-h-0 overflow-auto border-l border-border-subtle">
-                          <NormalizerProjectTree
-                            files={normalizerProjectFiles}
-                            markers={normalizerChangeMarkers}
-                            selectedPath={
-                              selectedNormalizerFile?.path ?? selectedNormalizerFilePath
-                            }
-                            onSelect={setSelectedNormalizerFilePath}
-                            t={t}
-                          />
-                        </div>
-                      </div>
-                    )
+                    <CustomizeReviewCodePane
+                      files={normalizerProjectFiles}
+                      selectedFile={selectedNormalizerFile}
+                      selectedFilePath={selectedNormalizerFilePath}
+                      showingFix={showingFix}
+                      fixBaseFiles={fixInfo?.baseFiles}
+                      codeView={codeView}
+                      codeCopied={codeCopied}
+                      focusLine={focusLine}
+                      changeMarkers={normalizerChangeMarkers}
+                      onCodeViewChange={setCodeView}
+                      onCopyCode={() => {
+                        if (selectedNormalizerFile) {
+                          void navigator.clipboard?.writeText(selectedNormalizerFile.content);
+                          setCodeCopied(true);
+                          window.setTimeout(() => setCodeCopied(false), 1500);
+                        }
+                      }}
+                      onSelectFilePath={setSelectedNormalizerFilePath}
+                    />
                   ) : null}
                 </section>
 
@@ -2391,222 +2112,15 @@ export function RawTableEditorWorkbench({
                 })()}
               </div>
             ) : (
-              <div className="min-h-0 flex-1 overflow-y-auto bg-surface">
-                <div className="ui-group ui-form-flush bg-surface">
-                  <div className="ui-group-title">
-                    {t('data.rawTables.editor.sectionParsingDetail')}
-                  </div>
-                  {localSourceKind === 'excel' ? (
-                    <>
-                      <RawTableConfigRow label={t('data.rawTables.editor.sheetName')}>
-                        <GlassSelect
-                          value={excelConfig.sheetName ?? ''}
-                          onValueChange={(value) =>
-                            updateConfig({
-                              ...excelConfig,
-                              sheetName: value,
-                            })
-                          }
-                          options={(excelConfig.sheetNames.length > 0
-                            ? excelConfig.sheetNames
-                            : ['Sheet1']
-                          ).map((sheetName) => ({ value: sheetName, label: sheetName }))}
-                          disabled={isBusy || !rawTable}
-                          triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
-                          contentClassName="w-[var(--radix-select-trigger-width)]"
-                        />
-                      </RawTableConfigRow>
-                      <RawTableConfigRow
-                        label={
-                          <span className="inline-flex items-center gap-1.5">
-                            {t('data.rawTables.editor.headerRow')}
-                            <span className="group relative inline-flex">
-                              <button
-                                type="button"
-                                className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
-                                aria-label={t('data.rawTables.editor.headerRowDetectHint')}
-                              >
-                                <Info className="h-3.5 w-3.5" />
-                              </button>
-                              <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
-                                {t('data.rawTables.editor.headerRowDetectHint')}
-                              </span>
-                            </span>
-                          </span>
-                        }
-                      >
-                        <div
-                          className={`ui-flush-split grid flex-1 ${
-                            excelConfig.headerMode === 'manual'
-                              ? 'grid-cols-[minmax(0,1fr)_10rem]'
-                              : ''
-                          }`}
-                        >
-                          <GlassSelect
-                            value={excelConfig.headerMode}
-                            onValueChange={(value) =>
-                              updateConfig({
-                                ...excelConfig,
-                                headerMode: value as DataRawTableExcelConfig['headerMode'],
-                              })
-                            }
-                            options={[
-                              { value: 'auto', label: t('data.rawTables.editor.smartDetect') },
-                              {
-                                value: 'manual',
-                                label: t('data.rawTables.editor.manualSpecify'),
-                              },
-                            ]}
-                            disabled={isBusy || !rawTable}
-                            triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
-                            contentClassName="w-[var(--radix-select-trigger-width)]"
-                          />
-                          {excelConfig.headerMode === 'manual' ? (
-                            <label className="relative block border-l border-border-subtle">
-                              <input
-                                type="number"
-                                min={1}
-                                step={1}
-                                value={excelConfig.headerRow}
-                                onChange={(event) =>
-                                  updateConfig({
-                                    ...excelConfig,
-                                    headerRow: Math.max(
-                                      1,
-                                      Math.floor(Number(event.target.value) || 1)
-                                    ),
-                                  })
-                                }
-                                disabled={isBusy || !rawTable}
-                                className="box-border h-full min-h-[35px] w-full border-0 bg-transparent pl-[10px] pr-10 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              />
-                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
-                                {t('data.rawTables.editor.rowUnit')}
-                              </span>
-                            </label>
-                          ) : null}
-                        </div>
-                      </RawTableConfigRow>
-                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
-                        <ColumnTypeOverridesEditor
-                          overrides={excelConfig.columnTypeOverrides ?? []}
-                          onChange={(columnTypeOverrides) =>
-                            updateConfig({ ...excelConfig, columnTypeOverrides })
-                          }
-                          disabled={isBusy || !rawTable}
-                          loadColumns={loadSourceColumns}
-                        />
-                      </RawTableConfigRow>
-                    </>
-                  ) : null}
-
-                  {localSourceKind === 'csv' ? (
-                    <div>
-                      {[
-                        ['header', 'data.rawTables.editor.csvHeader'],
-                        ['dataRegion', 'data.rawTables.editor.csvDataRegion'],
-                        ['delimiter', 'data.rawTables.editor.csvDelimiter'],
-                      ].map(([key, labelKey]) => (
-                        <RawTableConfigRow key={key} label={t(labelKey)}>
-                          <span className="ui-flush-text">
-                            {t('data.rawTables.editor.autoDetected')}
-                          </span>
-                        </RawTableConfigRow>
-                      ))}
-                      <RawTableConfigRow label={t('data.rawTables.editor.csvEncoding')}>
-                        <RawTableSelect
-                          flush
-                          value={localConfig.sourceKind === 'csv' ? localConfig.encoding : 'auto'}
-                          disabled={isBusy || !rawTable}
-                          onChange={(value) =>
-                            localConfig.sourceKind === 'csv'
-                              ? updateConfig({
-                                  ...localConfig,
-                                  encoding: value as DataRawTableCsvConfig['encoding'],
-                                })
-                              : undefined
-                          }
-                          options={[
-                            { value: 'auto', label: t('data.rawTables.editor.csvEncodingAuto') },
-                            { value: 'utf-8', label: 'UTF-8' },
-                            { value: 'gbk', label: t('data.rawTables.editor.csvEncodingGbk') },
-                          ]}
-                        />
-                      </RawTableConfigRow>
-                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
-                        <ColumnTypeOverridesEditor
-                          overrides={
-                            localConfig.sourceKind === 'csv'
-                              ? (localConfig.columnTypeOverrides ?? [])
-                              : []
-                          }
-                          onChange={(columnTypeOverrides) =>
-                            localConfig.sourceKind === 'csv'
-                              ? updateConfig({ ...localConfig, columnTypeOverrides })
-                              : undefined
-                          }
-                          disabled={isBusy || !rawTable}
-                          loadColumns={loadSourceColumns}
-                        />
-                      </RawTableConfigRow>
-                    </div>
-                  ) : null}
-
-                  {localSourceKind === 'folder' ? (
-                    <div>
-                      <RawTableConfigRow label={t('data.rawTables.editor.fileSelectionRange')}>
-                        <RawTableSelect
-                          flush
-                          value={folderConfig.fileRange}
-                          disabled={isBusy || !rawTable}
-                          onChange={(value) =>
-                            updateConfig({
-                              ...folderConfig,
-                              fileRange: value as DataRawTableFolderConfig['fileRange'],
-                            })
-                          }
-                          options={[
-                            {
-                              value: 'excel_csv',
-                              label: t('data.rawTables.editor.includeExcelCsv'),
-                            },
-                            { value: 'excel', label: t('data.rawTables.editor.includeExcel') },
-                            { value: 'csv', label: t('data.rawTables.editor.includeCsv') },
-                          ]}
-                        />
-                      </RawTableConfigRow>
-                      <div className="flex flex-wrap gap-3 border-b border-border-subtle px-3 py-2.5">
-                        <RawTableCheckbox
-                          checked={folderConfig.skipEmptyFiles}
-                          disabled={isBusy || !rawTable}
-                          label={t('data.rawTables.editor.skipEmptyFiles')}
-                          onChange={(checked) =>
-                            updateConfig({ ...folderConfig, skipEmptyFiles: checked })
-                          }
-                        />
-                        <RawTableCheckbox
-                          checked={folderConfig.keepSourceFileName}
-                          disabled={isBusy || !rawTable}
-                          label={t('data.rawTables.editor.keepSourceFileName')}
-                          onChange={(checked) =>
-                            updateConfig({ ...folderConfig, keepSourceFileName: checked })
-                          }
-                        />
-                      </div>
-                      <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
-                        <ColumnTypeOverridesEditor
-                          overrides={folderConfig.columnTypeOverrides ?? []}
-                          onChange={(columnTypeOverrides) =>
-                            updateConfig({ ...folderConfig, columnTypeOverrides })
-                          }
-                          disabled={isBusy || !rawTable}
-                          loadColumns={loadSourceColumns}
-                        />
-                      </RawTableConfigRow>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
+              <ParsingDetailSection
+                localSourceKind={localSourceKind}
+                localConfig={localConfig}
+                excelConfig={excelConfig}
+                folderConfig={folderConfig}
+                disabled={isBusy || !rawTable}
+                onUpdateConfig={updateConfig}
+                loadSourceColumns={loadSourceColumns}
+              />
             )}
           </TabsContent>
           <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">
@@ -2678,70 +2192,19 @@ export function RawTableEditorWorkbench({
           }
         />
       )}
-      <Dialog
+      <NormalizerVersionsDialog
         open={versionsDialogOpen}
         onOpenChange={setVersionsDialogOpen}
-        ariaLabel={t('data.rawTables.editor.versionHistory')}
-        className="w-full max-w-[760px] overflow-hidden !p-0"
-      >
-        <div
-          className="grid h-10 grid-cols-[minmax(0,1fr)_92px_40px] border-b border-border-subtle"
-          data-testid="normalizer-versions-header"
-        >
-          <div className="flex min-w-0 items-baseline gap-2 self-center px-3">
-            <span className="text-[14px] font-semibold text-text-primary">
-              {t('data.rawTables.editor.versionHistory')}
-            </span>
-            {normalizerVersions.length > 0 ? (
-              <span className="text-xs text-text-muted">
-                {t('data.rawTables.editor.versionsCount', { count: normalizerVersions.length })}
-              </span>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            disabled={normalizerVersionsLoading}
-            onClick={() => void refreshNormalizerVersions(customizeArtifactId)}
-            className="inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${normalizerVersionsLoading ? 'animate-spin' : ''}`}
-            />
-            {t('common.refresh')}
-          </button>
-          <button
-            type="button"
-            onClick={() => setVersionsDialogOpen(false)}
-            className="inline-flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
-            title={t('common.close')}
-            aria-label={t('common.close')}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <RawTableVersionHistoryPanel
-          currentVersion={currentNormalizerVersion}
-          currentVersionId={customizeArtifactVersionId}
-          deletingVersionId={deletingNormalizerVersionId}
-          embedded
-          loading={normalizerVersionsLoading}
-          onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
-          onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
-          onPublish={(version) => void applyNormalizerVersion(version)}
-          publishingVersionId={customizeVersionActionId}
-          sourceOf={(version) =>
-            t(
-              version.source === 'manual'
-                ? 'scripts.source.manual'
-                : version.source === 'ai_repair'
-                  ? 'scripts.source.ai_repair'
-                  : 'scripts.source.rule'
-            )
-          }
-          t={t}
-          versions={normalizerVersions}
-        />
-      </Dialog>
+        versions={normalizerVersions}
+        currentVersion={currentNormalizerVersion}
+        currentVersionId={customizeArtifactVersionId}
+        loading={normalizerVersionsLoading}
+        deletingVersionId={deletingNormalizerVersionId}
+        publishingVersionId={customizeVersionActionId}
+        onRefresh={() => void refreshNormalizerVersions(customizeArtifactId)}
+        onDelete={(version) => void deleteSpecificNormalizerVersion(version)}
+        onPublish={(version) => void applyNormalizerVersion(version)}
+      />
       {secretReview.dialog}
       {previewOpen && (
         <RawTablePreviewDialog

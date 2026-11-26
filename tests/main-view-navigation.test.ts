@@ -54,6 +54,10 @@ describe('main workspace navigation', () => {
 
   it('exposes data, skills, and automation in the sidebar', () => {
     const source = fs.readFileSync(sidebarPath, 'utf8');
+    const collapsedSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/renderer/components/sidebar/SidebarCollapsedRail.tsx'),
+      'utf8'
+    );
 
     expect(source).toContain("t('mainNav.data')");
     expect(source).toContain("t('mainNav.skills')");
@@ -61,7 +65,7 @@ describe('main workspace navigation', () => {
     expect(source).toContain("setMainView('data')");
     expect(source).toContain("setMainView('skills')");
     expect(source).toContain("setMainView('automation')");
-    expect(source).toContain('<Package className="w-4 h-4" />');
+    expect(collapsedSource).toContain('<Package className="w-4 h-4" />');
     expect(source).toContain('<Package className="h-4 w-4 flex-shrink-0" />');
   });
 

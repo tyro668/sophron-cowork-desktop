@@ -35,5 +35,7 @@ export const automationClient = {
     get: (...args: Parameters<AutomationApi['scripts']['get']>) => api().scripts.get(...args),
     publish: (...args: Parameters<AutomationApi['scripts']['publish']>) =>
       api().scripts.publish(...args),
+    chatTurns: (...args: Parameters<AutomationApi['scripts']['chatTurns']>) =>
+      api().scripts.chatTurns(...args),
   },
 };

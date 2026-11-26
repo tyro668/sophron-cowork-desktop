@@ -48,9 +48,9 @@ describe('Skills page plugin browse entry', () => {
 
   it('functional: includes skill refresh, install, toggle, and open controls', () => {
     expect(settingsPanelContent).toContain("t('skills.refreshSkills')");
-    expect(settingsPanelContent).toContain('window.electronAPI.skills.install(folderPath)');
-    expect(settingsPanelContent).toContain('window.electronAPI.skills.setEnabled');
-    expect(settingsPanelContent).toContain('window.electronAPI.skills.openSkillPath');
+    expect(settingsPanelContent).toContain('skillsClient.install(folderPath)');
+    expect(settingsPanelContent).toContain('skillsClient.setEnabled');
+    expect(settingsPanelContent).toContain('skillsClient.openSkillPath');
     expect(settingsPanelContent).toContain(
       "`${tRef.current('skills.failedToLoad')}: ${err.message}`"
     );
@@ -58,10 +58,10 @@ describe('Skills page plugin browse entry', () => {
   });
 
   it('functional: uses plugins API for catalog and management', () => {
-    expect(settingsPanelContent).toContain('window.electronAPI.plugins.listCatalog');
-    expect(settingsPanelContent).toContain('window.electronAPI.plugins.listInstalled');
-    expect(settingsPanelContent).toContain('window.electronAPI.plugins.install(installTarget)');
-    expect(settingsPanelContent).toContain('window.electronAPI.skills.installFromSkillHub(slug)');
+    expect(settingsPanelContent).toContain('skillsClient.plugins.listCatalog');
+    expect(settingsPanelContent).toContain('skillsClient.plugins.listInstalled');
+    expect(settingsPanelContent).toContain('skillsClient.plugins.install(installTarget)');
+    expect(settingsPanelContent).toContain('skillsClient.installFromSkillHub(slug)');
     expect(settingsPanelContent).toContain("t('skills.pluginManageUninstall')");
   });
 

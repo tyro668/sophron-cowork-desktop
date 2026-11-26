@@ -16,10 +16,17 @@ describe('fixed equal tab width', () => {
   });
   it('is applied to data top tabs, cloud tree and cloud bottom tabs', () => {
     const page = readFileSync('src/renderer/features/data/pages/DataViewPage.tsx', 'utf8');
-    const cloud = readFileSync('src/renderer/components/data-view/cloud-analysis.tsx', 'utf8');
+    const cloudSidebar = readFileSync(
+      'src/renderer/components/data-view/cloud-analysis/CloudSpaceSidebar.tsx',
+      'utf8'
+    );
+    const cloudList = readFileSync(
+      'src/renderer/components/data-view/cloud-analysis/CloudContentList.tsx',
+      'utf8'
+    );
     expect(page).toContain('className={fixedUnderlineTabTriggerClass}');
-    expect(cloud).toContain('style={{ width: fixedTabGroupWidth(3) }}');
-    expect(cloud).toContain('${fixedTabWidthClass}');
+    expect(cloudSidebar).toContain('style={{ width: fixedTabGroupWidth(3) }}');
+    expect(cloudList).toContain('${fixedTabWidthClass}');
   });
 });
 

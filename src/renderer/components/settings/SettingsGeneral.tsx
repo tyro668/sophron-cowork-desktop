@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, Monitor, Moon, Sun } from 'lucide-react';
 import { Button } from '../ui/button';
 import { formatTimestamp } from '../data-view/shared';
 import { useTranslation } from 'react-i18next';
+import { authClient } from '../../features/auth/api/auth-client';
+import { pad2 } from '../../utils/i18n-format';
 import { SettingsCard } from './SettingsSectionPrimitives';
 import { useAppStore } from '../../store';
 import { BrandMark } from '../BrandMark';
@@ -36,10 +38,10 @@ export function SettingsGeneral() {
     testing: boolean;
   }>({ testing: false });
   const testConnection = useCallback(async () => {
-    if (!window.electronAPI?.auth?.getStatus) return;
+    if (!authClient.isAvailable()) return;
     setAuth((current) => ({ ...current, testing: true }));
     try {
-      const status = await window.electronAPI.auth.getStatus();
+      const status = await authClient.getStatus();
       setAuth({ origin: status.apiOrigin, status: status.connectionStatus, testing: false });
     } catch {
       setAuth((current) => ({ ...current, status: 'disconnected', testing: false }));
@@ -51,10 +53,9 @@ export function SettingsGeneral() {
 
   const now = Date.now();
   const sampleDate = new Date(now);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const absoluteSample = `${sampleDate.getFullYear()}-${pad(sampleDate.getMonth() + 1)}-${pad(
+  const absoluteSample = `${sampleDate.getFullYear()}-${pad2(sampleDate.getMonth() + 1)}-${pad2(
     sampleDate.getDate()
-  )} ${pad(sampleDate.getHours())}:${pad(sampleDate.getMinutes())}`;
+  )} ${pad2(sampleDate.getHours())}:${pad2(sampleDate.getMinutes())}`;
   const numberSample = new Intl.NumberFormat(currentLang === 'zh' ? 'zh-CN' : 'en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,

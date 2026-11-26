@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { authClient } from '../features/auth/api/auth-client';
 import { useAppStore } from '../store';
 
 /** Refresh reachability while preserving the signed-in identity during outages. */
 export function useDesktopAuthConnection(enabled: boolean) {
   const inFlight = useRef(false);
   const refresh = useCallback(async () => {
-    if (!enabled || !window.electronAPI?.auth || inFlight.current) return;
+    if (!enabled || !authClient.isAvailable() || inFlight.current) return;
     const before = useAppStore.getState().desktopAuthStatus;
     inFlight.current = true;
     try {
-      const status = await window.electronAPI.auth.getStatus();
+      const status = await authClient.getStatus();
       if (useAppStore.getState().desktopAuthStatus === before) {
         useAppStore.getState().setDesktopAuthStatus(status);
       }

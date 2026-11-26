@@ -3,12 +3,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const sidebarPath = path.resolve(process.cwd(), 'src/renderer/components/Sidebar.tsx');
+const sidebarStoragePath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/sidebar/sidebar-storage.ts'
+);
+const sidebarFooterPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/sidebar/SidebarFooter.tsx'
+);
 
 describe('Sidebar project UI hierarchy', () => {
   it('renders projects as collapsible rows with indented tasks', () => {
     const source = fs.readFileSync(sidebarPath, 'utf8');
+    const storageSource = fs.readFileSync(sidebarStoragePath, 'utf8');
 
-    expect(source).toContain('SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY');
+    expect(storageSource).toContain('SIDEBAR_PROJECT_EXPANSION_STORAGE_KEY');
     expect(source).toContain('aria-expanded={isProjectExpanded}');
     expect(source).toContain('expandedProjectKeys.has(group.key)');
     expect(source).not.toContain('ml-6 space-y-0.5 pl-2');
@@ -57,6 +66,7 @@ describe('Sidebar project UI hierarchy', () => {
 
 describe('Sidebar option C (no horizontal dividers)', () => {
   const src = fs.readFileSync(sidebarPath, 'utf8');
+  const footerSrc = fs.readFileSync(sidebarFooterPath, 'utf8');
   it('has no row/section dividers except the one above the bottom bar', () => {
     expect(src).toContain("const navItemShape = 'mx-2.5 h-9 px-2.5';");
     expect(src).toContain("'mx-2.5 mt-2.5 flex h-[34px] items-stretch'");
@@ -64,6 +74,6 @@ describe('Sidebar option C (no horizontal dividers)', () => {
     expect(src).not.toContain("className={'border-b border-border-subtle bg-surface'}");
     expect(src).not.toContain("'flex h-12 items-stretch border-b border-border-subtle'");
     expect(src).toContain('shadow-[inset_2px_0_0_var(--color-accent)]');
-    expect(src).toContain('<div className="border-t border-border-subtle">');
+    expect(footerSrc).toContain('<div className="border-t border-border-subtle">');
   });
 });

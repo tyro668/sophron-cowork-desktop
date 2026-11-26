@@ -14,10 +14,14 @@ describe('Sidebar task actions', () => {
   });
 
   it('renames through a dialog from the menu and F2, keeping double-click inline edit', () => {
+    const renameDialogSource = fs.readFileSync(
+      path.resolve(process.cwd(), 'src/renderer/components/sidebar/SidebarRenameDialog.tsx'),
+      'utf8'
+    );
     expect(source).toContain('onSelect={() => openRenameDialog(session.id, session.title)}');
     expect(source).toContain("event.key !== 'F2'");
-    expect(source).toContain("t('sidebar.renameTaskTitle')");
-    expect(source).toContain('className="ui-footer-split"');
+    expect(renameDialogSource).toContain("t('sidebar.renameTaskTitle')");
+    expect(renameDialogSource).toContain('className="ui-footer-split"');
     expect(source).toContain('handleStartRenameSession(session.id, session.title)');
   });
 });

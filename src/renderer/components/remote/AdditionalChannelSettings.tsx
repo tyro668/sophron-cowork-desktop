@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { remoteClient } from '../../features/remote/api/remote-client';
 import { showToast } from '../../utils/toast';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -29,7 +30,7 @@ export function AdditionalChannelSettings({
   async function save() {
     setSaving(true);
     try {
-      const result = await window.electronAPI.remote.updateFeishuConfig({
+      const result = await remoteClient.updateFeishuConfig({
         ...larkConfig,
         type: 'lark',
         appId: appId.trim(),

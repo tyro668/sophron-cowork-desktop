@@ -17,7 +17,8 @@ describe('macOS sidebar title row', () => {
   });
 
   it('keeps the collapsed rail drag strip aligned at 48px', () => {
-    expect(sidebar).toMatch(/titlebar-drag h-12 shrink-0 border-b border-border-subtle/);
+    const collapsedRail = read('src/renderer/components/sidebar/SidebarCollapsedRail.tsx');
+    expect(collapsedRail).toMatch(/titlebar-drag h-12 shrink-0 border-b border-border-subtle/);
   });
 
   it('centers the traffic lights vertically in the 48px row', () => {
