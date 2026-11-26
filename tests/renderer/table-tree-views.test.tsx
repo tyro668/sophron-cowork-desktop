@@ -106,6 +106,8 @@ describe('reusable table trees in existing views', () => {
     );
     expect(dataRows.some((row) => row.className.includes('border-dashed'))).toBe(false);
     expect(dataRows.some((row) => row.className.includes('border-border-muted/85'))).toBe(true);
+    expect(filler.querySelectorAll('td')).toHaveLength(1);
+    expect(filler.querySelector('td')?.getAttribute('colspan')).toBe('6');
   });
 
   it('renders the 结果表 page with folder grouping after the tree extract', () => {
@@ -142,6 +144,7 @@ describe('reusable table trees in existing views', () => {
     expect(filler.getAttribute('aria-hidden')).toBe('true');
     const table = screen.getByTestId('result-table-tree').querySelector('table');
     expect(table?.classList.contains('data-list-table-fill')).toBe(true);
-    expect(filler.querySelectorAll('td')).toHaveLength(4);
+    expect(filler.querySelectorAll('td')).toHaveLength(1);
+    expect(filler.querySelector('td')?.getAttribute('colspan')).toBe('4');
   });
 });

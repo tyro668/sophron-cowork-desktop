@@ -1448,7 +1448,7 @@
 .data-list-table tbody tr[data-list-filler] td {
   height: auto;
   padding: 0;
-  border-bottom: 0;
+  border: 0;
   vertical-align: top;
 }
 

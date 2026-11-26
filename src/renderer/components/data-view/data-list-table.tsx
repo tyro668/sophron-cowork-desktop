@@ -18,8 +18,9 @@ export function DataListTypeIcon({ children }: { children: ReactNode }) {
 }
 
 /**
- * Fill-height list table: sticky header, column rules that extend through empty space,
- * and a single ancestor scroller (`overflow-auto`) so the thead can stick.
+ * Fill-height list table: sticky header, a borderless filler so leftover space stays
+ * plain surface (column rules stop at the last data row), and a single ancestor
+ * scroller (`overflow-auto`) so the thead can stick.
  */
 export function DataListTable({
   testId,
@@ -39,9 +40,7 @@ export function DataListTable({
         <tbody>
           {children}
           <tr data-list-filler="true" data-testid="data-list-filler" aria-hidden="true">
-            {Array.from({ length: colSpan }, (_, index) => (
-              <td key={index} />
-            ))}
+            <td colSpan={colSpan} />
           </tr>
         </tbody>
       </table>
