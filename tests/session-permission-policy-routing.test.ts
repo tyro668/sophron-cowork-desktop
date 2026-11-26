@@ -1,16 +1,25 @@
-import { appContext } from '../src/main/app/context';
+import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { appContext } from '../src/main/app/context';
+import type { AppConfig } from '../src/shared/contracts';
 
 const mocks = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
   startSession: vi.fn(),
   continueSession: vi.fn(),
   updateConfig: vi.fn(),
+  setDockIcon: vi.fn(),
+  setTrayImage: vi.fn(),
   setPermissionRules: vi.fn(),
-  policy: 'auto_review' as string,
+  config: {
+    permissionPolicy: 'auto_review',
+    logoVariant: 'fold',
+    accentTheme: 'lavender',
+  } as Pick<AppConfig, 'permissionPolicy' | 'logoVariant' | 'accentTheme'>,
 }));
 
 vi.mock('electron', () => ({
+  app: { isPackaged: false, getAppPath: () => process.cwd(), dock: { setIcon: mocks.setDockIcon } },
   ipcMain: { on: vi.fn() },
   dialog: {},
 }));
@@ -26,6 +35,7 @@ vi.mock('../src/main/app/context', () => ({
       continueSession: mocks.continueSession,
     },
     mainWindow: null,
+    tray: { setImage: mocks.setTrayImage },
   },
 }));
 vi.mock('../src/main/app/events', () => ({ sendToRenderer: vi.fn() }));
@@ -46,11 +56,13 @@ vi.mock('../src/main/app/workdir', () => ({
 }));
 vi.mock('../src/main/config/config-store', () => ({
   configStore: {
-    get: (key: string) => (key === 'permissionPolicy' ? mocks.policy : undefined),
-    getAll: () => ({ permissionPolicy: mocks.policy }),
-    update: (updates: { permissionPolicy?: string }) => {
+    get: (key: keyof typeof mocks.config) => mocks.config[key],
+    getAll: () => ({ ...mocks.config }),
+    update: (updates: Partial<AppConfig>) => {
       mocks.updateConfig(updates);
-      if (updates.permissionPolicy) mocks.policy = updates.permissionPolicy;
+      if (updates.permissionPolicy) mocks.config.permissionPolicy = updates.permissionPolicy;
+      if (updates.logoVariant) mocks.config.logoVariant = updates.logoVariant;
+      if (updates.accentTheme) mocks.config.accentTheme = updates.accentTheme;
     },
     hasUsableCredentialsForActiveSet: () => true,
     isConfigured: () => true,
@@ -64,11 +76,15 @@ vi.mock('../src/main/utils/logger', () => ({ logWarn: vi.fn(), logError: vi.fn()
 import { registerSessionIpc } from '../src/main/features/session/ipc';
 import { getPermissionRulesForPolicy } from '../src/shared/permission-policies';
 
-describe('session permission policy routing', () => {
+describe('session settings and permission policy routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.handlers.clear();
-    mocks.policy = 'auto_review';
+    mocks.config = {
+      permissionPolicy: 'auto_review',
+      logoVariant: 'fold',
+      accentTheme: 'lavender',
+    };
     mocks.startSession.mockResolvedValue({ id: 'session-a' });
     mocks.continueSession.mockResolvedValue(undefined);
     registerSessionIpc(appContext);
@@ -102,7 +118,7 @@ describe('session permission policy routing', () => {
   });
 
   it('uses the saved policy when the caller omits one', async () => {
-    mocks.policy = 'default';
+    mocks.config.permissionPolicy = 'default';
     await invoke({ type: 'session.start', payload: { title: 'A', prompt: 'first' } });
     expect(mocks.startSession.mock.calls[0][7].permissionRules).toEqual(
       getPermissionRulesForPolicy('default')
@@ -116,10 +132,34 @@ describe('session permission policy routing', () => {
       theme: undefined,
       permissionPolicy: 'full_access',
     });
-    expect(mocks.policy).toBe('full_access');
+    expect(mocks.config.permissionPolicy).toBe('full_access');
     expect(mocks.setPermissionRules).toHaveBeenCalledWith(
       getPermissionRulesForPolicy('full_access'),
       'full_access'
     );
+  });
+
+  it('refreshes the macOS Dock with the saved shape and accent when either setting changes', async () => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: 'darwin' } }));
+    try {
+      const resources = join(process.cwd(), 'resources');
+      const change = (payload: Partial<Pick<AppConfig, 'accentTheme' | 'logoVariant'>>) =>
+        invoke({ type: 'settings.update', payload });
+      await change({ accentTheme: 'rose' });
+      expect(mocks.setDockIcon).toHaveBeenLastCalledWith(
+        join(resources, 'dock-icons', 'fold-rose.png')
+      );
+      expect(mocks.setTrayImage).not.toHaveBeenCalled();
+      await change({ logoVariant: 'mark' });
+      expect(mocks.setDockIcon).toHaveBeenLastCalledWith(
+        join(resources, 'dock-icons', 'mark-rose.png')
+      );
+      await change({ logoVariant: 'fold', accentTheme: 'mint' });
+      expect(mocks.setDockIcon).toHaveBeenLastCalledWith(join(resources, 'icon-fold-mac.png'));
+      await change({ accentTheme: 'mint' });
+      expect(mocks.setDockIcon).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

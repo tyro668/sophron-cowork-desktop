@@ -1,4 +1,5 @@
 import { appContext } from '../../app/context';
+import { applyRuntimeLogo } from '../../app/brand-icons';
 import { sendToRenderer } from '../../app/events';
 import { startSandboxBootstrap } from '../../app/sandbox-bootstrap';
 import { configStore, type AppConfig } from '../../config/config-store';
@@ -28,6 +29,7 @@ export const syncConfigAfterMutation = async (previousConfig: AppConfig) => {
   configStore.applyToEnv();
 
   const updatedConfig = configStore.getAll();
+  applyRuntimeLogo(updatedConfig, previousConfig);
   if (previousConfig.permissionPolicy !== updatedConfig.permissionPolicy) {
     setPermissionRules(
       getPermissionRulesForPolicy(updatedConfig.permissionPolicy),

@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { inflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import type { AppAccentTheme } from '../shared/contracts';
 
 const projectRoot = path.resolve(__dirname, '../..');
 
@@ -25,7 +26,7 @@ function pngPixel(data: Buffer, x: number, y: number): [number, number, number, 
   expect(y).toBeLessThan(height);
 
   const chunks: Buffer[] = [];
-  for (let offset = 8; offset < data.length; ) {
+  for (let offset = 8; offset < data.length;) {
     const length = data.readUInt32BE(offset);
     const kind = data.toString('ascii', offset + 4, offset + 8);
     if (kind === 'IDAT') chunks.push(data.subarray(offset + 8, offset + 8 + length));
@@ -102,13 +103,32 @@ describe('approved Jiusi brand assets', () => {
     expect(pngPixel(standard, 512, 120)).toEqual([234, 246, 238, 255]);
     expect(pngPixel(mac, 512, 80)[3]).toBe(0);
     expect(pngPixel(standard, 512, 80)[3]).toBeGreaterThan(240);
+  });
 
-    const runtimeIcons = fs.readFileSync(
-      path.join(projectRoot, 'src/main/app/brand-icons.ts'),
-      'utf8'
+  const dockMarkColors = {
+    mint: [23, 110, 77],
+    lake: [36, 125, 165],
+    lavender: [101, 70, 200],
+    orange: [184, 92, 29],
+    rose: [184, 58, 99],
+  } satisfies Record<AppAccentTheme, [number, number, number]>;
+
+  it.each(Object.entries(dockMarkColors))('ships both Dock logo shapes in %s', (accent, rgb) => {
+    const mark = asset(
+      accent === 'mint' ? 'resources/icon-mac.png' : `resources/dock-icons/mark-${accent}.png`
     );
-    expect(runtimeIcons).toContain("'icon-mac.png'");
-    expect(runtimeIcons).toContain("'icon-fold-mac.png'");
+    const fold = asset(
+      accent === 'mint' ? 'resources/icon-fold-mac.png' : `resources/dock-icons/fold-${accent}.png`
+    );
+    for (const icon of [mark, fold]) {
+      expect(pngSize(icon)).toEqual([1024, 1024]);
+      expect(pngPixel(icon, 512, 80)[3]).toBe(0);
+    }
+    expect(pngPixel(mark, 512, 500)).toEqual([...rgb, 255]);
+    expect(pngPixel(fold, 265, 500)).toEqual([...rgb, 255]);
+    const highlight = pngPixel(fold, 704, 500);
+    expect(highlight).not.toEqual([...rgb, 255]);
+    expect(highlight).not.toEqual(pngPixel(fold, 512, 500));
   });
 
   it('exports the collaborative fold as a separate complete runtime set', () => {
@@ -171,6 +191,7 @@ describe('approved Jiusi brand assets', () => {
         'icon-fold.icns',
         'icon-mac.png',
         'icon-fold-mac.png',
+        'dock-icons',
         'tray-iconTemplate.png',
         'tray-icon-foldTemplate.png',
       ],

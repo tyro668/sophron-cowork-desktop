@@ -287,13 +287,18 @@ export function registerSessionIpc(context: SessionIpcContext): void {
             : undefined;
 
         if (nextTheme || nextAccentTheme || nextPolicy || nextLogoVariant) {
+          const previousLogo = {
+            logoVariant: configStore.get('logoVariant'),
+            accentTheme: configStore.get('accentTheme'),
+          };
           configStore.update({
             theme: nextTheme,
             accentTheme: nextAccentTheme,
             permissionPolicy: nextPolicy,
             logoVariant: nextLogoVariant,
           });
-          if (nextLogoVariant) applyRuntimeLogo(nextLogoVariant);
+          const config = configStore.getAll();
+          applyRuntimeLogo(config, previousLogo);
           if (nextTheme) {
             applyNativeThemePreference(nextTheme);
             if (context.mainWindow && !context.mainWindow.isDestroyed()) {
@@ -308,7 +313,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
             type: 'config.status',
             payload: {
               isConfigured: configStore.isConfigured(),
-              config: configStore.getAll(),
+              config,
             },
           });
         }

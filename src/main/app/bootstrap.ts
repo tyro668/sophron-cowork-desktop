@@ -73,7 +73,10 @@ export async function bootstrap(): Promise<void> {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.sophron.app');
   }
-  applyRuntimeLogo(configStore.get('logoVariant'));
+  applyRuntimeLogo({
+    logoVariant: configStore.get('logoVariant'),
+    accentTheme: configStore.get('accentTheme'),
+  });
 
   // Smoke test mode: verify the app can start, then exit cleanly
   if (process.argv.includes('--smoke-test')) {

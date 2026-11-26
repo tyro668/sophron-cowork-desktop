@@ -113,6 +113,14 @@ function buildCheckList(platform, arch) {
           severity: 'fatal',
         })
       ),
+      ...['lake', 'lavender', 'orange', 'rose'].flatMap((accent) =>
+        ['mark', 'fold'].map((variant) => ({
+          label: `macOS Dock icon (${variant}, ${accent})`,
+          relPath: `resources/dock-icons/${variant}-${accent}.png`,
+          type: 'file',
+          severity: 'fatal',
+        }))
+      ),
       {
         label: `Python runtime for macOS ${arch} (GUI automation)`,
         relPath: `resources/python/darwin-${arch}`,

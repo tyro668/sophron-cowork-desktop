@@ -4,18 +4,23 @@
 Requires Pillow and rsvg-convert. Run from any directory with:
     python3 scripts/generate-brand-icons.py
 
+To regenerate just the Dock colors from the checked-in icons (Pillow only):
+    python3 scripts/generate-brand-icons.py --dock-only
+
 The editable visual inputs live in design/brand. Keep all derived icons in
 sync by running this script after a source change.
 """
 
 from __future__ import annotations
 
+import argparse
 from io import BytesIO
 from pathlib import Path
+import re
 import subprocess
 from xml.etree import ElementTree
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -169,6 +174,39 @@ def save_fold_icons() -> None:
     )
 
 
+def save_dock_icons() -> None:
+    css = (ROOT / "src/renderer/styles/globals.css").read_text(encoding="utf-8")
+    light_palettes = re.findall(
+        r":root\.light\[data-accent-theme='([\w-]+)'\]\s*\{([^}]+)\}", css
+    )
+    if not light_palettes:
+        raise ValueError("No light accent palettes found for the Dock icons")
+    destination = ROOT / "resources/dock-icons"
+    destination.mkdir(exist_ok=True)
+    for variant, filename in [("mark", "icon-mac.png"), ("fold", "icon-fold-mac.png")]:
+        with Image.open(ROOT / "resources" / filename) as original:
+            # Green separates all three tones in the approved fold artwork (110, 174, 255).
+            tones = original.getchannel("G")
+            alpha = original.getchannel("A")
+            for accent, rule in light_palettes:
+                colors = dict(re.findall(r"--color-([\w-]+):\s*([^;]+);", rule))
+                mark = colors["brand-mark"]
+                if mark == "var(--color-accent-text)":
+                    mark = colors["accent-text"]
+                if variant == "fold":
+                    image = ImageOps.colorize(
+                        tones, mark, "white", mid=colors["accent"],
+                        blackpoint=PINE[1], midpoint=174,
+                    )
+                else:
+                    image = ImageOps.colorize(
+                        tones, mark, colors["accent-muted"],
+                        blackpoint=PINE[1], whitepoint=MINT[1],
+                    )
+                image.putalpha(alpha)
+                image.save(destination / f"{variant}-{accent}.png", optimize=True)
+
+
 def main() -> None:
     source = Image.open(ICON_SOURCE)
     icon = flatten_approved_palette(source).resize((APP_ICON_SIZE, APP_ICON_SIZE), RESAMPLE)
@@ -224,7 +262,13 @@ def main() -> None:
 
     save_social_preview(icon)
     save_fold_icons()
+    save_dock_icons()
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dock-only", action="store_true")
+    if parser.parse_args().dock_only:
+        save_dock_icons()
+    else:
+        main()

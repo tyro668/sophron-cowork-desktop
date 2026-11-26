@@ -131,6 +131,7 @@ website/.vitepress/cache/
 !resources/icon-mac.png
 !resources/icon-fold.png
 !resources/icon-fold-mac.png
+!resources/dock-icons/*.png
 !resources/logo.png
 !resources/tray-icon.png
 !resources/tray-iconTemplate.png

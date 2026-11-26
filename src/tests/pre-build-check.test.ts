@@ -51,6 +51,11 @@ function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
   ]) {
     makeFile(path.join(root, 'resources', name));
   }
+  for (const accent of ['lake', 'lavender', 'orange', 'rose']) {
+    for (const variant of ['mark', 'fold']) {
+      makeFile(path.join(root, 'resources/dock-icons', `${variant}-${accent}.png`));
+    }
+  }
 }
 
 /**

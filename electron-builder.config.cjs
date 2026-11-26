@@ -136,6 +136,7 @@ module.exports = {
       { from: 'resources/icon-fold.icns', to: 'icon-fold.icns' },
       { from: 'resources/icon-mac.png', to: 'icon-mac.png' },
       { from: 'resources/icon-fold-mac.png', to: 'icon-fold-mac.png' },
+      { from: 'resources/dock-icons', to: 'dock-icons' },
       { from: 'resources/tray-iconTemplate.png', to: 'tray-iconTemplate.png' },
       { from: 'resources/tray-icon-foldTemplate.png', to: 'tray-icon-foldTemplate.png' },
       { from: '.bundle-resources/mcp', to: 'mcp' },
