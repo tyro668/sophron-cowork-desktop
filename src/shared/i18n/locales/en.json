@@ -3140,7 +3140,7 @@
     "editConnector": "Edit Connector",
     "addConnectorTitle": "Add Custom Connector",
     "name": "Name",
-    "namePlaceholder": "Chrome MCP Server",
+    "namePlaceholder": "e.g., FineBI MCP",
     "type": "Type",
     "typeStdioLocal": "STDIO (Local)",
     "typeSseRemote": "SSE (Remote)",
@@ -3148,7 +3148,7 @@
     "command": "Command",
     "commandPlaceholder": "npx",
     "arguments": "Arguments",
-    "argumentsPlaceholder": "-y chrome-devtools-mcp@latest --browser-url http://localhost:9222",
+    "argumentsPlaceholder": "-y @modelcontextprotocol/server-filesystem /path",
     "spaceSeparated": "Space-separated arguments",
     "url": "URL",
     "enableConnector": "Enable this connector",
@@ -3175,7 +3175,12 @@
     "headerNamePlaceholder": "Authorization",
     "headerValuePlaceholder": "Bearer <token>",
     "noHeaders": "No headers configured",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "connectionSection": "Connection",
+    "toolsSection": "Available tools",
+    "searchToolsPlaceholder": "Filter tools...",
+    "noMatchingTools": "No matching tools",
+    "nameRequired": "Name is required"
   },
   "credentials": {
     "envVars": "Environment Variables",

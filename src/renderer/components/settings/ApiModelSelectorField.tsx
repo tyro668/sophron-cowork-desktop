@@ -31,7 +31,7 @@ export function ApiModelSelectorField({
   onModelChange,
   onCustomModelChange,
   inputClassName = 'h-8',
-  triggerClassName = 'h-8 w-full justify-between bg-surface px-3 text-[13px] text-text-primary',
+  triggerClassName = 'h-8 w-full justify-between bg-surface px-2.5 text-[13px] text-text-primary',
 }: ApiModelSelectorFieldProps) {
   const { t } = useTranslation();
 

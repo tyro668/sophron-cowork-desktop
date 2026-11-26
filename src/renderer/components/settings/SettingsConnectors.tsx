@@ -2,13 +2,17 @@ import { mcpClient } from '../../features/mcp/api/mcp-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plug, CheckCircle, Plus, ChevronDown, X } from 'lucide-react';
-import type { MCPServerConfig, MCPServerStatus, MCPToolInfo, MCPPreset } from './shared';
+import { Plug, Plus } from 'lucide-react';
+import type { MCPServerConfig, MCPServerStatus, MCPToolInfo } from './shared';
 import { showToast } from '../../utils/toast';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { McpServerCard } from './connectors/McpServerCard';
+import {
+  formatMcpTypeLabel,
+  getMcpStatusDotClass,
+  McpServerDetail,
+  resolveMcpServerStatus,
+} from './connectors/McpServerDetail';
 import { McpServerForm } from './connectors/McpServerForm';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -20,30 +24,15 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   useEffect(() => {
     tRef.current = t;
   }, [t]);
+
   const [servers, setServers] = useState<MCPServerConfig[]>([]);
   const [statuses, setStatuses] = useState<MCPServerStatus[]>([]);
   const [tools, setTools] = useState<MCPToolInfo[]>([]);
+  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [editingServer, setEditingServer] = useState<MCPServerConfig | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [presets, setPresets] = useState<Record<string, MCPPreset>>({});
-  const [showPresets, setShowPresets] = useState(true);
-  const [configuringPreset, setConfiguringPreset] = useState<{
-    key: string;
-    preset: MCPPreset;
-  } | null>(null);
-  const [presetEnvValues, setPresetEnvValues] = useState<Record<string, string>>({});
-
-  // Auto-refresh
-  const loadPresets = useCallback(async () => {
-    try {
-      const loaded = (await mcpClient.getPresets()) as Record<string, MCPPreset>;
-      setPresets(loaded || {});
-    } catch (err) {
-      console.error('Failed to load presets:', err);
-    }
-  }, []);
 
   const loadServers = useCallback(async () => {
     try {
@@ -75,8 +64,8 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   }, []);
 
   const loadAll = useCallback(async () => {
-    await Promise.all([loadServers(), loadStatuses(), loadTools(), loadPresets()]);
-  }, [loadPresets, loadServers, loadStatuses, loadTools]);
+    await Promise.all([loadServers(), loadStatuses(), loadTools()]);
+  }, [loadServers, loadStatuses, loadTools]);
 
   useEffect(() => {
     if (!isElectron || !isActive) {
@@ -97,56 +86,16 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
     }
   }, [error]);
 
-  async function handleAddPreset(presetKey: string) {
-    const preset = presets[presetKey];
-    if (!preset) return;
-
-    const existing = servers.find((s) => s.name === preset.name && s.command === preset.command);
-    if (existing) {
-      setError(t('mcp.presetAlreadyConfigured', { name: preset.name }));
+  // Keep a valid connector selected whenever the list changes.
+  useEffect(() => {
+    if (servers.length === 0) {
+      setSelectedServerId(null);
       return;
     }
-
-    // Check if preset requires environment variables
-    if (preset.requiresEnv && preset.requiresEnv.length > 0) {
-      // Initialize env values from preset defaults
-      const initialEnv: Record<string, string> = {};
-      preset.requiresEnv.forEach((key: string) => {
-        initialEnv[key] = preset.env?.[key] || '';
-      });
-      setPresetEnvValues(initialEnv);
-      setConfiguringPreset({ key: presetKey, preset });
-      return;
+    if (!selectedServerId || !servers.some((item) => item.id === selectedServerId)) {
+      setSelectedServerId(servers[0].id);
     }
-
-    // No env required, add directly
-    await addPresetServer(presetKey, preset, {});
-  }
-
-  async function addPresetServer(
-    presetKey: string,
-    preset: MCPPreset,
-    envOverrides: Record<string, string>
-  ) {
-    const serverConfig: MCPServerConfig = {
-      id: `mcp-${presetKey}-${Date.now()}`,
-      name: preset.name,
-      type: preset.type,
-      // STDIO fields
-      command: preset.command,
-      args: preset.args,
-      env: { ...preset.env, ...envOverrides },
-      // SSE fields
-      url: preset.url,
-      headers: preset.headers,
-      enabled: false,
-    };
-
-    await handleSaveServer(serverConfig);
-    setShowPresets(false);
-    setConfiguringPreset(null);
-    setPresetEnvValues({});
-  }
+  }, [selectedServerId, servers]);
 
   async function handleSaveServer(server: MCPServerConfig) {
     setIsLoading(true);
@@ -155,13 +104,13 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       const result = await mcpClient.saveServer(server);
       if (result && !result.success && result.error) {
         setError(result.error);
-        // Keep form open so the user can see and act on the error
         return;
       }
       if (result?.authorizing) {
         showToast('success', t('mcp.authorizationOpened'));
       }
       await loadAll();
+      setSelectedServerId(server.id);
       setEditingServer(null);
       setShowAddForm(false);
     } catch (err) {
@@ -179,6 +128,9 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
     setIsLoading(true);
     try {
       await mcpClient.deleteServer(serverId);
+      if (editingServer?.id === serverId) {
+        setEditingServer(null);
+      }
       await loadAll();
     } catch (err) {
       setError(formatIpcError(err, t('mcp.deleteServerFailed')));
@@ -224,18 +176,127 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
   }
 
   function getServerStatus(serverId: string) {
-    return statuses.find((s) => s.id === serverId);
+    return statuses.find((item) => item.id === serverId);
   }
 
   function getServerTools(serverId: string) {
-    return tools.filter((t) => t.serverId === serverId);
+    return tools.filter((item) => item.serverId === serverId);
   }
 
+  function getStatusLabel(server: MCPServerConfig) {
+    const serverStatus = resolveMcpServerStatus(server, getServerStatus(server.id));
+    switch (serverStatus) {
+      case 'connected':
+        return t('mcp.connected');
+      case 'failed':
+        return t('mcp.failed');
+      case 'authorizing':
+        return t('mcp.authorizing');
+      case 'needs_auth':
+        return t('mcp.needsAuth');
+      case 'connecting':
+        return t('mcp.connecting');
+      default:
+        return t('mcp.disabled');
+    }
+  }
+
+  const selectedServer = servers.find((item) => item.id === selectedServerId) ?? null;
+
   return (
-    <div className="space-y-4">
-      {/* Add/Edit Form */}
-      {(showAddForm || editingServer) && (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface md:flex-row">
+      {/* Left rail: connector list */}
+      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary/45 md:w-[236px] md:border-b-0 md:border-r lg:w-[256px]">
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Plug className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            <h2 className="truncate text-[12px] font-semibold text-text-primary">
+              {t('settings.connectors')}
+            </h2>
+            <span className="text-[11px] tabular-nums text-text-muted">{servers.length}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingServer(null);
+              setShowAddForm(true);
+            }}
+            disabled={isLoading}
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted/75 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('common.add')}
+          </button>
+        </div>
+
+        <div className="scrollbar-hover max-h-48 flex-1 space-y-0.5 overflow-y-auto p-1.5 md:max-h-none">
+          {servers.length === 0 ? (
+            <p className="px-2.5 py-6 text-center text-[12px] text-text-muted">
+              {t('mcp.noConnectors')}
+            </p>
+          ) : (
+            servers.map((server) => {
+              const status = getServerStatus(server.id);
+              const resolvedStatus = resolveMcpServerStatus(server, status);
+              const serverTools = getServerTools(server.id);
+              const isSelected = !showAddForm && selectedServerId === server.id;
+              return (
+                <button
+                  key={server.id}
+                  type="button"
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setEditingServer(null);
+                    setSelectedServerId(server.id);
+                  }}
+                  aria-pressed={isSelected}
+                  className={`flex w-full min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                    isSelected
+                      ? 'bg-accent-muted/85 text-text-primary shadow-[inset_2px_0_0_var(--color-accent)]'
+                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                  }`}
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${getMcpStatusDotClass(resolvedStatus)}`}
+                    />
+                    <span
+                      className={`min-w-0 flex-1 truncate text-[12.5px] leading-4 ${
+                        isSelected
+                          ? 'font-semibold text-text-primary'
+                          : 'font-medium text-text-primary'
+                      }`}
+                    >
+                      {server.name}
+                    </span>
+                    {serverTools.length > 0 && (
+                      <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-text-muted">
+                        {serverTools.length}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-1.5 pl-4 text-[11px] leading-3.5 text-text-muted">
+                    <span className="shrink-0 font-mono text-[10px]">
+                      {formatMcpTypeLabel(server.type)}
+                    </span>
+                    <span>·</span>
+                    <span className="truncate">{getStatusLabel(server)}</span>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="flex h-8 shrink-0 items-center border-t border-border-subtle px-3 text-[11.5px] text-text-muted">
+          {t('mcp.toolsAvailable', { count: tools.length })}
+        </div>
+      </aside>
+
+      {/* Right pane: add/edit form, selected connector detail, or empty state */}
+      {showAddForm || editingServer ? (
         <McpServerForm
+          key={editingServer?.id || 'new'}
           server={editingServer || undefined}
           onSave={handleSaveServer}
           onCancel={() => {
@@ -244,206 +305,30 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
           }}
           isLoading={isLoading}
         />
-      )}
-
-      {/* Server List */}
-      {!showAddForm && !editingServer && (
-        <div className="space-y-3">
-          {servers.length === 0 ? (
-            <div className="ui-group bg-surface text-center py-8 text-text-muted">
-              <Plug className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>{t('mcp.noConnectors')}</p>
-              <p className="text-sm mt-1">{t('mcp.addConnector')}</p>
-            </div>
-          ) : (
-            servers.map((server) => {
-              const status = getServerStatus(server.id);
-              const serverTools = getServerTools(server.id);
-
-              return (
-                <McpServerCard
-                  key={server.id}
-                  server={server}
-                  status={status}
-                  toolCount={serverTools.length}
-                  tools={serverTools}
-                  onEdit={() => setEditingServer(server)}
-                  onDelete={() => handleDeleteServer(server.id)}
-                  onToggleEnabled={() => handleToggleEnabled(server)}
-                  onReauthorize={() => handleReauthorize(server.id)}
-                  onCancelAuth={() => handleCancelAuth(server.id)}
-                  isLoading={isLoading}
-                />
-              );
-            })
-          )}
+      ) : selectedServer ? (
+        <McpServerDetail
+          server={selectedServer}
+          status={getServerStatus(selectedServer.id)}
+          tools={getServerTools(selectedServer.id)}
+          onEdit={() => setEditingServer(selectedServer)}
+          onDelete={() => void handleDeleteServer(selectedServer.id)}
+          onToggleEnabled={() => void handleToggleEnabled(selectedServer)}
+          onReauthorize={() => void handleReauthorize(selectedServer.id)}
+          onCancelAuth={() => void handleCancelAuth(selectedServer.id)}
+          isLoading={isLoading}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle bg-surface-muted text-text-muted">
+            <Plug className="h-5 w-5" />
+          </div>
+          <p className="text-[13px] font-medium text-text-primary">{t('mcp.noConnectors')}</p>
+          <Button variant="primary" size="md" onClick={() => setShowAddForm(true)} className="mt-4">
+            <Plus className="h-3.5 w-3.5" />
+            {t('mcp.addCustomConnector')}
+          </Button>
         </div>
       )}
-
-      {/* Preset Environment Configuration Modal */}
-      {configuringPreset && (
-        <div className="p-4 rounded-lg border border-accent/30 bg-accent-muted space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium text-text-primary">
-              {t('mcp.configure')} {configuringPreset.preset.name}
-            </h3>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                setConfiguringPreset(null);
-                setPresetEnvValues({});
-              }}
-              className="h-7 w-7 text-text-muted"
-              aria-label={t('common.close')}
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-text-muted">
-            This connector requires configuration before it can be added.
-          </p>
-          <div className="space-y-3">
-            {configuringPreset.preset.requiresEnv?.map((envKey: string) => (
-              <div key={envKey}>
-                <label className="block text-xs font-medium text-text-secondary mb-1">
-                  {configuringPreset.preset.envDescription?.[envKey] || envKey}
-                </label>
-                <Input
-                  type="password"
-                  value={presetEnvValues[envKey] || ''}
-                  onChange={(e) =>
-                    setPresetEnvValues((prev) => ({ ...prev, [envKey]: e.target.value }))
-                  }
-                  placeholder={`Enter ${envKey}`}
-                  className="h-auto border-border px-3 py-2 text-sm"
-                />
-              </div>
-            ))}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setConfiguringPreset(null);
-                setPresetEnvValues({});
-              }}
-              className="text-sm"
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() =>
-                void addPresetServer(
-                  configuringPreset.key,
-                  configuringPreset.preset,
-                  presetEnvValues
-                )
-              }
-              disabled={
-                isLoading ||
-                configuringPreset.preset.requiresEnv?.some(
-                  (key: string) => !presetEnvValues[key]?.trim()
-                )
-              }
-              className="px-4 text-sm"
-            >
-              {t('common.add')}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Preset Servers */}
-      {!showAddForm && !editingServer && !configuringPreset && Object.keys(presets).length > 0 && (
-        <div className="ui-group bg-surface">
-          <button
-            onClick={() => setShowPresets(!showPresets)}
-            className="ui-group-title w-full justify-between hover:bg-surface-hover"
-          >
-            <h3 className="text-[12px] font-semibold text-text-primary">
-              {t('mcp.quickAddPresets')}
-            </h3>
-            <div className="flex items-center gap-1.5 text-text-muted">
-              <span className="text-xs">{showPresets ? t('mcp.hide') : t('mcp.show')}</span>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform ${showPresets ? 'rotate-180' : ''}`}
-              />
-            </div>
-          </button>
-          {showPresets && (
-            <div>
-              {Object.entries(presets).map(([key, preset]) => {
-                const isAdded = servers.some(
-                  (s) => s.name === preset.name && s.command === preset.command
-                );
-                const requiresConfig = preset.requiresEnv && preset.requiresEnv.length > 0;
-                return (
-                  <div
-                    key={key}
-                    className={`flex items-center gap-3 border-b border-border-subtle px-3 py-2 last:border-b-0 ${
-                      isAdded ? 'bg-surface-muted opacity-60' : ''
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-text-primary">{preset.name}</span>
-                        {requiresConfig && !isAdded && (
-                          <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-warning/10 text-warning border border-warning/20">
-                            {t('mcp.requiresToken')}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-text-muted mt-0.5 truncate">
-                        {preset.type === 'stdio'
-                          ? `${preset.command} ${preset.args?.join(' ') || ''}`
-                          : preset.url || 'Remote server'}
-                      </div>
-                    </div>
-                    {isAdded ? (
-                      <div className="flex items-center gap-1 text-success text-xs whitespace-nowrap">
-                        <CheckCircle className="w-4 h-4" />
-                        <span>{t('mcp.added')}</span>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleAddPreset(key)}
-                        disabled={isLoading}
-                        className="gap-1 whitespace-nowrap text-xs"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        {requiresConfig ? t('mcp.configure') : t('common.add')}
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Add Custom Button */}
-      {!showAddForm && !editingServer && (
-        <Button
-          variant="secondary"
-          onClick={() => setShowAddForm(true)}
-          className="h-9 w-full gap-2 rounded-md border border-dashed border-border px-4 hover:border-accent hover:bg-accent-muted hover:text-accent"
-        >
-          <Plus className="w-4 h-4" />
-          {t('mcp.addCustomConnector')}
-        </Button>
-      )}
-
-      {/* Footer info */}
-      <div className="text-sm text-text-muted text-center pt-2">
-        {t('mcp.toolsAvailable', { count: tools.length })}
-      </div>
     </div>
   );
 }

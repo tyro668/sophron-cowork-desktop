@@ -17,12 +17,6 @@ export const MCP_SERVER_PRESETS: Record<
     envDescription?: Record<string, string>;
   }
 > = {
-  chrome: {
-    name: 'Chrome',
-    type: 'stdio',
-    command: 'npx',
-    args: ['-y', 'chrome-devtools-mcp@latest', '--browser-url', 'http://localhost:9222'],
-  },
   notion: {
     name: 'Notion',
     type: 'stdio',
@@ -138,12 +132,12 @@ class MCPConfigStore {
 
   /**
    * Presets shown in Settings → MCP connectors → Quick Add.
-   * Other entries in MCP_SERVER_PRESETS stay available to createFromPreset so
+   * Currently empty; bundled internal presets remain in MCP_SERVER_PRESETS so
    * already-saved Software Development and GUI Operate connectors can still
-   * resolve their bundled server paths.
+   * resolve their server paths via createFromPreset.
    */
   getPresets(): Record<string, Omit<MCPServerConfig, 'id' | 'enabled'>> {
-    return { chrome: MCP_SERVER_PRESETS.chrome };
+    return {};
   }
 
   /**

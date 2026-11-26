@@ -235,7 +235,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
                 <div className={activeTab === 'sandbox' ? '' : 'hidden'}>
                   {viewedTabs.has('sandbox') && <SettingsSandbox />}
                 </div>
-                <div className={activeTab === 'connectors' ? '' : 'hidden'}>
+                <div className={activeTab === 'connectors' ? 'h-full' : 'hidden'}>
                   {viewedTabs.has('connectors') && (
                     <SettingsConnectors isActive={activeTab === 'connectors'} />
                   )}

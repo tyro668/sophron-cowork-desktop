@@ -114,32 +114,30 @@ export function CodexAuthCard() {
       : t('api.codexNotConnected');
 
   return (
-    <div className="rounded-xl border border-border-muted bg-background px-4 py-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+    <div className="border-b border-border-subtle bg-surface-muted/35 px-3 py-2.5 last:border-b-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           {connected ? (
-            <CheckCircle className="h-4.5 w-4.5 shrink-0 text-success" />
+            <CheckCircle className="h-4 w-4 shrink-0 text-success" />
           ) : (
-            <KeyRound className="h-4.5 w-4.5 shrink-0 text-text-muted" />
+            <KeyRound className="h-4 w-4 shrink-0 text-text-muted" />
           )}
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-text-primary">
-              {t('api.codexAuthTitle')}
-            </div>
-            <div
-              className={`mt-0.5 truncate text-[12px] ${
-                connected ? 'text-success' : 'text-text-muted'
-              }`}
-            >
-              {statusText}
-            </div>
-          </div>
+          <span className="text-[12.5px] font-medium text-text-primary">
+            {t('api.codexAuthTitle')}
+          </span>
+          <span className="text-border">·</span>
+          <span
+            className={`truncate text-[12px] ${connected ? 'text-success' : 'text-text-muted'}`}
+          >
+            {statusText}
+          </span>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5">
           {connected ? (
             <Button
               variant="secondary"
+              size="sm"
               onClick={() => {
                 void handleLogout();
               }}
@@ -159,6 +157,7 @@ export function CodexAuthCard() {
             <>
               <Button
                 variant="secondary"
+                size="sm"
                 onClick={() => {
                   void handleImport();
                 }}
@@ -177,12 +176,12 @@ export function CodexAuthCard() {
               </Button>
               <Button
                 variant="primary"
+                size="sm"
                 onClick={() => {
                   void handleLogin();
                 }}
                 loading={busy === 'login'}
                 disabled={busy !== null}
-                className="shadow-soft"
               >
                 {busy === 'login' ? (
                   t('api.codexLoggingIn')
@@ -199,20 +198,21 @@ export function CodexAuthCard() {
       </div>
 
       {prompt && (
-        <div className="mt-3 flex items-center gap-2 border-t border-border-subtle pt-3">
+        <div className="mt-2.5 flex items-center gap-2 border-t border-border-subtle pt-2.5">
           <Input
             type="text"
             value={manualCode}
             onChange={(e) => setManualCode(e.target.value)}
             placeholder={t('api.codexManualCodePlaceholder')}
             aria-label={t('api.codexManualCodeLabel')}
-            className="h-9 min-w-0 flex-1 bg-background px-3"
+            className="h-8 min-w-0 flex-1 bg-surface px-2.5"
           />
           <Button
             variant="primary"
+            size="md"
             onClick={submitManualCode}
             disabled={!manualCode.trim()}
-            className="h-9 shrink-0 shadow-soft"
+            className="shrink-0"
           >
             {t('api.codexManualCodeSubmit')}
           </Button>

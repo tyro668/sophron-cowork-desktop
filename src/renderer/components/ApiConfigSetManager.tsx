@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Layers3, MoreVertical, Pencil, Plus, Star, Trash2 } from 'lucide-react';
-import type { ApiConfigSet } from '../types';
+import { Check, Layers3, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import type { ApiConfigSet, ProviderPresets } from '../types';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { useConfirmDialog } from './ConfirmDialog';
 import { Button } from './ui/button';
@@ -18,6 +18,9 @@ export interface ApiConfigSetManagerProps {
   hasUnsavedChanges: boolean;
   isMutatingConfigSet: boolean;
   isSaving: boolean;
+  presets?: ProviderPresets;
+  variant?: 'inline' | 'sidebar';
+  showPendingBanner?: boolean;
   onSelectSet: (setId: string) => Promise<void> | void;
   onSwitchSet: (setId: string) => Promise<void> | void;
   onRequestCreateBlankSet: () => Promise<void> | void;
@@ -38,6 +41,7 @@ export interface ApiConfigSetStateLike {
   hasUnsavedChanges: boolean;
   isMutatingConfigSet: boolean;
   isSaving: boolean;
+  presets?: ProviderPresets;
   requestSelectConfigSet: ApiConfigSetManagerProps['onSelectSet'];
   requestConfigSetSwitch: ApiConfigSetManagerProps['onSwitchSet'];
   requestCreateBlankConfigSet: ApiConfigSetManagerProps['onRequestCreateBlankSet'];
@@ -62,6 +66,7 @@ export function pickApiConfigSetManagerProps(
     hasUnsavedChanges: state.hasUnsavedChanges,
     isMutatingConfigSet: state.isMutatingConfigSet,
     isSaving: state.isSaving,
+    presets: state.presets,
     onSelectSet: state.requestSelectConfigSet,
     onSwitchSet: state.requestConfigSetSwitch,
     onRequestCreateBlankSet: state.requestCreateBlankConfigSet,
@@ -71,6 +76,57 @@ export function pickApiConfigSetManagerProps(
     onSaveAndContinuePendingAction: state.saveAndContinuePendingConfigSetAction,
     onDiscardAndContinuePendingAction: state.discardAndContinuePendingConfigSetAction,
   };
+}
+
+export function PendingConfigSetBanner({
+  pendingConfigSet,
+  isMutatingConfigSet,
+  isSaving,
+  onSaveAndContinue,
+  onDiscardAndContinue,
+  onCancel,
+}: {
+  pendingConfigSet: ApiConfigSet | null;
+  isMutatingConfigSet: boolean;
+  isSaving: boolean;
+  onSaveAndContinue: () => Promise<void> | void;
+  onDiscardAndContinue: () => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle bg-warning/10 px-4 py-2">
+      <p className="text-[12px] font-medium text-text-primary">
+        {t('api.unsavedSwitchPrompt', { name: pendingConfigSet?.name || '-' })}
+      </p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void onSaveAndContinue()}
+          disabled={isMutatingConfigSet || isSaving}
+        >
+          {t('api.saveAndContinue')}
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => void onDiscardAndContinue()}
+          disabled={isMutatingConfigSet || isSaving}
+        >
+          {t('api.discardAndContinue')}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          disabled={isMutatingConfigSet || isSaving}
+        >
+          {t('common.cancel')}
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 export function ApiConfigSetManager({
@@ -83,6 +139,9 @@ export function ApiConfigSetManager({
   hasUnsavedChanges,
   isMutatingConfigSet,
   isSaving,
+  presets,
+  variant = 'inline',
+  showPendingBanner = true,
   onSelectSet,
   onSwitchSet,
   onRequestCreateBlankSet,
@@ -104,10 +163,17 @@ export function ApiConfigSetManager({
 
   const canDeleteSet = (set: ApiConfigSet): boolean =>
     !set.isSystem && set.id !== activeConfigSetId && configSets.length > 1;
-  const modelSummary = (set: ApiConfigSet): string => {
-    // A blank set has no provider/model chosen yet — show nothing.
+
+  // Avoid repeating the model ID when the scheme is already named after it.
+  const getSetSubtitle = (set: ApiConfigSet): string => {
     if (set.provider === '') return '';
-    return set.profiles?.[set.activeProfileKey]?.model?.trim() || t('api.noModelsAvailable');
+    const providerLabel = presets?.[set.provider]?.name || '';
+    const modelName = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
+    const isSameAsName =
+      modelName.length > 0 && modelName.toLowerCase() === set.name.trim().toLowerCase();
+    if (isSameAsName) return providerLabel;
+    if (providerLabel && modelName) return `${providerLabel} · ${modelName}`;
+    return modelName || providerLabel || t('api.noModelsAvailable');
   };
 
   const requestDeleteSet = async (set: ApiConfigSet) => {
@@ -142,33 +208,84 @@ export function ApiConfigSetManager({
     if (renamed !== false) cancelRename();
   };
 
-  return (
-    <section className="ui-group bg-surface">
-      <div className="ui-group-title gap-2">
-        <Layers3 className="h-3.5 w-3.5 text-text-muted" />
-        <h2>{t('api.configSet')}</h2>
-        {hasUnsavedChanges && (
-          <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
-            {t('api.unsavedBadge')}
-          </span>
-        )}
-      </div>
+  const renderSetActionsMenu = (set: ApiConfigSet, isDefault: boolean, isSelected: boolean) => (
+    <GlassDropdownMenu
+      align="end"
+      trigger={
+        <button
+          type="button"
+          onClick={(event) => event.stopPropagation()}
+          disabled={isMutatingConfigSet}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-text-muted transition-all hover:bg-surface-active hover:text-text-primary disabled:opacity-50 ${
+            variant === 'sidebar'
+              ? isSelected
+                ? 'opacity-100'
+                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+              : ''
+          }`}
+          aria-label={t('api.moreActions')}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+      }
+      contentClassName="w-40"
+    >
+      <GlassMenuItem
+        icon={<Star className="h-3.5 w-3.5" />}
+        disabled={isDefault}
+        onSelect={() => void onSwitchSet(set.id)}
+      >
+        {t('api.setAsDefaultSet')}
+      </GlassMenuItem>
+      <GlassMenuItem icon={<Pencil className="h-3.5 w-3.5" />} onSelect={() => beginRename(set)}>
+        {t('api.renameSet')}
+      </GlassMenuItem>
+      <GlassMenuItem
+        danger
+        icon={<Trash2 className="h-3.5 w-3.5" />}
+        disabled={!canDeleteSet(set)}
+        onSelect={() => void requestDeleteSet(set)}
+      >
+        {t('api.deleteSet')}
+      </GlassMenuItem>
+    </GlassDropdownMenu>
+  );
 
-      <div className="ui-form-row">
-        <span className="ui-form-label items-start">
-          <span className="mt-2.5">{t('api.configSetLabel')}</span>
-        </span>
-        <div className="flex min-w-0 flex-col">
+  if (variant === 'sidebar') {
+    return (
+      <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary/45 md:w-[232px] md:border-b-0 md:border-r lg:w-[248px]">
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <Layers3 className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+            <h2 className="truncate text-[12px] font-semibold text-text-primary">
+              {t('api.configSet')}
+            </h2>
+            <span className="text-[11px] tabular-nums text-text-muted">{configSets.length}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void onRequestCreateBlankSet()}
+            disabled={isMutatingConfigSet || Boolean(renameTargetId)}
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted/75 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t('api.newSet')}
+          </button>
+        </div>
+
+        <div className="scrollbar-hover max-h-48 flex-1 space-y-0.5 overflow-y-auto p-1.5 md:max-h-none">
           {configSets.map((set) => {
             const isSelected = set.id === selectedConfigSetId;
             const isDefault = set.id === activeConfigSetId;
             const isRenaming = renameTargetId === set.id;
-            const summary = modelSummary(set);
+            const subtitle = getSetSubtitle(set);
             return (
               <div
                 key={set.id}
-                className={`group flex h-9 min-w-0 items-center border-b border-border-subtle transition-colors ${
-                  isSelected ? 'bg-accent-muted' : 'hover:bg-surface-hover'
+                className={`group flex min-w-0 items-center rounded-lg pr-1 transition-colors ${
+                  isSelected
+                    ? 'bg-accent-muted/85 text-text-primary shadow-[inset_2px_0_0_var(--color-accent)]'
+                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                 }`}
               >
                 {isRenaming ? (
@@ -187,7 +304,7 @@ export function ApiConfigSetManager({
                       }
                     }}
                     autoFocus
-                    className="mx-1.5 min-w-0 flex-1 rounded-md border border-accent bg-background px-2 py-1.5 text-[13px] text-text-primary outline-none ring-2 ring-accent/15"
+                    className="mx-1.5 my-1 min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 py-1 text-[12.5px] text-text-primary outline-none ring-2 ring-accent/15"
                     aria-label={t('api.currentSetName')}
                   />
                 ) : (
@@ -196,113 +313,150 @@ export function ApiConfigSetManager({
                     onClick={() => void onSelectSet(set.id)}
                     disabled={isMutatingConfigSet}
                     aria-pressed={isSelected}
-                    className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-3 py-1.5 text-left disabled:cursor-not-allowed disabled:opacity-55"
+                    className="flex min-w-0 flex-1 flex-col gap-0.5 px-2.5 py-2 text-left disabled:cursor-not-allowed disabled:opacity-55"
                   >
-                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <div className="flex min-w-0 shrink-0 items-center gap-1.5">
-                        <span className="truncate text-[13px] font-medium text-text-primary">
-                          {set.name}
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className={`truncate text-[12.5px] leading-4 ${
+                          isSelected
+                            ? 'font-semibold text-text-primary'
+                            : 'font-medium text-text-primary'
+                        }`}
+                      >
+                        {set.name}
+                      </span>
+                      {isDefault && (
+                        <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-accent">
+                          {t('api.defaultSetTag')}
                         </span>
-                        {set.isSystem && (
-                          <span className="shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-semibold text-accent-foreground">
-                            {t('api.defaultSetTag')}
-                          </span>
-                        )}
-                        {isSelected && !set.isSystem && (
-                          <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
-                        )}
-                      </div>
-                      {summary && (
-                        <p className="min-w-0 truncate text-[12px] text-text-muted">{summary}</p>
                       )}
                     </div>
+                    {subtitle && (
+                      <span className="truncate text-[11px] leading-3.5 text-text-muted">
+                        {subtitle}
+                      </span>
+                    )}
                   </button>
                 )}
 
-                {!isRenaming && (
-                  <GlassDropdownMenu
-                    align="end"
-                    trigger={
-                      <button
-                        type="button"
-                        onClick={(event) => event.stopPropagation()}
-                        disabled={isMutatingConfigSet}
-                        className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-surface-active hover:text-text-primary disabled:opacity-50"
-                        aria-label={t('api.moreActions')}
-                      >
-                        <MoreVertical className="h-3.5 w-3.5" />
-                      </button>
-                    }
-                    contentClassName="w-40"
-                  >
-                    <GlassMenuItem
-                      icon={<Star className="h-4 w-4" />}
-                      disabled={isDefault}
-                      onSelect={() => void onSwitchSet(set.id)}
-                    >
-                      {t('api.setAsDefaultSet')}
-                    </GlassMenuItem>
-                    <GlassMenuItem
-                      icon={<Pencil className="h-4 w-4" />}
-                      onSelect={() => beginRename(set)}
-                    >
-                      {t('api.renameSet')}
-                    </GlassMenuItem>
-                    <GlassMenuItem
-                      danger
-                      icon={<Trash2 className="h-4 w-4" />}
-                      disabled={!canDeleteSet(set)}
-                      onSelect={() => void requestDeleteSet(set)}
-                    >
-                      {t('api.deleteSet')}
-                    </GlassMenuItem>
-                  </GlassDropdownMenu>
-                )}
+                {!isRenaming && renderSetActionsMenu(set, isDefault, isSelected)}
               </div>
             );
           })}
-
-          <button
-            type="button"
-            onClick={() => void onRequestCreateBlankSet()}
-            disabled={isMutatingConfigSet || Boolean(renameTargetId)}
-            className="flex h-9 items-center gap-1.5 px-3 text-[13px] font-medium text-accent transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('api.newSet')}
-          </button>
         </div>
+
+        {showPendingBanner && pendingConfigSetAction && (
+          <div className="border-t border-border-subtle">
+            <PendingConfigSetBanner
+              pendingConfigSet={pendingConfigSet}
+              isMutatingConfigSet={isMutatingConfigSet}
+              isSaving={isSaving}
+              onSaveAndContinue={onSaveAndContinuePendingAction}
+              onDiscardAndContinue={onDiscardAndContinuePendingAction}
+              onCancel={onCancelPendingAction}
+            />
+          </div>
+        )}
+      </aside>
+    );
+  }
+
+  return (
+    <section className="ui-group bg-surface">
+      <div className="ui-group-title justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Layers3 className="h-3.5 w-3.5 text-text-muted" />
+          <h2>{t('api.configSet')}</h2>
+          {hasUnsavedChanges && (
+            <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10.5px] font-medium text-warning">
+              {t('api.unsavedBadge')}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void onRequestCreateBlankSet()}
+          disabled={isMutatingConfigSet || Boolean(renameTargetId)}
+          className="inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-[11.5px] font-medium text-accent transition-colors hover:bg-accent-muted/75 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t('api.newSet')}
+        </button>
       </div>
 
-      {pendingConfigSetAction && (
-        <div className="space-y-2 border-t border-border-subtle bg-warning/10 px-3 py-3">
-          <p className="text-xs text-text-primary">
-            {t('api.unsavedSwitchPrompt', { name: pendingConfigSet?.name || '-' })}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="primary"
-              onClick={() => void onSaveAndContinuePendingAction()}
-              disabled={isMutatingConfigSet || isSaving}
-              className="shadow-soft"
+      <div className="divide-y divide-border-subtle">
+        {configSets.map((set) => {
+          const isSelected = set.id === selectedConfigSetId;
+          const isDefault = set.id === activeConfigSetId;
+          const isRenaming = renameTargetId === set.id;
+          const subtitle = getSetSubtitle(set);
+          return (
+            <div
+              key={set.id}
+              className={`group flex h-9 min-w-0 items-center pr-1.5 transition-colors ${
+                isSelected ? 'bg-accent-muted/80' : 'hover:bg-surface-hover'
+              }`}
             >
-              {t('api.saveAndContinue')}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => void onDiscardAndContinuePendingAction()}
-              disabled={isMutatingConfigSet || isSaving}
-            >
-              {t('api.discardAndContinue')}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={onCancelPendingAction}
-              disabled={isMutatingConfigSet || isSaving}
-            >
-              {t('common.cancel')}
-            </Button>
-          </div>
+              {isRenaming ? (
+                <input
+                  value={renameName}
+                  onChange={(event) => setRenameName(event.target.value)}
+                  onBlur={() => void commitRename()}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void commitRename();
+                    }
+                    if (event.key === 'Escape') {
+                      event.preventDefault();
+                      cancelRename();
+                    }
+                  }}
+                  autoFocus
+                  className="mx-2 min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 py-1 text-[12.5px] text-text-primary outline-none ring-2 ring-accent/15"
+                  aria-label={t('api.currentSetName')}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void onSelectSet(set.id)}
+                  disabled={isMutatingConfigSet}
+                  aria-pressed={isSelected}
+                  className="flex min-w-0 flex-1 items-center gap-2 self-stretch px-3 text-left disabled:cursor-not-allowed disabled:opacity-55"
+                >
+                  <span className="truncate text-[13px] font-medium text-text-primary">
+                    {set.name}
+                  </span>
+                  {isDefault && (
+                    <span className="shrink-0 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium leading-none text-accent">
+                      {t('api.defaultSetTag')}
+                    </span>
+                  )}
+                  {isSelected && !isDefault && (
+                    <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
+                  )}
+                  {subtitle && (
+                    <span className="min-w-0 truncate text-[12px] text-text-muted">{subtitle}</span>
+                  )}
+                </button>
+              )}
+
+              {!isRenaming && renderSetActionsMenu(set, isDefault, isSelected)}
+            </div>
+          );
+        })}
+      </div>
+
+      {showPendingBanner && pendingConfigSetAction && (
+        <div className="border-t border-border-subtle">
+          <PendingConfigSetBanner
+            pendingConfigSet={pendingConfigSet}
+            isMutatingConfigSet={isMutatingConfigSet}
+            isSaving={isSaving}
+            onSaveAndContinue={onSaveAndContinuePendingAction}
+            onDiscardAndContinue={onDiscardAndContinuePendingAction}
+            onCancel={onCancelPendingAction}
+          />
         </div>
       )}
     </section>
