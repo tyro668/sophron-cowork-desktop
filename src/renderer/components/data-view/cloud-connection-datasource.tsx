@@ -66,6 +66,9 @@ type Run = (key: string, action: () => Promise<CloudConnectionActionResult>) => 
 const flushInputClass =
   'min-w-0 flex-1 outline-none hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-default disabled:opacity-60';
 
+/** Shared height for the left tree toolbar and the right config header so their bottom borders line up. */
+const paneToolbarClass = 'flex h-12 flex-shrink-0 border-b border-border-subtle';
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="ui-form-row">
@@ -243,7 +246,10 @@ export function DatasourceManager({
           style={{ width: fixedTabGroupWidth(3) }}
           data-testid="cloud-connection-group-tree"
         >
-          <div className="flex h-10 flex-shrink-0 items-center justify-between gap-2 border-b border-border-subtle pl-3 pr-2">
+          <div
+            className={cn(paneToolbarClass, 'items-center justify-between gap-2 pl-3 pr-2')}
+            data-testid="cloud-connection-tree-header"
+          >
             <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
               <span className="truncate">{t('cloudConnection.title')}</span>
               {statusBadge}
@@ -415,11 +421,14 @@ export function DatasourceManager({
         </aside>
         <section className="flex min-w-0 flex-1 flex-col">
           {selection.kind === 'none' && (
-            <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-              <EmptyState
-                label={t('cloudConnection.ds.selectTitle')}
-                description={t('cloudConnection.ds.selectDesc')}
-              />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className={paneToolbarClass} data-testid="cloud-connection-pane-header" />
+              <div className="flex min-h-0 flex-1 items-center justify-center p-6">
+                <EmptyState
+                  label={t('cloudConnection.ds.selectTitle')}
+                  description={t('cloudConnection.ds.selectDesc')}
+                />
+              </div>
             </div>
           )}
           {selection.kind === 'newGroup' && (
@@ -568,7 +577,10 @@ export function DatasourceManager({
 
 function PaneHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="flex h-12 flex-shrink-0 items-stretch justify-between border-b border-border-subtle">
+    <div
+      className={cn(paneToolbarClass, 'items-stretch justify-between')}
+      data-testid="cloud-connection-pane-header"
+    >
       <div className="flex min-w-0 items-center px-3">
         <span className="min-w-0 truncate text-[14px] font-semibold text-text-primary">
           {title}

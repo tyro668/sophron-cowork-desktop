@@ -140,6 +140,27 @@ describe('数据 → 云连接', () => {
     expect(useAppStore.getState().showSettings).toBe(true);
   });
 
+  it('keeps the left and right pane toolbars the same height with or without actions', async () => {
+    render(<CloudConnectionPanel />);
+    await screen.findByTestId('cloud-connection-datasources');
+    const left = screen.getByTestId('cloud-connection-tree-header');
+    const emptyRight = screen.getByTestId('cloud-connection-pane-header');
+    expect(left.className).toContain('h-12');
+    expect(emptyRight.className).toContain('h-12');
+    expect(emptyRight.className).toContain('border-b');
+    expect(emptyRight.textContent?.trim()).toBe('');
+
+    fireEvent.click(await screen.findByText('本地文件'));
+    const groupRight = screen.getByTestId('cloud-connection-pane-header');
+    expect(groupRight.className).toContain('h-12');
+    expect(screen.getByTestId('cloud-connection-add-table')).toBeTruthy();
+
+    fireEvent.click(await screen.findByText('销售合并'));
+    const tableRight = screen.getByTestId('cloud-connection-pane-header');
+    expect(tableRight.className).toContain('h-12');
+    expect(screen.getByTestId('cloud-connection-preview-table')).toBeTruthy();
+  });
+
   it('shows a referenced table config without a renameable name and locates the source table', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByText('本地文件'));
