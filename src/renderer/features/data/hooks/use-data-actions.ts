@@ -28,6 +28,7 @@ import { getOperatorCatalog } from '../../../components/data-view/data-pipelines
 import { buildWorkflowStarterGraph } from '../../../components/data-view/data-pipelines/workflow/workflow-starter';
 import { dataClient } from '../api/data-client';
 import { showToast } from '../../../utils/toast';
+import { formatRawSourceRefreshSummary } from '../../../components/data-view/raw-source-refresh-dialog';
 import { uniquePipelineName } from '../model/pipeline-names';
 import type { RawTableDraft } from '../model/types';
 import type { DataViewUi } from './use-data-view-ui';
@@ -424,13 +425,7 @@ export function useDataActions(deps: DataActionsDeps) {
             sourcePath: sourcePath!,
           });
           await loadRawTables({ preserveError: true });
-          const summary = String(
-            t('data.rawSources.detail.refreshed', {
-              refreshed: result.refreshed.length,
-              added: result.added.length,
-              missing: result.missing.length,
-            })
-          );
+          const summary = formatRawSourceRefreshSummary(result, t);
           if (result.failed.length) {
             const message = formatDataErrorMessage(result.failed[0].error, t);
             showToast('error', `${summary}\n${message}`);

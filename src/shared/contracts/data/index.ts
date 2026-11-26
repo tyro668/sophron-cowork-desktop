@@ -673,6 +673,9 @@ export interface DataRawSourceRefreshResult {
   renames: DataRawSourceRenameCandidate[];
   addedItems: DataRawSourceChangeItem[];
   missingItems: DataRawSourceChangeItem[];
+  /** folder_per_file members deleted because their files are gone (folder itself still exists). */
+  removed: string[];
+  removedItems: DataRawSourceChangeItem[];
   unchangedNames: string[];
 }
 

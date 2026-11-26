@@ -22,6 +22,43 @@ export function shouldShowRefreshDialog(result: DataRawSourceRefreshResult): boo
   );
 }
 
+export function formatRawSourceRefreshSummary(
+  result: DataRawSourceRefreshResult,
+  t: (key: string, options?: Record<string, unknown>) => unknown
+): string {
+  const removed = result.removedItems ?? [];
+  const parts: string[] = [];
+  if (
+    result.refreshed.length ||
+    result.added.length ||
+    result.missing.length ||
+    result.failed.length ||
+    removed.length === 0
+  ) {
+    parts.push(
+      String(
+        t('data.rawSources.detail.refreshed', {
+          refreshed: result.refreshed.length,
+          added: result.added.length,
+          missing: result.missing.length,
+        })
+      )
+    );
+  }
+  if (removed.length) {
+    const names = removed.map((item) => item.key ?? item.name).join('、');
+    parts.push(
+      String(
+        t('data.rawSources.detail.removedMissingNamed', {
+          count: removed.length,
+          names,
+        })
+      )
+    );
+  }
+  return parts.join('\n');
+}
+
 export function RawSourceRefreshDialog({
   result,
   busy,
@@ -186,17 +223,20 @@ export function useRawSourceRefresh(onChanged: () => void) {
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const [pending, setPending] = useState<DataRawSourceRefreshResult | null>(null);
   const [applying, setApplying] = useState(false);
-  const summary = (result: DataRawSourceRefreshResult) =>
-    String(
-      t('data.rawSources.detail.refreshed', {
-        refreshed: result.refreshed.length,
-        added: result.added.length,
-        missing: result.missing.length,
-      })
-    );
+  const summary = (result: DataRawSourceRefreshResult) => formatRawSourceRefreshSummary(result, t);
   const present = (result: DataRawSourceRefreshResult) => {
-    if (shouldShowRefreshDialog(result)) setPending(result);
-    else if (result.failed.length)
+    if (shouldShowRefreshDialog(result)) {
+      if (result.removedItems?.length) {
+        showToast(
+          'success',
+          formatRawSourceRefreshSummary(
+            { ...result, refreshed: [], added: [], missing: [], failed: [] },
+            t
+          )
+        );
+      }
+      setPending(result);
+    } else if (result.failed.length)
       showToast(
         'error',
         `${summary(result)}\n${formatDataErrorMessage(result.failed[0].error, t)}`

@@ -9,6 +9,7 @@ import { createAppLocalAgentLogger } from '../../local-agent/app-logger';
 import { requireDataPipelineStore } from '../data/service';
 import { createCloudTableStoreAdapter } from './referenced-source';
 import { CloudConnectionService } from './service';
+import { setRawTableDeletedHook } from '../../data/store/raw-table-deleted-hook';
 import { ElectronCloudConnectionStore } from './store';
 
 let service: CloudConnectionService | null = null;
@@ -26,6 +27,7 @@ export function getCloudConnectionService(): CloudConnectionService {
       notify: broadcast,
       tableStore: createCloudTableStoreAdapter(() => requireDataPipelineStore()),
     });
+    setRawTableDeletedHook((ids) => service!.pruneRefsForDeletedTables(ids));
   }
   return service;
 }

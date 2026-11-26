@@ -45,6 +45,7 @@ import {
   parseWorkbookRows,
   readImportRelationForPath,
 } from '../input-source';
+import { notifyRawTablesDeleted } from '../raw-table-deleted-hook';
 import { RawTableRepository } from '../repositories/raw-table-repository';
 import { TableCommitJournal } from '../repositories/table-commit-journal';
 import { RawSourceRepository } from '../repositories/raw-source-repository';
@@ -714,8 +715,11 @@ export class RawTableService {
       csv: `${csv}\n`,
     };
   }
-  async deleteRawTable(id: string): Promise<boolean> {
-    return this.ctx.runExclusive(async () => {
+  async deleteRawTable(
+    id: string,
+    options?: { keepEmptySource?: boolean; silent?: boolean }
+  ): Promise<boolean> {
+    const deleted = await this.ctx.runExclusive(async () => {
       await this.ctx.ensureReady();
       const rawTable = await this.rawTables.getRawTable(id);
       if (!rawTable) {
@@ -726,9 +730,11 @@ export class RawTableService {
       // reverse order would orphan an invisible physical table.
       await this.ctx.dropTableIfExists(rawTable.tableName);
       await this.rawTables.deleteRawTableRow(id);
-      await this.sources?.deleteEmptySources();
+      if (!options?.keepEmptySource) await this.sources?.deleteEmptySources();
       return true;
     }, `deleteRawTable:${id}`);
+    if (deleted && !options?.silent) await notifyRawTablesDeleted([id]);
+    return deleted;
   }
   async createRawTableTableFromSource(
     tableName: string,

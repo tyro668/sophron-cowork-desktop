@@ -12,6 +12,7 @@ import {
   findFilledColumns,
   findTypeConflicts,
 } from '../../src/main/data/store/services/raw-table-service';
+import { setRawTableDeletedHook } from '../../src/main/data/store/raw-table-deleted-hook';
 
 const tempRoots: string[] = [];
 const stores: DataPipelineStore[] = [];
@@ -200,10 +201,14 @@ describe('raw-table sources (1:N)', () => {
 
     fs.writeFileSync(path.join(folder, 'd.csv'), 'k\n5\n6\n');
     fs.rmSync(path.join(folder, 'c.csv'));
+    const goneId = created.tables.find((table) => table.memberKey === 'c.csv')!.id;
     const refreshed = await store.refreshRawSource(created.source.id);
     expect(refreshed.added).toHaveLength(1);
-    expect(refreshed.missing).toHaveLength(1);
+    expect(refreshed.missing).toEqual([]);
+    expect(refreshed.removed).toEqual([goneId]);
+    expect(refreshed.removedItems.map((item) => item.key)).toEqual(['c.csv']);
     expect(refreshed.refreshed).toHaveLength(2);
+    expect(await store.getRawTableRecord(goneId)).toBeNull();
     const tables = await Promise.all(
       refreshed.source.memberIds.map((id) => store.getRawTableRecord(id))
     );
@@ -214,7 +219,6 @@ describe('raw-table sources (1:N)', () => {
     ).toEqual([
       ['a.xlsx', 'ok'],
       ['b.xlsx', 'ok'],
-      ['c.csv', 'missing'],
       ['d.csv', 'ok'],
     ]);
   });
@@ -312,15 +316,14 @@ describe('changing a saved source path', () => {
       sourceId: created.source.id,
       sourcePath: folderB,
     });
-    expect(changed.missing).toContain(bId);
+    expect(changed.missing).toEqual([]);
+    expect(changed.removed).toContain(bId);
     expect(changed.added).toHaveLength(1);
     expect(changed.refreshed).toContain(aId);
     const a = await store.getRawTableRecord(aId);
-    const b = await store.getRawTableRecord(bId);
     expect(a?.rowCount).toBe(1);
     expect(a?.sourcePath).toBe(path.join(folderB, 'a.csv'));
-    expect(b?.memberStatus).toBe('missing');
-    expect(b?.id).toBe(bId);
+    expect(await store.getRawTableRecord(bId)).toBeNull();
   });
 
   it('keeps the merge table id when the new folder adds a column', async () => {
@@ -393,6 +396,170 @@ describe('changing a saved source path', () => {
     ).rejects.toThrow(/E_SOURCE_NO_READY_FILES/);
     const source = await store.getRawSource(created.source.id);
     expect(source?.sourcePath).toBe(folderA);
+  });
+});
+
+describe('folder_per_file missing files are deleted', () => {
+  afterEach(() => setRawTableDeletedHook(undefined));
+
+  it('notifies the deleted-table hook so 云连接 refs can be pruned', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '日报');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'a.csv'), 'k\n1\n');
+    fs.writeFileSync(path.join(folder, 'b.csv'), 'k\n2\n');
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+    });
+    const goneId = created.tables.find((table) => table.memberKey === 'b.csv')!.id;
+    const seen: string[][] = [];
+    setRawTableDeletedHook(async (ids) => {
+      seen.push(ids);
+    });
+    fs.rmSync(path.join(folder, 'b.csv'));
+    await store.refreshRawSource(created.source.id);
+    expect(seen).toEqual([[goneId]]);
+  });
+
+  it('keeps the source when every file is gone but the folder still exists', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '日报');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'a.csv'), 'k\n1\n');
+    fs.writeFileSync(path.join(folder, 'b.csv'), 'k\n2\n');
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+    });
+    expect(created.tables).toHaveLength(2);
+    fs.rmSync(path.join(folder, 'a.csv'));
+    fs.rmSync(path.join(folder, 'b.csv'));
+    const refreshed = await store.refreshRawSource(created.source.id);
+    expect(refreshed.removed).toHaveLength(2);
+    expect(refreshed.missing).toEqual([]);
+    for (const table of created.tables) {
+      expect(await store.getRawTableRecord(table.id)).toBeNull();
+    }
+    const source = await store.getRawSource(created.source.id);
+    expect(source).not.toBeNull();
+    expect(source?.memberIds).toEqual([]);
+    expect(source?.sourcePath).toBe(folder);
+  });
+
+  it('does not mass-delete when the folder itself is missing or unreadable', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '日报');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'a.csv'), 'k\n1\n');
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+    });
+    const tableId = created.tables[0].id;
+    fs.rmSync(folder, { recursive: true, force: true });
+    const refreshed = await store.refreshRawSource(created.source.id);
+    expect(refreshed.removed).toEqual([]);
+    expect(refreshed.missing).toEqual([tableId]);
+    const table = await store.getRawTableRecord(tableId);
+    expect(table?.memberStatus).toBe('missing');
+    expect(table?.rowCount).toBe(1);
+    expect(await store.getRawSource(created.source.id)).not.toBeNull();
+  });
+
+  it('folder_merge rematerializes from remaining files and keeps the table', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '合并');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, '1.csv'), 'k\n1\n');
+    fs.writeFileSync(path.join(folder, '2.csv'), 'k\n2\n');
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_merge',
+      tableName: '合并日报',
+    });
+    const tableId = created.tables[0].id;
+    expect(created.tables[0].rowCount).toBe(2);
+    fs.rmSync(path.join(folder, '2.csv'));
+    const refreshed = await store.refreshRawSource(created.source.id);
+    expect(refreshed.removed).toEqual([]);
+    expect(refreshed.missing).toEqual([]);
+    expect(refreshed.refreshed).toEqual([tableId]);
+    const table = await store.getRawTableRecord(tableId);
+    expect(table?.id).toBe(tableId);
+    expect(table?.rowCount).toBe(1);
+  });
+
+  it('does not delete a folder file that looks like a rename', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '门店');
+    const sales = [
+      ['日期', '门店', '销售额'],
+      ['2026-09-01', 'S01', 10],
+    ];
+    writeWorkbook(path.join(folder, '北京.xlsx'), { 明细: sales });
+    writeWorkbook(path.join(folder, '上海.xlsx'), {
+      明细: [
+        ['门店', '目标'],
+        ['S01', 100],
+      ],
+    });
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+      autoInclude: true,
+    });
+    const beijing = created.tables.find((table) => table.memberKey === '北京.xlsx')!;
+    fs.renameSync(path.join(folder, '北京.xlsx'), path.join(folder, '北京门店.xlsx'));
+    const result = await store.refreshRawSource(created.source.id);
+    expect(result.removed).toEqual([]);
+    expect(result.renames).toEqual([
+      expect.objectContaining({ tableId: beijing.id, newKey: '北京门店.xlsx' }),
+    ]);
+    expect(await store.getRawTableRecord(beijing.id)).not.toBeNull();
+  });
+
+  it('leaves result tables and pipelines in place; a later run reports the deleted input', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '日报');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'a.csv'), 'k\n1\n');
+    fs.writeFileSync(path.join(folder, 'b.csv'), 'k\n2\n');
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+    });
+    const a = created.tables.find((table) => table.memberKey === 'a.csv')!;
+    const output = await store.createResultTable({ name: 'a输出' });
+    const pipeline = await store.createPipeline({ name: 'a分析' });
+    await store.savePipelineWorkflow(pipeline.id, {
+      nodes: [
+        {
+          id: 'in',
+          type: 'input',
+          label: 'in',
+          x: 0,
+          y: 0,
+          config: { source: 'rawTable', rawTableId: a.id },
+        },
+        {
+          id: 'out',
+          type: 'output',
+          label: 'out',
+          x: 200,
+          y: 0,
+          config: { outputResultTableId: output.id, mode: 'replace' },
+        },
+      ],
+      edges: [{ id: 'e1', sourceNodeId: 'in', targetNodeId: 'out' }],
+    } as never);
+    await store.runPipeline(pipeline.id);
+    fs.rmSync(path.join(folder, 'a.csv'));
+    await store.refreshRawSource(created.source.id);
+    expect(await store.getRawTableRecord(a.id)).toBeNull();
+    expect(await store.getResultTableRecord(output.id)).not.toBeNull();
+    expect(await store.getPipeline(pipeline.id)).not.toBeNull();
+    await expect(store.runPipeline(pipeline.id)).rejects.toThrow(/E_INPUT_TABLE_DELETED/);
   });
 });
 

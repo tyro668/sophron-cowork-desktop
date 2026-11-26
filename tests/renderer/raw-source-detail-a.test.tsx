@@ -260,6 +260,8 @@ describe('RawSourceDetail (方案 A)', () => {
       renames: [],
       addedItems: [],
       missingItems: [],
+      removed: [],
+      removedItems: [],
       unchangedNames: ['1月.csv', '2月.csv'],
     });
 
@@ -304,6 +306,30 @@ describe('RawSourceDetail (方案 A)', () => {
       fireEvent.click(screen.getByTestId('raw-source-change-folder'));
       await waitFor(() =>
         expect(toast.showToast).toHaveBeenCalledWith('error', expect.stringMatching(/没有可导入/))
+      );
+    });
+
+    it('toasts when refresh removes tables whose files are gone', async () => {
+      client.refreshRawSource.mockResolvedValue({
+        source: { id: 's-daily', name: '门店日报', sourcePath: '/d/日报' },
+        refreshed: ['1月.csv'],
+        added: [],
+        missing: [],
+        failed: [],
+        renames: [],
+        addedItems: [],
+        missingItems: [],
+        removed: ['2月.csv'],
+        removedItems: [{ id: '2月.csv', name: '2月.csv', key: '2月.csv', pipelineNames: [] }],
+        unchangedNames: ['1月.csv'],
+      });
+      renderDetail(folderSource(), folderTables());
+      fireEvent.click(screen.getByTestId('raw-source-refresh'));
+      await waitFor(() =>
+        expect(toast.showToast).toHaveBeenCalledWith(
+          'success',
+          expect.stringMatching(/已移除 1 张表（文件已不存在）：2月\.csv/)
+        )
       );
     });
 

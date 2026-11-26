@@ -754,6 +754,24 @@ export class CloudConnectionService {
     );
   }
 
+  /**
+   * Drop refs whose local table was deleted, then applyRefs so the server
+   * unpublishes those report names by omission.
+   */
+  async pruneRefsForDeletedTables(tableIds: string[]): Promise<void> {
+    if (tableIds.length === 0) return;
+    const gone = new Set(tableIds);
+    for (const group of this.groups()) {
+      const next = group.tables.filter((table) => !gone.has(table.tableId));
+      if (next.length === group.tables.length) continue;
+      const runtime = this.ensureRuntime(group);
+      for (const table of group.tables) {
+        if (gone.has(table.tableId)) runtime.source.versionStore.delete(table.reportName);
+      }
+      await this.applyRefs(group, next);
+    }
+  }
+
   async deleteTable(groupId: string, reportName: string): Promise<void> {
     const group = this.findGroup(groupId);
     if (!group.tables.some((table) => table.reportName === reportName)) throw new Error('表不存在');

@@ -2290,7 +2290,9 @@
         "dataLoading": "Loading data…",
         "autoIncludeLabel": "Auto include",
         "scanSummary": "{{count}}, {{state}}",
-        "lastImported": "Last imported data"
+        "lastImported": "Last imported data",
+        "removedMissing": "Removed {{count}} table(s) (source file no longer exists)",
+        "removedMissingNamed": "Removed {{count}} table(s) (source file no longer exists): {{names}}"
       },
       "modes": {
         "excel_single": "One sheet, single table",

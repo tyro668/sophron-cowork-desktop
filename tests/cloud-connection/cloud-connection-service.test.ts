@@ -342,6 +342,23 @@ describe('CloudConnectionService', () => {
     expect(service.getState().groups).toEqual([]);
   });
 
+  it('prunes 云连接 refs for deleted raw tables so applyRefs unpublishes them', async () => {
+    const tableStore = memoryTables([
+      { id: 'raw-1', name: '销售' },
+      { id: 'raw-2', name: '订单' },
+    ]);
+    const store = new MemoryCloudConnectionStore();
+    service = new CloudConnectionService({ store, logger, tableStore });
+    const id = await service.addGroup({ sourceName: '本地' });
+    await service.addTableRefs(id, [
+      { kind: 'raw', tableId: 'raw-1' },
+      { kind: 'raw', tableId: 'raw-2' },
+    ]);
+    expect(service.getState().groups[0].tables.map((tb) => tb.tableId)).toEqual(['raw-1', 'raw-2']);
+    await service.pruneRefsForDeletedTables(['raw-1']);
+    expect(service.getState().groups[0].tables.map((tb) => tb.tableId)).toEqual(['raw-2']);
+  });
+
   it('migrates a legacy manual table into a raw-table reference and keeps the report name', async () => {
     const tableStore = memoryTables([]);
     const store = new MemoryCloudConnectionStore({

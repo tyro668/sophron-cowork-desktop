@@ -2290,7 +2290,9 @@
         "dataLoading": "正在加载数据…",
         "autoIncludeLabel": "自动纳入",
         "scanSummary": "{{count}}，{{state}}",
-        "lastImported": "上次导入的数据"
+        "lastImported": "上次导入的数据",
+        "removedMissing": "已移除 {{count}} 张表（文件已不存在）",
+        "removedMissingNamed": "已移除 {{count}} 张表（文件已不存在）：{{names}}"
       },
       "modes": {
         "excel_single": "选择一个 Sheet，单张表",

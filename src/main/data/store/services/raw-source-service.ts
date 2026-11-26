@@ -51,6 +51,7 @@ import {
   findFilledColumns,
   findTypeConflicts,
 } from './raw-table-service';
+import { notifyRawTablesDeleted } from '../raw-table-deleted-hook';
 
 const MULTI_TABLE_MODES: ReadonlySet<DataRawSourceBuildMode> = new Set([
   'excel_per_sheet',
@@ -572,7 +573,9 @@ export class RawSourceService {
   }
 
   /** Re-imports every table of the source; per-sheet / per-file sources also pick up new
-   *  sheets / files (when auto-include is on) and flag members that disappeared. A missing
+   *  sheets / files (when auto-include is on). For folder_per_file, members whose files
+   *  disappeared are deleted (stable source; dependents stay and fail with E_INPUT_TABLE_DELETED).
+   *  If the folder itself is missing or unreadable, members are only flagged missing. A missing
    *  member whose fingerprint matches a new sheet / file is reported as a suspected rename and
    *  left untouched until the user resolves it (resolveRenames). */
   async refreshSource(id: string): Promise<DataRawSourceRefreshResult> {
@@ -587,6 +590,8 @@ export class RawSourceService {
       renames: [],
       addedItems: [],
       missingItems: [],
+      removed: [],
+      removedItems: [],
       unchangedNames: [],
     };
     if (source.sourceKind === 'cloud') {
@@ -595,13 +600,17 @@ export class RawSourceService {
     const members = await Promise.all(
       source.memberIds.map((m) => this.rawTableRepo.requireRawTable(m))
     );
+    const folderAvailable =
+      source.sourceKind !== 'folder' || inspectLocalFolder(source.sourcePath) === 'ok';
     const present = new Set(
-      await this.currentMemberKeys(
-        source.sourcePath,
-        source.sourceKind,
-        source.buildMode,
-        source.config
-      )
+      folderAvailable
+        ? await this.currentMemberKeys(
+            source.sourcePath,
+            source.sourceKind,
+            source.buildMode,
+            source.config
+          )
+        : []
     );
     const tracksMembers =
       source.buildMode === 'excel_per_sheet' ||
@@ -634,6 +643,12 @@ export class RawSourceService {
         continue;
       }
       if (tracksMembers && member.memberKey && !present.has(member.memberKey)) {
+        if (source.buildMode === 'folder_per_file' && folderAvailable) {
+          result.removedItems.push(await this.changeItem(member));
+          result.removed.push(member.id);
+          await this.rawTables.deleteRawTable(member.id, { keepEmptySource: true, silent: true });
+          continue;
+        }
         await this.sources.setMemberStatus(member.id, 'missing');
         result.missing.push(member.id);
         result.missingItems.push(await this.changeItem(member));
@@ -680,6 +695,7 @@ export class RawSourceService {
       at: this.ctx.now(),
     });
     result.source = await this.sources.requireSource(source.id);
+    await notifyRawTablesDeleted(result.removed);
     return result;
   }
 
@@ -759,8 +775,13 @@ export class RawSourceService {
       }
       const table = await this.rawTableRepo.requireRawTable(decision.tableId);
       if (decision.action === 'new') {
-        await this.sources.setMemberStatus(table.id, 'missing');
-        out.missing.push(table.id);
+        if (source.buildMode === 'folder_per_file') {
+          out.missing.push(table.id);
+          await this.rawTables.deleteRawTable(table.id, { keepEmptySource: true });
+        } else {
+          await this.sources.setMemberStatus(table.id, 'missing');
+          out.missing.push(table.id);
+        }
         asNew.push(decision.newKey);
         continue;
       }
@@ -1044,6 +1065,20 @@ function scanWorkbookSheets(filePath: string): DataRawSourceSheetScan[] {
 }
 
 /** Every file of the folder (recursive), including temp files so the scan can list them. */
+/** Whether a saved folder source can still be read. A missing / unreadable folder
+ *  must not trigger mass-deletion of member tables. */
+function inspectLocalFolder(folderPath: string): 'ok' | 'missing' | 'unreadable' {
+  try {
+    const stat = fs.statSync(folderPath);
+    if (!stat.isDirectory()) return 'unreadable';
+    fs.readdirSync(folderPath);
+    return 'ok';
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' ? 'missing' : 'unreadable';
+  }
+}
+
 function listFolderEntries(
   folderPath: string,
   fileRange: NonNullable<DataRawSourceConfig['fileRange']>
