@@ -1,7 +1,20 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { exportStep, parseStep } from '../helpers/jflow-step';
 
 describe('FormSort — copy semantics at config level', () => {
+  it('renders sort direction with a flush dropdown (SelectCell) instead of segmented buttons', () => {
+    const editorSource = readFileSync(
+      path.resolve(
+        process.cwd(),
+        'src/renderer/components/workflow-forms/shared/SortKeysEditor.tsx'
+      ),
+      'utf8'
+    );
+    expect(editorSource).not.toContain('SegmentCells');
+    expect(editorSource).toContain("ariaLabel={tr('sortDirectionHeader')}");
+  });
   it('a copied sort key inherits direction and nulls while leaving the field empty', () => {
     const source = { field: 'revenue', direction: 'desc', nulls: 'last' };
     const copied = { field: '', direction: source.direction, nulls: source.nulls };

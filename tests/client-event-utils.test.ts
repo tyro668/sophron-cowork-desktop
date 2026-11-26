@@ -59,6 +59,7 @@ describe('eventRequiresSessionManager', () => {
       'session.getMessages',
       'session.getTraceSteps',
       'permission.response',
+      'sudo.password.response',
     ];
 
     for (const type of requiredTypes) {
@@ -73,7 +74,6 @@ describe('eventRequiresSessionManager', () => {
       'workdir.get',
       'workdir.set',
       'workdir.select',
-      'sudo.password.response',
       'project.rename',
       'project.renameByCwd',
       'project.delete',

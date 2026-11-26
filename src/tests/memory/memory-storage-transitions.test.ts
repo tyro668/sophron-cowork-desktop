@@ -241,8 +241,7 @@ function createDatabaseInstance(db: Database.Database): DatabaseInstance {
       get: vi.fn(
         (id: string) =>
           db.prepare('SELECT * FROM sessions WHERE id = ? LIMIT 1').get(id) as
-            | SessionRow
-            | undefined
+            SessionRow | undefined
       ),
       getAll: vi.fn(
         () => db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[]
@@ -387,7 +386,7 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
     : null;
 }
 
-describe('memory round-3 review fixes', () => {
+describe('memory storage transitions and recovery', () => {
   let rawDb: Database.Database;
   let db: DatabaseInstance;
   let service: MemoryService;
@@ -435,7 +434,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-01: rollback must never infer "the old file did not exist" from content
   // equality — a file the commit never touched keeps its old content.
-  it('R3-01a: rollback preserves an untouched file whose new content equals the old', () => {
+  it('rollback preserves an untouched file whose new content equals the old', () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     const backup = path.join(root, '.backup-rebuild');
@@ -486,7 +485,7 @@ describe('memory round-3 review fixes', () => {
     expect(fs.existsSync(staging)).toBe(false);
   });
 
-  it('R3-01b: legacy journal without oldExists never deletes an untouched file', () => {
+  it('legacy journal without oldExists never deletes an untouched file', () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     const backup = path.join(root, '.backup-rebuild');
@@ -530,7 +529,7 @@ describe('memory round-3 review fixes', () => {
     }
   });
 
-  it('R3-01c: rollback removes only files provably created by the torn commit', () => {
+  it('rollback removes only files provably created by the torn commit', () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     fs.mkdirSync(staging, { recursive: true });
@@ -581,7 +580,7 @@ describe('memory round-3 review fixes', () => {
     expect(readJsonFile(path.join(root, 'core_memory.json'))).toEqual({ old: 'core_memory.json' });
   });
 
-  it('R3-01d: an unresolved recovery preserves materials and blocks the next transition', async () => {
+  it('an unresolved recovery preserves materials and blocks the next transition', async () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     const backup = path.join(root, '.backup-rebuild');
@@ -631,7 +630,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-02: a storage-root switch mid-extraction fences the commit — bound
   // stores can never write old-root data into the new root.
-  it('R3-02: an in-flight job cannot commit across a storage-root switch', async () => {
+  it('an in-flight job cannot commit across a storage-root switch', async () => {
     const rootA = memoryRoot();
     insertSession(rawDb, { id: 's1', title: 'A' });
     const input = { session: makeSession('s1', 'A'), prompt: '', messages: DEFAULT_MESSAGES('s1') };
@@ -667,7 +666,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-03: a mid-commit disk failure rolls the whole commit back — layers can
   // never split across revisions; healing retries into a complete new state.
-  it('R3-03: a disk error mid-commit restores the complete previous state', async () => {
+  it('a disk error mid-commit restores the complete previous state', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     const input = { session: makeSession('s1', 'A'), prompt: '', messages: DEFAULT_MESSAGES('s1') };
 
@@ -706,7 +705,7 @@ describe('memory round-3 review fixes', () => {
   // R3-04: a manual delete is a forgetting rule for every write path — an
   // inferred re-statement under different wording cannot resurrect the fact,
   // while a genuinely new explicit user statement may.
-  it('R3-04: deleted facts stay deleted across normal ingest; explicit re-assertion revives', async () => {
+  it('deleted facts stay deleted across normal ingest; explicit re-assertion revives', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A'),
@@ -780,7 +779,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-05: disabling memory pauses the persisted backlog — no timer wakes the
   // model while disabled, and re-enabling resumes exactly where it stopped.
-  it('R3-05: disabled memory never retries the model; re-enable resumes the backlog', async () => {
+  it('disabled memory never retries the model; re-enable resumes the backlog', async () => {
     vi.useFakeTimers({ now: Date.now() });
     insertSession(rawDb, { id: 's1', title: 'A' });
     // Replays rebuild input from the DB, so the session's messages must be
@@ -823,7 +822,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-06: an explicit correction newer than a manual overlay supersedes it —
   // rebuilds must not resurrect the pre-correction manual value.
-  it('R3-06: a newer explicit correction supersedes the manual overlay across rebuilds', async () => {
+  it('a newer explicit correction supersedes the manual overlay across rebuilds', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     // Rebuilds re-derive from the DB transcript — the messages must exist as
     // rows, not only inside the enqueued input.
@@ -893,7 +892,7 @@ describe('memory round-3 review fixes', () => {
 
   // R3-07: the total budget is enforced on escaped text with the closing tag
   // always intact, and provenance reflects only the surviving item set.
-  it('R3-07: escaped-budget reconcile keeps the closing tag and honest provenance', async () => {
+  it('escaped-budget reconcile keeps the closing tag and honest provenance', async () => {
     insertSession(rawDb, { id: 's1', title: 'A', cwd: '/repo/ws' });
     // Core entries whose escaped size blows the layer budget ('&' → '&amp;').
     mockLLMState.coreResponder = () =>
@@ -965,7 +964,7 @@ describe('memory round-3 review fixes', () => {
   });
 
   // R3-08: the rebuild contract carries commitError through bridge → UI.
-  it('R3-08: commit failure is declared in the shared contract and handled in the UI', () => {
+  it('commit failure is declared in the shared contract and handled in the UI', () => {
     const electronApi = fs.readFileSync(
       path.resolve(process.cwd(), 'src/shared/contracts/electron-api.ts'),
       'utf8'

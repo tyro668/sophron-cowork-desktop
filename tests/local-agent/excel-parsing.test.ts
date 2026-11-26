@@ -142,9 +142,9 @@ describe('LocalExcelSource over real files', () => {
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([
       ['城市', '销量', '日期', '', '备注'],
-      ['北京', 10, new Date(Date.UTC(2024, 0, 5)), null, 'x'],
+      ['北京', 10, new Date(2024, 0, 5), null, 'x'],
       [null, null, null, null, null],
-      ['上海', 2.5, new Date(Date.UTC(2024, 0, 6)), null, ''],
+      ['上海', 2.5, new Date(2024, 0, 6), null, ''],
     ]);
     XLSX.utils.book_append_sheet(wb, ws, '销售');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['k'], ['v']]), 'Sheet2');

@@ -296,7 +296,7 @@ export class RawTableRepository {
       { id }
     );
     if (!rows[0]) return;
-    let config: Record<string, unknown> = {};
+    let config: Record<string, unknown>;
     try {
       config = JSON.parse(rows[0].config_json || '{}') as Record<string, unknown>;
     } catch {

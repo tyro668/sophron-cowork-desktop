@@ -124,6 +124,9 @@ export function runtimeReadPaths(): string[] {
   const home = os.homedir();
   const paths: string[] = [path.dirname(process.execPath)];
   if (process.resourcesPath) paths.push(process.resourcesPath);
+  if (process.platform === 'darwin' && process.versions.electron) {
+    paths.push(path.resolve(path.dirname(process.execPath), '../Frameworks'));
+  }
   const resources = path.resolve(process.cwd(), 'resources');
   if (existsSync(resources)) paths.push(resources);
   for (const entry of (process.env.PATH ?? '').split(path.delimiter)) {
@@ -214,12 +217,20 @@ function sbString(value: string): string {
 export function macProfile(spec: SandboxSpec, home: string): string {
   const writable = unique([home, ...spec.writable]);
   const readable = unique([...runtimeReadPaths(), ...(spec.readable ?? []), ...writable]);
+  // Node resolves symlinks by stat'ing parent directories on the way to an allowed file.
+  const parents = new Set<string>();
+  for (const target of readable) {
+    for (let dir = path.dirname(target); dir !== path.dirname(dir); dir = path.dirname(dir)) {
+      parents.add(dir);
+    }
+  }
   return [
     '(version 1)',
     '(allow default)',
     '(deny file-write*)',
     `(allow file-write* (subpath "/private/tmp") (subpath "/private/var/folders") (literal "/dev/null") (regex #"^/dev/tty") ${writable.map((dir) => `(subpath ${sbString(dir)})`).join(' ')})`,
     `(deny file-read* (subpath ${sbString(real(os.homedir()))}))`,
+    `(allow file-read-metadata ${[...parents].map((dir) => `(literal ${sbString(dir)})`).join(' ')})`,
     `(allow file-read* ${readable.map((dir) => `(subpath ${sbString(dir)})`).join(' ')})`,
   ].join('\n');
 }

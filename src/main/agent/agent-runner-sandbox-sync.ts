@@ -342,3 +342,15 @@ export async function initSandboxSyncForRun(args: {
 
   return { sandboxPath, useSandboxIsolation, sandbox };
 }
+
+export async function syncRunWorkspaceToHost(sessionId: string): Promise<string | undefined> {
+  const sandbox = getSandboxAdapter();
+  if (sandbox.isWSL) {
+    const result = await SandboxSync.syncToWindows(sessionId);
+    if (!result.success) return result.error || 'Windows sandbox sync failed.';
+  } else if (sandbox.isLima) {
+    const { LimaSync } = await import('../sandbox/lima-sync');
+    const result = await LimaSync.syncToMac(sessionId);
+    if (!result.success) return result.error || 'macOS sandbox sync failed.';
+  }
+}

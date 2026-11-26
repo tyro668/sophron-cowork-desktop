@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 const W = 'src/renderer/components/data-view/data-pipelines/workflow/';
 const read = (p: string) => readFileSync(p, 'utf8');
 
-describe('pipeline editor option A', () => {
+describe('pipeline editor layout', () => {
   it('header: back cell = palette width 232px; 保存并运行 is an accent text cell; running state', () => {
     const editor = read(W + 'PipelineEditor.tsx');
     const header = read(W + 'PipelineHeader.tsx');

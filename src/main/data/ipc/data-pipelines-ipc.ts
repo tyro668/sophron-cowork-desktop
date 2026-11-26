@@ -69,7 +69,8 @@ export function registerDataPipelinesIpc({
         throw new Error(
           error.issues
             .map((issue) => `${issue.path.join('.') || 'config'}: ${issue.message}`)
-            .join('; ')
+            .join('; '),
+          { cause: error }
         );
       }
       throw error;
@@ -94,7 +95,8 @@ export function registerDataPipelinesIpc({
           throw new Error(
             error.issues
               .map((issue) => `${issue.path.join('.') || 'config'}: ${issue.message}`)
-              .join('; ')
+              .join('; '),
+            { cause: error }
           );
         }
         throw error;

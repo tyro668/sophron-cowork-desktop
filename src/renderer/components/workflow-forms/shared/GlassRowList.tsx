@@ -145,7 +145,7 @@ export function GlassRowList<T>({
     <div ref={listRef} className={`flex flex-col ${gapClassName}`}>
       {!hideHeader && (
         <div
-          className={`flex min-h-8 items-center gap-1 ${rowPaddingClassName} text-[13px] leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
+          className={`flex min-h-8 items-center gap-1 ${rowPaddingClassName} text-ui-body leading-[20px] font-medium tracking-normal text-text-muted ${headerClassName ?? ''}`}
         >
           {draggable && dragHandlePosition === 'start' && (
             <span

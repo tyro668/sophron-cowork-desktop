@@ -1,5 +1,5 @@
 /**
- * PairingGuideCard — step-by-step guide shown when pairing mode is active
+ * PairingGuideCard — compact step-by-step guide shown when pairing mode is active
  */
 
 import { useState } from 'react';
@@ -31,21 +31,23 @@ export function PairingGuideCard() {
   }
 
   return (
-    <div className="p-4 rounded-lg border border-accent/30 bg-accent-muted relative">
+    <div className="relative border-b border-border-subtle bg-accent-muted/40 px-4 py-3">
       <button
+        type="button"
         onClick={handleDismiss}
-        className="absolute top-3 right-3 p-1 rounded-lg hover:bg-accent-muted text-text-secondary transition-colors"
+        aria-label={t('common.close')}
+        className="absolute right-3 top-2.5 rounded-md p-1 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
       >
-        <X className="w-4 h-4" />
+        <X className="h-3.5 w-3.5" />
       </button>
-      <h3 className="font-medium text-accent mb-3 flex items-center gap-2">
-        <Link2 className="w-4 h-4" />
+      <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-accent">
+        <Link2 className="h-3.5 w-3.5" />
         {t('remote.pairingGuideTitle')}
       </h3>
-      <ol className="space-y-2 text-sm text-text-secondary">
+      <ol className="space-y-1.5 text-[12px] text-text-secondary">
         {steps.map((step, i) => (
           <li key={i} className="flex items-start gap-2">
-            <span className="w-5 h-5 rounded-full bg-accent-muted text-accent text-xs flex items-center justify-center flex-shrink-0 mt-0.5">
+            <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-accent/15 font-mono text-[10px] font-semibold text-accent">
               {i + 1}
             </span>
             <span>{step}</span>

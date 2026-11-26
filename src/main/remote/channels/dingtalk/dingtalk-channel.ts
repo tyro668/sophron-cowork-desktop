@@ -344,7 +344,7 @@ export class DingtalkChannel extends ChannelBase {
   }
 
   private toOutboundContents(response: RemoteResponse): DingtalkOutboundContent[] {
-    let text = '';
+    let text: string;
     let markdown = false;
     if (response.content.type === 'markdown') {
       text = response.content.markdown || '';

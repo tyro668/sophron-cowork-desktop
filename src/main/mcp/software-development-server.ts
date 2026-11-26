@@ -233,7 +233,8 @@ ENTRYPOINT ["/entrypoint.sh"]
       error instanceof Error ? error.message : String(error)
     );
     throw new Error(
-      `Failed to build Docker image: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to build Docker image: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -336,7 +337,7 @@ async function startGUIApplicationInDocker(
             writeMCPLog('[Docker] VNC server is running');
             break;
           }
-        } catch (e) {
+        } catch {
           // VNC not ready yet
         }
         writeMCPLog(`[Docker] Waiting for VNC server... (${i + 1}/10)`);
@@ -395,7 +396,8 @@ async function startGUIApplicationInDocker(
       error instanceof Error ? error.message : String(error)
     );
     throw new Error(
-      `Failed to start Docker container: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to start Docker container: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -779,7 +781,7 @@ async function takeScreenshot(outputPath: string): Promise<string> {
           writeMCPLog(`[Screenshot] Screenshot file ready`);
           fileExists = true;
           break;
-        } catch (e) {
+        } catch {
           // File not ready yet
         }
         await new Promise((resolve) => setTimeout(resolve, 100));
@@ -805,7 +807,8 @@ async function takeScreenshot(outputPath: string): Promise<string> {
         `[Screenshot] Failed to take screenshot from container: ${error instanceof Error ? error.message : String(error)}`
       );
       throw new Error(
-        `Failed to take screenshot from Docker container: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to take screenshot from Docker container: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
       );
     }
   }
@@ -1086,7 +1089,7 @@ async function getScreenDimensions(): Promise<{ width: number; height: number }>
         if (match) {
           return { width: parseInt(match[1]), height: parseInt(match[2]) };
         }
-      } catch (e) {
+      } catch {
         writeMCPLog('[Vision] Failed to get macOS screen resolution, using default');
       }
     } else if (platform === 'linux') {
@@ -1097,14 +1100,14 @@ async function getScreenDimensions(): Promise<{ width: number; height: number }>
         if (match) {
           return { width: parseInt(match[1]), height: parseInt(match[2]) };
         }
-      } catch (e) {
+      } catch {
         try {
           const { stdout } = await executeCommand(`xrandr | grep '*' | awk '{print $1}'`);
           const match = stdout.match(/(\d+)x(\d+)/);
           if (match) {
             return { width: parseInt(match[1]), height: parseInt(match[2]) };
           }
-        } catch (e2) {
+        } catch {
           writeMCPLog('[Vision] Failed to get Linux screen resolution, using default');
         }
       }
@@ -1147,7 +1150,7 @@ async function getImageDimensions(imagePath: string): Promise<{ width: number; h
         if (width && height) {
           return { width, height };
         }
-      } catch (e) {
+      } catch {
         // Fallback: read PNG header manually
       }
     }
@@ -1321,7 +1324,8 @@ async function analyzeScreenshotWithVision(
       `[Vision] Error analyzing screenshot: ${error instanceof Error ? error.message : String(error)}`
     );
     throw new Error(
-      `Vision analysis failed: ${error instanceof Error ? error.message : String(error)}`
+      `Vision analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -2208,7 +2212,8 @@ async function executeClaudeCode(
   } catch (error: unknown) {
     writeMCPLog('[ClaudeCode] Error:', error instanceof Error ? error.message : String(error));
     throw new Error(
-      `Claude Code execution failed: ${error instanceof Error ? error.message : String(error)}`
+      `Claude Code execution failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -2269,7 +2274,8 @@ async function readFile(filePath: string): Promise<string> {
     return await fs.readFile(fullPath, 'utf-8');
   } catch (error: unknown) {
     throw new Error(
-      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to read file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -2285,7 +2291,8 @@ async function writeFile(filePath: string, content: string): Promise<void> {
     await fs.writeFile(fullPath, content, 'utf-8');
   } catch (error: unknown) {
     throw new Error(
-      `Failed to write file ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to write file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -2299,7 +2306,8 @@ async function deleteFile(filePath: string): Promise<void> {
     await fs.unlink(fullPath);
   } catch (error: unknown) {
     throw new Error(
-      `Failed to delete file ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+      `Failed to delete file ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -2330,7 +2338,8 @@ async function executeCommand(
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException & { stdout?: string; stderr?: string };
     throw new Error(
-      `Command execution failed: ${err.message}\nStdout: ${err.stdout}\nStderr: ${err.stderr}`
+      `Command execution failed: ${err.message}\nStdout: ${err.stdout}\nStderr: ${err.stderr}`,
+      { cause: error }
     );
   }
 }

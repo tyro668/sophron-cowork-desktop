@@ -492,7 +492,7 @@ export class FeishuWSClient extends EventEmitter {
     };
 
     // Parse content based on message type
-    let textContent = '';
+    let textContent: string;
     try {
       if (message.message_type === 'text') {
         const parsed = JSON.parse(String(message.content || '')) as Record<string, unknown>;

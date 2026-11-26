@@ -1,3 +1,5 @@
+import { RepairDraftError, ScriptPackageError } from './errors';
+export { ScriptPackageError } from './errors';
 import { cancelledError } from '../../../shared/cancel';
 import { createHash } from 'crypto';
 import { existsSync } from 'fs';
@@ -113,19 +115,6 @@ export interface ScriptRunOutput extends ParsedScriptOutput {
   installedDeps: boolean;
   log: string;
   version?: number;
-}
-
-export class ScriptPackageError extends Error {
-  constructor(
-    message: string,
-    readonly kind: 'invalid' | 'deps' | 'timeout' | 'script' | 'output',
-    /** Tail of the process output, for the AI / test-run details. */
-    readonly log?: string,
-    /** Exit code of the entry for script failures. */
-    readonly exitCode?: number
-  ) {
-    super(message);
-  }
 }
 
 export interface ScriptPackageServiceOptions {
@@ -510,7 +499,13 @@ export class ScriptPackageService {
     id: string,
     now: number,
     policy: AutoRepairPolicy
-  ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  ): Promise<
+    | { ok: true }
+    | {
+        ok: false;
+        outcome: { status: 'cooldown'; minutes: number } | { status: 'dailyLimit'; count: number };
+      }
+  > {
     return this.withLock(id, async () => {
       const dir = this.packageDir(id);
       const state = await this.readState(dir);
@@ -520,11 +515,14 @@ export class ScriptPackageService {
         const minutes = Math.ceil((policy.cooldownMs - (now - last)) / 60_000);
         return {
           ok: false as const,
-          reason: `距上次修复不足 ${formatTimeout(policy.cooldownMs)}，${minutes} 分钟后再试`,
+          outcome: { status: 'cooldown' as const, minutes },
         };
       }
       if (recent.length >= policy.dailyCap) {
-        return { ok: false as const, reason: `24 小时内已自动修复 ${policy.dailyCap} 次` };
+        return {
+          ok: false as const,
+          outcome: { status: 'dailyLimit' as const, count: policy.dailyCap },
+        };
       }
       await this.patchState(dir, { repairAttempts: [...recent, now] });
       return { ok: true as const };
@@ -602,8 +600,7 @@ export class ScriptPackageService {
     let started: string | null = null;
     try {
       if (!input.packageId) throw new ScriptPackageError('修复需要已有脚本包', 'invalid');
-      if (input.baseVersion == null)
-        throw new ScriptPackageError('修复需要基于一个版本', 'invalid');
+      if (input.baseVersion == null) throw new RepairDraftError('baseRequired');
       const id = input.packageId;
       emit({ phase: 'source_summary', kind: 'message', text: '读取报错与当前草稿的文件。' });
       const summary = await this.summary(id);
@@ -639,11 +636,12 @@ export class ScriptPackageService {
       });
       options.signal?.throwIfAborted();
       if (outcome.stop === 'error' && outcome.selfTests === 0)
-        throw new ScriptPackageError(`AI 修复失败：${outcome.error ?? '模型出错'}`, 'invalid');
+        throw outcome.error
+          ? new ScriptPackageError(outcome.error, 'invalid')
+          : new RepairDraftError('modelFailed');
       const after = await this.normalizeWorkingManifest(id, { name, runtime: base.runtime });
       const changedFiles = changedFilePaths(files, after);
-      if (changedFiles.length === 0)
-        throw new ScriptPackageError('AI 修复没有改动任何文件', 'invalid');
+      if (changedFiles.length === 0) throw new RepairDraftError('noChanges');
       emit({
         phase: 'saving',
         kind: 'message',
@@ -666,7 +664,7 @@ export class ScriptPackageService {
         ...(options.automationId ? { automationId: options.automationId } : {}),
       });
       started = null;
-      if (!saved) throw new ScriptPackageError('保存 AI 修复草稿失败', 'invalid');
+      if (!saved) throw new RepairDraftError('saveFailed');
       emit({
         phase: 'complete',
         kind: 'message',
@@ -1563,8 +1561,13 @@ export const SOURCE_LABEL: Record<ScriptVersionSource, string> = {
 };
 
 function toVersion(record: ScriptVersionRecord): ScriptPackageVersion {
-  const { packageId: _packageId, automationId: _automationId, commit, ...rest } = record;
-  return { ...rest, commit: commit.slice(0, 7) };
+  const version: ScriptPackageVersion & { packageId?: string; automationId?: string } = {
+    ...record,
+    commit: record.commit.slice(0, 7),
+  };
+  delete version.packageId;
+  delete version.automationId;
+  return version;
 }
 
 function venvPython(dir: string): string {

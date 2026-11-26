@@ -93,7 +93,7 @@ export class FeishuChannel extends ChannelBase {
         // Remove event listeners before stopping to prevent state issues
         wsClient.removeAllListeners();
         await wsClient.stop();
-      } catch (e) {
+      } catch {
         // Ignore
       }
     }

@@ -292,7 +292,7 @@ export class MemoryContextBuilder {
     // navigation loop — a hung provider call must never stall prompt assembly.
     const deadlineAt = Date.now() + NAVIGATION_SOFT_DEADLINE_MS;
     const embedDeadline = this.linkedSignal(signal, deadlineAt);
-    let queryEmbedding: { vector: number[]; model: string } | null = null;
+    let queryEmbedding: { vector: number[]; model: string } | null;
     try {
       queryEmbedding = await this.raceDeadline(
         this.deps.embedText(prompt, embedDeadline.signal),

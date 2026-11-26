@@ -1,3 +1,4 @@
+import { unwrapRawTableResult } from '../../../../shared/contracts/data/issues';
 /**
  * Typed IPC adapter for the data feature.
  *
@@ -85,10 +86,14 @@ export const dataClient = {
 
   // ---- input tables ----
   importRawTable: (...args: Parameters<DataApi['importRawTable']>) =>
-    dataApi().importRawTable(...args),
+    dataApi()
+      .importRawTable(...args)
+      .then(unwrapRawTableResult),
   getRawTable: (...args: Parameters<DataApi['getRawTable']>) => dataApi().getRawTable(...args),
   updateRawTable: (...args: Parameters<DataApi['updateRawTable']>) =>
-    dataApi().updateRawTable(...args),
+    dataApi()
+      .updateRawTable(...args)
+      .then(unwrapRawTableResult),
   deleteRawTable: (...args: Parameters<DataApi['deleteRawTable']>) =>
     dataApi().deleteRawTable(...args),
   listRawTableNormalizers: () => dataApi().listRawTableNormalizers(),
@@ -98,25 +103,38 @@ export const dataClient = {
     dataApi().previewRawTable(...args),
   exportTable: (...args: Parameters<DataApi['exportTable']>) => dataApi().exportTable(...args),
   previewRawTableSource: (...args: Parameters<DataApi['previewRawTableSource']>) =>
-    dataApi().previewRawTableSource(...args),
+    dataApi()
+      .previewRawTableSource(...args)
+      .then(unwrapRawTableResult),
   summarizeRawTableSource: (...args: Parameters<DataApi['summarizeRawTableSource']>) =>
     dataApi().summarizeRawTableSource(...args),
-  listRawSources: () => dataApi().listRawSources(),
+  listRawSources: () => dataApi().listRawSources().then(unwrapRawTableResult),
   scanRawSource: (...args: Parameters<DataApi['scanRawSource']>) =>
-    dataApi().scanRawSource(...args),
+    dataApi()
+      .scanRawSource(...args)
+      .then(unwrapRawTableResult),
   createRawSource: (...args: Parameters<DataApi['createRawSource']>) =>
-    dataApi().createRawSource(...args),
-  refreshRawSource: (id: string) => dataApi().refreshRawSource(id),
+    dataApi()
+      .createRawSource(...args)
+      .then(unwrapRawTableResult),
+  refreshRawSource: (id: string) => dataApi().refreshRawSource(id).then(unwrapRawTableResult),
   changeRawSourcePath: (...args: Parameters<DataApi['changeRawSourcePath']>) =>
-    dataApi().changeRawSourcePath(...args),
+    dataApi()
+      .changeRawSourcePath(...args)
+      .then(unwrapRawTableResult),
   setRawSourceAutoInclude: (id: string, autoInclude: boolean) =>
-    dataApi().setRawSourceAutoInclude(id, autoInclude),
+    dataApi().setRawSourceAutoInclude(id, autoInclude).then(unwrapRawTableResult),
   resolveRawSourceRenames: (...args: Parameters<DataApi['resolveRawSourceRenames']>) =>
-    dataApi().resolveRawSourceRenames(...args),
-  getRawSourceRebuildImpact: (id: string) => dataApi().getRawSourceRebuildImpact(id),
+    dataApi()
+      .resolveRawSourceRenames(...args)
+      .then(unwrapRawTableResult),
+  getRawSourceRebuildImpact: (id: string) =>
+    dataApi().getRawSourceRebuildImpact(id).then(unwrapRawTableResult),
   rebuildRawSource: (...args: Parameters<DataApi['rebuildRawSource']>) =>
-    dataApi().rebuildRawSource(...args),
-  deleteRawSource: (id: string) => dataApi().deleteRawSource(id),
+    dataApi()
+      .rebuildRawSource(...args)
+      .then(unwrapRawTableResult),
+  deleteRawSource: (id: string) => dataApi().deleteRawSource(id).then(unwrapRawTableResult),
 
   // ---- output tables ----
   getResultTable: (...args: Parameters<DataApi['getResultTable']>) =>

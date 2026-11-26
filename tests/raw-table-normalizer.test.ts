@@ -336,7 +336,7 @@ describe('input table normalizer runner', () => {
       publishedAt: null,
     };
 
-    let result: Awaited<ReturnType<typeof runRawTableNormalizerProject>> | null = null;
+    let result: Awaited<ReturnType<typeof runRawTableNormalizerProject>> | null;
     try {
       result = await runRawTableNormalizerProject({
         version,

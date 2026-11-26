@@ -236,8 +236,7 @@ function createDatabaseInstance(db: Database.Database): DatabaseInstance {
       get: vi.fn(
         (id: string) =>
           db.prepare('SELECT * FROM sessions WHERE id = ? LIMIT 1').get(id) as
-            | SessionRow
-            | undefined
+            SessionRow | undefined
       ),
       getAll: vi.fn(
         () => db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[]
@@ -398,7 +397,7 @@ function readStateFile(): {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-describe('memory round-2 review fixes', () => {
+describe('memory ingestion, replay and retries', () => {
   let rawDb: Database.Database;
   let db: DatabaseInstance;
   let service: MemoryService;
@@ -443,7 +442,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-01: journaled commit — a crash mid-swap is replayed, never destructive.
-  it('R2-01a: recovery completes a commit whose journal was mid-flight', () => {
+  it('recovery completes a commit whose journal was mid-flight', () => {
     const root = memoryRoot();
     fs.mkdirSync(root, { recursive: true });
     fs.mkdirSync(path.join(root, '.staging-rebuild'), { recursive: true });
@@ -503,7 +502,7 @@ describe('memory round-2 review fixes', () => {
     expect(fs.existsSync(path.join(root, '.backup-rebuild'))).toBe(false);
   });
 
-  it('R2-01b: recovery rolls back when a journaled staged file is genuinely lost', () => {
+  it('recovery rolls back when a journaled staged file is genuinely lost', () => {
     const root = memoryRoot();
     fs.mkdirSync(root, { recursive: true });
     const staging = path.join(root, '.staging-rebuild');
@@ -566,7 +565,7 @@ describe('memory round-2 review fixes', () => {
     expect(fs.existsSync(backup)).toBe(false);
   });
 
-  it('R2-01c: an injected rename failure reports commitError, not extraction failure', async () => {
+  it('an injected rename failure reports commitError, not extraction failure', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -606,7 +605,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-02: an older run must never delete a newer revision's job record.
-  it('R2-02: a stale in-flight run cannot consume the newer revision record', async () => {
+  it('a stale in-flight run cannot consume the newer revision record', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
 
     let releaseV1!: () => void;
@@ -684,7 +683,7 @@ describe('memory round-2 review fixes', () => {
     }
   });
 
-  it('R2-02b: a stale run that FAILS cannot poison the newer revision record', async () => {
+  it('a stale run that FAILS cannot poison the newer revision record', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
 
     let releaseA!: () => void;
@@ -761,7 +760,7 @@ describe('memory round-2 review fixes', () => {
     }
   });
 
-  it('R2-02c: restart recovery replays the persisted revision from the store', async () => {
+  it('restart recovery replays the persisted revision from the store', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     // Simulate a pending job persisted before a crash — no in-memory input.
     fs.mkdirSync(memoryRoot(), { recursive: true });
@@ -794,7 +793,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-03: a rebuild must not overwrite memory ingested during the rebuild.
-  it('R2-03: ingestion landing mid-rebuild is replayed onto the new generation', async () => {
+  it('ingestion landing mid-rebuild is replayed onto the new generation', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -837,7 +836,7 @@ describe('memory round-2 review fixes', () => {
     expect(service.getOverview().experienceSessionCount).toBeGreaterThanOrEqual(2);
   });
 
-  it('R2-03b: overlapping rebuilds serialize — no torn staging, both succeed', async () => {
+  it('overlapping rebuilds serialize — no torn staging, both succeed', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     insertSessionWithMessages(rawDb, { id: 's2', title: 'B', cwd: '/repo/b' });
     await service.enqueueIngestion({
@@ -865,7 +864,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-04: manual edits, confirmations, and deletes survive full rebuilds.
-  it('R2-04: manual override + verified state persist across rebuildAll', async () => {
+  it('manual override + verified state persist across rebuildAll', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -939,7 +938,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-05: invalid extractions must not advance the cursor or clear chunks.
-  it('R2-05a: a malformed extraction preserves the cursor and stored chunks', async () => {
+  it('a malformed extraction preserves the cursor and stored chunks', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -977,7 +976,7 @@ describe('memory round-2 review fixes', () => {
     expect(service.inspectSession('s1')?.chunks.length).toBe(chunksBefore);
   });
 
-  it('R2-05b: all-out-of-range source turns fail the extraction outright', async () => {
+  it('all-out-of-range source turns fail the extraction outright', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -1023,7 +1022,7 @@ describe('memory round-2 review fixes', () => {
     expect(service.inspectSession('s1')?.chunks.length).toBe(chunksBefore);
   });
 
-  it('R2-05c: a chunk mixing valid and invalid source turns fails the extraction', async () => {
+  it('a chunk mixing valid and invalid source turns fails the extraction', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -1078,7 +1077,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-06: backoff-waiting jobs actually wake up and run.
-  it('R2-06: the retry timer replays a due job without another enqueue', async () => {
+  it('the retry timer replays a due job without another enqueue', async () => {
     vi.useFakeTimers();
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
 
@@ -1104,7 +1103,7 @@ describe('memory round-2 review fixes', () => {
     expect(service.inspectSession('s1')).not.toBeNull();
   });
 
-  it('R2-06b: retries escalate to dead-letter through the real pipeline', async () => {
+  it('retries escalate to dead-letter through the real pipeline', async () => {
     vi.useFakeTimers();
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
 
@@ -1138,7 +1137,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-07: in-place edits reprocess the full relevant transcript.
-  it('R2-07: an early in-place edit reprocesses from the divergence, not the tail', async () => {
+  it('an early in-place edit reprocesses from the divergence, not the tail', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -1180,7 +1179,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-08: evidence messageIds survive the file round-trip.
-  it('R2-08: messageIds in core/project evidence persist across reopen', async () => {
+  it('messageIds in core/project evidence persist across reopen', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A', '/repo/a'),
@@ -1201,7 +1200,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-09: a hanging navigator degrades to summaries within the deadline.
-  it('R2-09: a hanging navigator cannot stall prompt construction', async () => {
+  it('a hanging navigator cannot stall prompt construction', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     // Retrieval must actually hit stored experience for navigation to engage.
     mockLLMState.experienceResponder = () =>
@@ -1241,7 +1240,7 @@ describe('memory round-2 review fixes', () => {
     expect(prefix).toContain('Broad Summaries');
   });
 
-  it('R2-09b: aborting the caller signal cancels prompt construction mid-navigation', async () => {
+  it('aborting the caller signal cancels prompt construction mid-navigation', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     mockLLMState.experienceResponder = () =>
       JSON.stringify({
@@ -1278,7 +1277,7 @@ describe('memory round-2 review fixes', () => {
   });
 
   // R2-10: provenance records only what actually entered the prompt.
-  it('R2-10: injection provenance reflects the budgeted selection, not all candidates', async () => {
+  it('injection provenance reflects the budgeted selection, not all candidates', async () => {
     insertSessionWithMessages(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     mockLLMState.coreResponder = () =>
       JSON.stringify({

@@ -173,14 +173,14 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={tr('searchField')}
-          className="h-8 min-w-0 flex-1 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+          className="h-8 min-w-0 flex-1 bg-transparent text-ui-body text-text-primary outline-none placeholder:text-text-muted"
         />
         {selectionMode === 'multi' && (
           <label
             className={`flex shrink-0 cursor-pointer items-center gap-1 ${
               isGlass
-                ? 'text-[12px] text-text-muted hover:text-text-secondary'
-                : 'text-[12px] text-text-secondary font-medium'
+                ? 'text-ui-label text-text-muted hover:text-text-secondary'
+                : 'text-ui-label text-text-secondary font-medium'
             }`}
             onMouseDown={(e) => {
               e.preventDefault();
@@ -201,15 +201,15 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
 
       <div
         ref={listRef}
-        className={`scrollbar-hover min-w-0 max-w-full overflow-x-hidden overflow-y-auto ${isGlass ? '' : 'flex-1 min-h-0'}`}
+        className={`scrollbar-hover min-w-0 max-w-full space-y-0.5 overflow-x-hidden overflow-y-auto p-1 ${isGlass ? '' : 'flex-1 min-h-0'}`}
         style={{ maxHeight }}
       >
         {filteredMissing.map((col) => (
           <label
             key={`missing-${col}`}
             title={missingLabel}
-            className={`flex min-h-8 cursor-pointer items-center gap-2 border-b border-border-subtle px-2.5 transition-colors hover:bg-surface-hover ${
-              isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
+            className={`flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 transition-colors hover:bg-surface-hover ${
+              isGlass ? 'py-1.5 text-ui-body' : 'py-1 text-ui-body'
             } text-error`}
             onMouseDown={(e) => {
               e.preventDefault();
@@ -229,7 +229,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
         ))}
         {filtered.length === 0 && filteredMissing.length === 0 ? (
           <div
-            className={`px-3 text-center text-[12px] text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
+            className={`px-3 text-center text-ui-label text-text-muted ${isGlass ? 'py-4' : 'py-8'}`}
           >
             {search ? tr('noMatch') : tr('noFields')}
           </div>
@@ -239,9 +239,13 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
             return (
               <label
                 key={col}
-                className={`flex min-h-8 cursor-pointer items-center gap-2 px-2.5 transition-colors hover:bg-surface-hover ${
-                  isGlass ? 'py-1.5 text-[13px]' : 'py-1 text-[13px]'
-                } ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
+                className={`flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 transition-colors ${
+                  isGlass ? 'py-1.5 text-ui-body' : 'py-1 text-ui-body'
+                } ${
+                  checked
+                    ? 'bg-accent-muted/70 font-medium text-text-primary'
+                    : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                }`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   lockScrollTop();

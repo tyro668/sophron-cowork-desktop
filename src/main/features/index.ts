@@ -1,3 +1,4 @@
+import { appContext } from '../app/context';
 /**
  * @module main/features
  *
@@ -25,7 +26,7 @@ import { registerMemoryIpc } from './memory/ipc';
 import { registerCloudConnectionIpc } from './cloud-connection/ipc';
 
 export function registerAllIpc(): void {
-  registerSessionIpc();
+  registerSessionIpc(appContext);
   registerSystemIpc();
   registerUpdateIpc();
   registerAuthIpc();

@@ -361,7 +361,7 @@ export class SkillsManager {
         throw new Error('Configured path is not a directory');
       }
       return preferredPath;
-    } catch (error) {
+    } catch {
       if (preferredPath !== fallbackPath) {
         logWarn(
           `[Skills] Configured skills path is unavailable, fallback to default: ${preferredPath}`
@@ -573,7 +573,7 @@ export class SkillsManager {
 
       try {
         fs.symlinkSync(sourcePath, targetPath, 'dir');
-      } catch (err) {
+      } catch {
         try {
           await this.copyDirectory(sourcePath, targetPath);
         } catch (copyErr) {
@@ -990,7 +990,7 @@ export class SkillsManager {
       if (!descMatch) {
         errors.push('SKILL.md missing "description" in frontmatter');
       }
-    } catch (err) {
+    } catch {
       errors.push('Failed to parse SKILL.md');
     }
 

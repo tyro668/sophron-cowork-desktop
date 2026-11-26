@@ -48,10 +48,9 @@ export async function callVisionAPI(
   functionName?: string
 ): Promise<string> {
   const MAX_RETRIES = 3;
-  const TIMEOUT_MS = 90000; // 45 seconds
+  const TIMEOUT_MS = 90_000;
 
   const logPrefix = functionName ? `[callVisionAPI:${functionName}]` : '[callVisionAPI]';
-  let compatibilityFallbackUsed = false;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -76,40 +75,32 @@ export async function callVisionAPI(
 
       // Deterministic request-shape errors should fail fast instead of wasting retries.
       if (isVisionRequestShapeError(errorMessage)) {
-        if (!compatibilityFallbackUsed) {
-          compatibilityFallbackUsed = true;
-          writeMCPLog(
-            `${logPrefix} Attempt ${attempt}/${MAX_RETRIES} - Request-shape error detected, running one compatibility fallback: ${errorMessage}`,
-            'API Request Error'
-          );
-          try {
-            const compatResult = await callVisionAPIWithTimeout(
-              base64Image,
-              prompt,
-              maxTokens,
-              functionName,
-              TIMEOUT_MS,
-              true,
-              errorMessage
-            );
-            writeMCPLog(`${logPrefix} Compatibility fallback succeeded`, 'API Request');
-            return compatResult;
-          } catch (compatError: unknown) {
-            const compatMessage = String(
-              compatError instanceof Error ? compatError.message : compatError || ''
-            );
-            writeMCPLog(
-              `${logPrefix} Compatibility fallback failed: ${compatMessage}`,
-              'API Request Error'
-            );
-            throw new Error(compatMessage || errorMessage);
-          }
-        }
         writeMCPLog(
-          `${logPrefix} Attempt ${attempt}/${MAX_RETRIES} - Deterministic error, stop retry: ${errorMessage}`,
+          `${logPrefix} Attempt ${attempt}/${MAX_RETRIES} - Request-shape error detected, running one compatibility fallback: ${errorMessage}`,
           'API Request Error'
         );
-        throw new Error(errorMessage);
+        try {
+          const compatResult = await callVisionAPIWithTimeout(
+            base64Image,
+            prompt,
+            maxTokens,
+            functionName,
+            TIMEOUT_MS,
+            true,
+            errorMessage
+          );
+          writeMCPLog(`${logPrefix} Compatibility fallback succeeded`, 'API Request');
+          return compatResult;
+        } catch (compatError: unknown) {
+          const compatMessage = String(
+            compatError instanceof Error ? compatError.message : compatError || ''
+          );
+          writeMCPLog(
+            `${logPrefix} Compatibility fallback failed: ${compatMessage}`,
+            'API Request Error'
+          );
+          throw new Error(compatMessage || errorMessage, { cause: compatError });
+        }
       }
 
       if (errorMessage.includes('timeout')) {
@@ -126,7 +117,9 @@ export async function callVisionAPI(
 
       if (isLastAttempt) {
         writeMCPLog(`${logPrefix} All ${MAX_RETRIES} attempts failed`, 'API Request Failed');
-        throw new Error(`Vision API failed after ${MAX_RETRIES} attempts: ${errorMessage}`);
+        throw new Error(`Vision API failed after ${MAX_RETRIES} attempts: ${errorMessage}`, {
+          cause: error,
+        });
       }
 
       // Wait before retry (exponential backoff: 1s, 2s, 4s)
@@ -507,7 +500,7 @@ export async function callVisionAPIWithTimeout(
       return responseContent;
     } catch (error: unknown) {
       if (error instanceof Error && error.message.includes('timeout')) {
-        throw new Error(`API request timeout after ${timeoutMs}ms`);
+        throw new Error(`API request timeout after ${timeoutMs}ms`, { cause: error });
       }
       throw error;
     }
@@ -1000,7 +993,8 @@ export async function analyzeScreenshotWithVision(
         'JSON Parse Error'
       );
       throw new Error(
-        `Failed to parse JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. JSON string: ${jsonMatch[0].substring(0, 500)}`
+        `Failed to parse JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. JSON string: ${jsonMatch[0].substring(0, 500)}`,
+        { cause: parseError }
       );
     }
 
@@ -1083,7 +1077,8 @@ export async function analyzeScreenshotWithVision(
     };
   } catch (error: unknown) {
     throw new Error(
-      `Vision analysis failed: ${error instanceof Error ? error.message : String(error)}`
+      `Vision analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }

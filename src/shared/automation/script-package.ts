@@ -270,5 +270,14 @@ export const scriptRunConfigSchema = z.object({
 });
 export type ScriptRunConfig = z.infer<typeof scriptRunConfigSchema>;
 
-/** Run-error suffix while an automation's AI 修复 runs in the background (replaced when done). */
-export const SCRIPT_REPAIR_PENDING = ' · 已交给 AI 修复（后台进行中，完成后更新这条记录）';
+export type RepairDraftIssue = 'baseRequired' | 'modelFailed' | 'noChanges' | 'saveFailed';
+
+export type ScriptRepairStatus =
+  | { status: 'pending' | 'unavailable' | 'noVersion' | 'inProgress' | 'stopped' }
+  | { status: 'failed'; reason: string; reasonKey?: RepairDraftIssue }
+  | { status: 'timeout' | 'cooldown'; minutes: number }
+  | { status: 'dailyLimit'; count: number }
+  | { status: 'ready' | 'awaitingReview'; version: number; rows: number }
+  | { status: 'trialFailed' | 'awaitingFailedReview'; version: number; reason: string };
+
+export type ScriptRepair = ScriptRepairStatus & { packageId: string };

@@ -180,7 +180,7 @@ export async function getAllVisitedApps(): Promise<string[]> {
         try {
           actualAppNames.push(entry.name);
           writeMCPLog(`[getAllVisitedApps] Found app: ${entry.name}`, 'App List');
-        } catch (error) {
+        } catch {
           // Skip directories without valid click_history.json
           continue;
         }

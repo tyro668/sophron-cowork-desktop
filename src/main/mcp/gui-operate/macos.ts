@@ -478,6 +478,6 @@ export async function executeCliclick(
       '\n\nmacOS 权限提示 / Permissions:\n' +
       '- System Settings → Privacy & Security → Accessibility：允许 sophron cowork / 九思助理\n' +
       '- System Settings → Privacy & Security → Automation：允许 sophron cowork / 九思助理 控制 “System Events”\n';
-    throw new Error(`${baseMessage}${hint}`);
+    throw new Error(`${baseMessage}${hint}`, { cause: error });
   }
 }

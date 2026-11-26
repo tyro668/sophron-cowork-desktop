@@ -9,6 +9,7 @@ import {
 import {
   CsvEncodingError,
   isCsvDecodeError,
+  rawTableIssue,
   isValidUtf8File,
   resolveCsvReadPath,
 } from '../src/main/data/store/csv-encoding';
@@ -66,7 +67,9 @@ describe('CSV encoding handling', () => {
       "Error invoking remote method 'data.importRawTable': Invalid Input Error: Invalid unicode (byte sequence mismatch) detected. This file is not utf-8 encoded.";
     expect(isCsvDecodeError(new Error(raw))).toBe(true);
     const t = ((key: string) => `t:${key}`) as never;
-    expect(formatDataErrorMessage(new Error(raw), t)).toBe('t:data.rawTables.errors.csvEncoding');
+    expect(formatDataErrorMessage(structuredClone(rawTableIssue(new Error(raw))), t)).toBe(
+      't:data.rawTables.errors.csvEncoding'
+    );
     expect(formatDataErrorMessage(new Error('boom'), t)).toBe('boom');
   });
 

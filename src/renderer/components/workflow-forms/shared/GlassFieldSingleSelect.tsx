@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Search } from 'lucide-react';
 import { useDataFieldTypeLabel } from '../../../hooks/useDataFieldTypeLabel';
 import { parseFieldRef } from '../../../../shared/expression-syntax/fields';
 import './form-grid.css';
@@ -223,7 +223,7 @@ export function GlassFieldSingleSelect({
         aria-expanded={open}
         aria-label={placeholder}
         className={[
-          'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-[13px] outline-none transition-colors',
+          'inline-flex min-h-8 min-w-0 items-center gap-1.5 rounded border px-2 text-ui-body outline-none transition-colors',
           'border-border-muted bg-surface text-text-primary hover:bg-surface-hover focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30',
           className || '',
         ].join(' ')}
@@ -271,9 +271,9 @@ export function GlassFieldSingleSelect({
               maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="operator-ui fixed z-[10000] flex flex-col overflow-hidden rounded-xl border border-border-subtle bg-surface shadow-elevated"
+            className="operator-ui fixed z-[10000] flex flex-col overflow-hidden rounded-lg border border-border-muted bg-surface shadow-elevated"
           >
-            <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2 py-1.5">
+            <div className="flex min-h-8 items-center gap-1.5 border-b border-border-subtle px-2.5 py-1">
               <Search className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
               <input
                 ref={inputRef}
@@ -281,13 +281,13 @@ export function GlassFieldSingleSelect({
                 value={search}
                 onChange={handleSearchChange}
                 placeholder={searchPlaceholder}
-                className="h-8 flex-1 min-w-0 bg-transparent text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+                className="h-7 flex-1 min-w-0 bg-transparent text-ui-body text-text-primary outline-none placeholder:text-text-muted"
               />
             </div>
 
-            <div className="scrollbar-hover flex-1 overflow-y-auto p-1">
+            <div className="scrollbar-hover flex-1 space-y-0.5 overflow-y-auto p-1">
               {filteredOptions.length === 0 ? (
-                <div className="px-2.5 py-4 text-center text-[12px] text-text-muted">
+                <div className="px-2.5 py-4 text-center text-ui-label text-text-muted">
                   {emptyText ||
                     t('data.workflow.formLabels.fieldPicker.noMatch', {
                       defaultValue: 'No match',
@@ -309,16 +309,18 @@ export function GlassFieldSingleSelect({
                       disabled={disabled}
                       onClick={() => handleSelect(opt)}
                       className={[
-                        'flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
+                        'flex min-h-8 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-ui-body outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30',
                         selected
-                          ? 'bg-accent-muted text-text-primary ring-1 ring-inset ring-accent/20'
-                          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary',
+                          ? 'bg-accent-muted font-medium text-accent'
+                          : idx === highlightedIndex
+                            ? 'bg-surface-hover text-text-primary'
+                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary',
                         disabled ? 'pointer-events-none opacity-45' : '',
-                        idx === highlightedIndex && !selected ? 'bg-surface text-text-primary' : '',
                       ].join(' ')}
                     >
                       <DataTypeIcon type={columnTypes[opt]} />
                       <span className="min-w-0 flex-1 truncate">{optLabel}</span>
+                      {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
                     </button>
                   );
                 })

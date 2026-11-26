@@ -125,7 +125,7 @@ export async function performClick(
   }
 
   // Build cliclick command
-  let command = '';
+  let command: string;
 
   // Add modifiers (if any)
   const cliclickModifiers = normalizedModifiers.join(',');
@@ -384,7 +384,7 @@ export async function performKeyPress(key: string, modifiers: string[] = []): Pr
   );
   const hasCliclick = Boolean(await resolveCliclickPath());
 
-  let command = '';
+  let command: string;
   let resultMessage = '';
 
   // For special keys that have key codes, prefer AppleScript key code method
@@ -697,7 +697,7 @@ export async function takeScreenshot(
       '\n\nmacOS 权限提示 / Permissions:\n' +
       '- System Settings → Privacy & Security → Screen Recording：允许 sophron cowork / 九思助理\n' +
       '- 重新启动应用后再试 / Restart the app and try again\n';
-    throw new Error(`${baseMessage}${hint}`);
+    throw new Error(`${baseMessage}${hint}`, { cause: error });
   }
 
   // Verify the file was created

@@ -53,10 +53,8 @@
     "crunchDataDesc": "清洗、分析与可视化",
     "organizeFiles": "整理数据文件",
     "organizeFilesDesc": "归类管理本地文件",
-    "checkEmails": "抓取网页数据",
     "searchPapers": "调研数据来源",
     "searchPapersDesc": "发现可靠数据资源",
-    "summarizePapersToNotion": "整理调研笔记",
     "selectWorkingFolder": "选择工作文件夹（必填）",
     "defaultWorkingFolder": "默认工作目录",
     "selectWorkingFolderFailed": "选择工作文件夹失败",
@@ -66,16 +64,12 @@
     "mentionSkill": "引用技能 (@)",
     "letsGo": "开始",
     "starting": "启动中...",
-    "chromeRequired": "需要 Chrome",
-    "notionRequired": "需要 Notion",
     "logoAlt": "九思助理标志",
     "pastedImageAlt": "粘贴图片 {{index}}",
     "quickPromptCreate": "根据工作区里的文件生成一份简洁的数据报告",
     "quickPromptCrunch": "帮我清洗、分析并总结附加的数据集",
     "quickPromptOrganize": "按来源、类型和日期整理我的数据文件",
-    "quickPromptEmail": "请使用 Chrome 从我指定的页面收集相关表格或报告数据，并在工作区保存一份干净摘要。",
     "quickPromptPapers": "请使用 Chrome 调研与 [Topic] 相关的数据来源，总结有用的数据集或报告，并包含链接和关键字段。",
-    "quickPromptNotion": "帮我调研三个与 [Topic] 相关的代表性数据来源，并写入名为“Data Sources”的 Notion 页面，包含来源、覆盖范围、字段、更新频率和注意事项。",
     "apiNotConfigured": "API 尚未配置，请前往设置页面填写 API 提供商和密钥。",
     "goToSettings": "前往设置"
   },
@@ -84,8 +78,7 @@
     "data": "数据",
     "cloudData": "云空间",
     "skills": "技能",
-    "automation": "自动化",
-    "tasks": "任务"
+    "automation": "自动化"
   },
   "automation": {
     "pageTitle": "自动化",
@@ -2675,6 +2668,7 @@
     "confidenceReasonSummary": "来自会话总结",
     "confidenceReasonInference": "来自模型推断，待验证",
     "source": "来源",
+    "updatedAt": "更新时间",
     "recentUsage": "最近使用",
     "noEvidence": "暂无来源记录",
     "viewAll": "查看全部",
@@ -4085,7 +4079,32 @@
       "optionVersion": "v{{version}}",
       "folderMissing": "文件夹已被删除，只剩版本记录"
     },
+    "scriptRunMessages": {
+      "packageRequired": "执行脚本：请选择脚本包",
+      "unavailable": "执行脚本：数据服务不可用",
+      "writeFailed": "{{name}}：写入原始表失败：{{reason}}",
+      "rowCount": "{{name}} · {{rows}} 行",
+      "baseRequired": "修复需要基于一个版本",
+      "modelFailed": "模型出错",
+      "noChanges": "AI 修复没有改动任何文件",
+      "saveFailed": "保存 AI 修复草稿失败"
+    },
     "repair": {
+      "status": {
+        "pending": "已交给 AI 修复，完成后将更新此记录",
+        "unavailable": "AI 修复不可用",
+        "noVersion": "没有可修复的版本",
+        "inProgress": "更早的运行正在修复这个脚本",
+        "stopped": "修复已停止，本次不计入修复次数",
+        "failed": "AI 修复失败：{{reason}}",
+        "timeout": "修复超时（{{minutes}} 分钟）",
+        "cooldown": "请在 {{minutes}} 分钟后重试",
+        "dailyLimit": "24 小时内已自动修复 {{count}} 次",
+        "ready": "已修复为 v{{version}}（试运行 {{rows}} 行），等待确认使用",
+        "awaitingReview": "v{{version}} 已通过试运行（{{rows}} 行），等待确认使用",
+        "trialFailed": "v{{version}} 未通过试运行：{{reason}}",
+        "awaitingFailedReview": "v{{version}} 未通过试运行，等待查看"
+      },
       "view": "查看修复结果",
       "publish": "一键确认使用 v{{version}}",
       "published": "已确认使用 v{{version}}",

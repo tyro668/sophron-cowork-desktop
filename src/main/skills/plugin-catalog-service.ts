@@ -111,7 +111,7 @@ export class PluginCatalogService {
       return this.setAndFilterCache(data, installableOnly);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to fetch plugin catalog: ${message}`);
+      throw new Error(`Failed to fetch plugin catalog: ${message}`, { cause: error });
     }
   }
 
@@ -143,7 +143,7 @@ export class PluginCatalogService {
       return installableOnly ? data.filter((skill) => skill.installable) : data;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to fetch SkillHub catalog: ${message}`);
+      throw new Error(`Failed to fetch SkillHub catalog: ${message}`, { cause: error });
     }
   }
 

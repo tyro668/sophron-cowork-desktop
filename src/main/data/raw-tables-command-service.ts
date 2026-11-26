@@ -834,7 +834,7 @@ export function withRequestedExcelSheet(
       `sheetName "${requested}" only applies to Excel sources (source kind: ${sourceKind ?? 'unknown'})`
     );
   }
-  let sheetNames: string[] = [];
+  let sheetNames: string[];
   try {
     sheetNames = getWorkbookSheetNames(sourcePath);
   } catch (error) {

@@ -159,7 +159,7 @@ export function GlassOptionMultiSelect({
           event.preventDefault();
           toggle();
         }}
-        className={`group relative flex h-8 min-h-8 w-full min-w-0 items-center overflow-hidden rounded-md border border-border-muted bg-surface pl-[5px] text-[13px] outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
+        className={`group relative flex h-8 min-h-8 w-full min-w-0 items-center overflow-hidden rounded-md border border-border-muted bg-surface pl-[5px] text-ui-body outline-none transition-colors focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 ${
           isOpen && dropdown === 'inline' ? 'rounded-b-none' : ''
         } ${
           disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer hover:bg-surface-hover'
@@ -168,7 +168,7 @@ export function GlassOptionMultiSelect({
         {overflow === 'scroll' ? (
           <div className="scrollbar-hover flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
             {selected.length === 0 && placeholder && (
-              <span className="flex-shrink-0 whitespace-nowrap text-[12px] italic text-text-muted">
+              <span className="flex-shrink-0 whitespace-nowrap text-ui-label italic text-text-muted">
                 {placeholder}
               </span>
             )}

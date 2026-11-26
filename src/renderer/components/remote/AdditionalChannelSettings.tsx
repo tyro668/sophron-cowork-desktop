@@ -2,9 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { remoteClient } from '../../features/remote/api/remote-client';
 import { showToast } from '../../utils/toast';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Switch } from '../ui/switch';
+import { Badge, Switch } from '../ui';
 import type { FeishuChannelConfig } from '../../../shared/contracts/remote';
 import type { RemoteChannelViewModel } from './types';
 
@@ -27,6 +25,7 @@ export function AdditionalChannelSettings({
   const [appId, setAppId] = useState(larkConfig?.appId || '');
   const [appSecret, setAppSecret] = useState(larkConfig?.appSecret || '');
   const [saving, setSaving] = useState(false);
+
   async function save() {
     setSaving(true);
     try {
@@ -47,60 +46,94 @@ export function AdditionalChannelSettings({
       setSaving(false);
     }
   }
+
+  const stateKey = channel.connected ? 'connected' : channel.enabled ? 'stopped' : 'disabled';
+
   return (
-    <div className="space-y-4">
+    <form
+      className="ui-form-flush bg-surface"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (channel.type === 'lark') void save();
+      }}
+    >
       {channel.configured && (
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-sm">
-            {t(
-              `remote.channelState.${channel.connected ? 'connected' : channel.enabled ? 'stopped' : 'disabled'}`
-            )}
-          </span>
-          <Switch
-            checked={channel.enabled}
-            disabled={toggling || saving}
-            onCheckedChange={onToggle}
-            aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
-          />
+        <div className="ui-form-row">
+          <span className="ui-form-label items-center">{t('mcp.status')}</span>
+          <div className="ui-form-value !flex-row items-center justify-between px-[10px]">
+            <Badge tone={channel.connected ? 'success' : 'default'}>
+              {t(`remote.channelState.${stateKey}`)}
+            </Badge>
+            <Switch
+              size="sm"
+              checked={channel.enabled}
+              disabled={toggling || saving}
+              onCheckedChange={onToggle}
+              aria-label={t(channel.enabled ? 'remote.disableChannel' : 'remote.enableChannel')}
+            />
+          </div>
         </div>
       )}
       {channel.type === 'lark' && (
-        <form
-          className="space-y-3"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save();
-          }}
-        >
-          <label className="block space-y-1 text-sm">
-            <span>{t('remote.qr.appId')}</span>
-            <Input value={appId} onChange={(e) => setAppId(e.target.value)} autoComplete="off" />
-          </label>
-          <label className="block space-y-1 text-sm">
-            <span>{t('remote.qr.appSecret')}</span>
-            <Input
-              type="password"
-              value={appSecret}
-              onChange={(e) => setAppSecret(e.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={saving}
-            disabled={!appId.trim() || !appSecret.trim()}
-          >
-            {t('common.save')}
-          </Button>
-        </form>
+        <>
+          <div className="ui-form-row">
+            <label htmlFor="lark-app-id" className="ui-form-label items-center">
+              {t('remote.qr.appId')}
+            </label>
+            <div className="ui-form-value">
+              <input
+                id="lark-app-id"
+                value={appId}
+                onChange={(e) => setAppId(e.target.value)}
+                autoComplete="off"
+                className="font-mono text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+              />
+            </div>
+          </div>
+          <div className="ui-form-row">
+            <label htmlFor="lark-app-secret" className="ui-form-label items-center">
+              {t('remote.qr.appSecret')}
+            </label>
+            <div className="ui-form-value">
+              <input
+                id="lark-app-secret"
+                type="password"
+                value={appSecret}
+                onChange={(e) => setAppSecret(e.target.value)}
+                autoComplete="off"
+                className="font-mono text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+              />
+            </div>
+          </div>
+        </>
       )}
       {channel.type === 'wechat' && (
-        <p className="text-sm text-text-secondary">{t('remote.qr.wechatTextOnly')}</p>
+        <div className="border-b border-border-subtle px-4 py-3 text-[12.5px] text-text-secondary">
+          {t('remote.qr.wechatTextOnly')}
+        </div>
       )}
-      <Button disabled={saving} onClick={onScan}>
-        {t('remote.qr.scanSetup')}
-      </Button>
-    </div>
+      <div className="ui-form-row">
+        <span className="ui-form-label items-center" />
+        <div className="ui-form-value !flex-row items-stretch">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onScan}
+            className="ui-accent-cell min-w-0 flex-1"
+          >
+            {t('remote.qr.scanSetup')}
+          </button>
+          {channel.type === 'lark' && (
+            <button
+              type="submit"
+              disabled={saving || !appId.trim() || !appSecret.trim()}
+              className="ui-accent-cell min-w-0 flex-1 border-l border-border-subtle"
+            >
+              {t('common.save')}
+            </button>
+          )}
+        </div>
+      </div>
+    </form>
   );
 }

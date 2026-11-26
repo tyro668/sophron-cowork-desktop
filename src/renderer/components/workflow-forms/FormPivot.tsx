@@ -1,16 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OperatorFormProps } from './types';
-import { MetricExpressionCell } from './shared/MetricExpressionCell';
 import { GlassFieldSingleSelect } from './shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
-import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
+import { MetricValueCells } from './shared/MetricValueCells';
 import {
   AddRow,
   Cell,
   ErrorRow,
   FormGrid,
   FormScroll,
-  GlassCommitTextInput,
   GridRow,
   HintRow,
   LabelCell,
@@ -277,40 +275,25 @@ export default function FormPivot({
           return (
             <Fragment key={metric.id ?? `metric-${index}`}>
               <GridRow {...metricRowProps(index)} testId={`pivot-metric-row-${index}`}>
-                <Cell v={['ctl']}>
-                  <GlassOptionSingleSelect
-                    value={metric.function}
-                    groups={fnGroups}
-                    onChange={(value) =>
-                      updateMetric(index, { function: value as PivotMetric['function'] })
-                    }
-                    className="w-full"
-                  />
-                </Cell>
-                <Cell v={['ctl', issue.expressionError && 'err']}>
-                  <MetricExpressionCell
-                    value={metric.expression ?? ''}
-                    onChange={(value) => updateMetric(index, { expression: value })}
-                    fieldCompletions={fieldCompletions}
-                    columnTypes={columnTypes}
-                    allowAllRows={metric.function === 'count'}
-                    placeholder={tr('pivotExpressionPlaceholder')}
-                  />
-                </Cell>
-                <Cell v={['ctl', issue.aliasError && 'err']}>
-                  <GlassCommitTextInput
-                    value={metric.alias ?? ''}
-                    onCommit={(value) => updateMetric(index, { alias: value.trim() })}
-                    placeholder={
-                      defaultSuffixes[index]
-                        ? tr('pivotDefaultSuffix', { suffix: defaultSuffixes[index] })
-                        : tr('pivotNoSuffix')
-                    }
-                    ariaLabel={tr('pivotSuffixLabel')}
-                    ariaInvalid={issue.aliasError}
-                    className="h-full w-full px-2.5 text-[13px]"
-                  />
-                </Cell>
+                <MetricValueCells
+                  metric={metric}
+                  issue={issue}
+                  functionGroups={fnGroups}
+                  fieldCompletions={fieldCompletions}
+                  columnTypes={columnTypes}
+                  expressionPlaceholder={tr('pivotExpressionPlaceholder')}
+                  aliasPlaceholder={
+                    defaultSuffixes[index]
+                      ? tr('pivotDefaultSuffix', { suffix: defaultSuffixes[index] })
+                      : tr('pivotNoSuffix')
+                  }
+                  aliasLabel={tr('pivotSuffixLabel')}
+                  onFunctionChange={(value) =>
+                    updateMetric(index, { function: value as PivotMetric['function'] })
+                  }
+                  onExpressionChange={(expression) => updateMetric(index, { expression })}
+                  onAliasChange={(alias) => updateMetric(index, { alias })}
+                />
                 <RowActionsCell
                   labels={rowLabels}
                   onAdd={() => addMetricAfter(index)}

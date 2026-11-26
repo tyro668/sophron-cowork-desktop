@@ -1,3 +1,4 @@
+import { appContext } from '../src/main/app/context';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -70,7 +71,7 @@ describe('session permission policy routing', () => {
     mocks.policy = 'auto_review';
     mocks.startSession.mockResolvedValue({ id: 'session-a' });
     mocks.continueSession.mockResolvedValue(undefined);
-    registerSessionIpc();
+    registerSessionIpc(appContext);
   });
 
   const invoke = (event: unknown) => {

@@ -128,6 +128,17 @@ describe('validateIpcArgs', () => {
     }
   });
 
+  it('validates the raw source ID and its auto-include flag', () => {
+    const channel = 'data.setRawSourceAutoInclude';
+    const validate = (...args: unknown[]) =>
+      validateIpcArgs(channel, IPC_INPUT_SCHEMAS[channel], args);
+    expect(validate('source', false)).toEqual(['source', false]);
+    expect(validate('source', true)).toEqual(['source', true]);
+    expect(() => validate(1, true)).toThrow(IpcInputValidationError);
+    expect(() => validate('source', 'false')).toThrow(IpcInputValidationError);
+    expect(() => validate('source')).toThrow(IpcInputValidationError);
+  });
+
   it('lets variadic tail args pass through', () => {
     const schemas = IPC_INPUT_SCHEMAS['logs.write'];
     const out = validateIpcArgs('logs.write', schemas, ['warn', { a: 1 }, 'text']);
@@ -147,7 +158,8 @@ describe('channel schema coverage', () => {
   const registeredChannels: string[] = [];
   for (const file of walk(SRC_MAIN)) {
     const src = fs.readFileSync(file, 'utf8');
-    for (const m of src.matchAll(/handleIpc\(\s*'([^']+)'/g)) registeredChannels.push(m[1]);
+    for (const m of src.matchAll(/(?:handleIpc|sourceChannel)\(\s*'([^']+)'/g))
+      registeredChannels.push(m[1]);
     // Direct ipcMain.handle outside the wrapper module is forbidden.
     if (!file.endsWith('ipc-handle.ts')) {
       for (const m of src.matchAll(/ipcMain\.handle\(\s*'([^']+)'/g)) {
@@ -157,6 +169,7 @@ describe('channel schema coverage', () => {
   }
 
   it('finds registered channels', () => {
+    expect(registeredChannels).toContain('data.setRawSourceAutoInclude');
     expect(registeredChannels.length).toBeGreaterThan(100);
   });
 

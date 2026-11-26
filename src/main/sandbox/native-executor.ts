@@ -79,7 +79,9 @@ export class NativeExecutor implements SandboxExecutor {
         // Do not treat a dangling symlink as a safe, nonexistent path.
         try {
           if (fs.lstatSync(ancestor).isSymbolicLink()) {
-            throw new Error(`Symlink escape detected: unresolved link ${ancestor}`);
+            throw new Error(`Symlink escape detected: unresolved link ${ancestor}`, {
+              cause: error,
+            });
           }
         } catch (statError) {
           if ((statError as NodeJS.ErrnoException).code !== 'ENOENT') throw statError;
@@ -172,7 +174,7 @@ export class NativeExecutor implements SandboxExecutor {
         if (scriptPath) {
           try {
             fs.unlinkSync(scriptPath);
-          } catch (_e) {
+          } catch {
             /* ignore cleanup failure */
           }
           scriptPath = null;

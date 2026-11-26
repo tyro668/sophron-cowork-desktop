@@ -1,3 +1,4 @@
+import { rawTableIssue } from '../csv-encoding';
 /**
  * Raw-table sources (1:N): a file or folder produces one or more raw tables according to its
  * build mode. Scans a source for the wizard, creates / refreshes / rebuilds its tables, and
@@ -672,7 +673,7 @@ export class RawSourceService {
         result.refreshed.push(member.id);
         result.unchangedNames.push(member.name);
       } catch (error) {
-        result.failed.push({ id: member.id, error: errorText(error) });
+        result.failed.push({ id: member.id, error: errorText(error), issue: rawTableIssue(error) });
       }
     }
     if (MULTI_TABLE_MODES.has(source.buildMode) && source.config.autoInclude) {
@@ -797,7 +798,7 @@ export class RawSourceService {
         await this.renameForNewKey(source, table, decision.newKey);
         out.renamed.push(table.id);
       } catch (error) {
-        out.failed.push({ id: table.id, error: errorText(error) });
+        out.failed.push({ id: table.id, error: errorText(error), issue: rawTableIssue(error) });
       }
     }
     await this.importNewMembers(source, asNew, out.added, out.failed);
@@ -841,7 +842,7 @@ export class RawSourceService {
     source: DataRawSource,
     keys: string[],
     added: string[],
-    failed: Array<{ id: string; error: string }>
+    failed: DataRawSourceRefreshResult['failed']
   ): Promise<void> {
     if (keys.length === 0) return;
     const mode = source.buildMode === 'excel_single' ? 'excel_per_sheet' : source.buildMode;
@@ -872,7 +873,11 @@ export class RawSourceService {
         });
         added.push(table.id);
       } catch (error) {
-        failed.push({ id: plan.memberKey ?? plan.name, error: errorText(error) });
+        failed.push({
+          id: plan.memberKey ?? plan.name,
+          error: errorText(error),
+          issue: rawTableIssue(error),
+        });
       }
     }
   }

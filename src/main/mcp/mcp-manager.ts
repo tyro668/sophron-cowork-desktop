@@ -759,7 +759,7 @@ export class MCPManager {
    * Get the path to the Software Development MCP server file
    */
   private getSoftwareDevServerPath(): string {
-    return this.getMcpServerPath('software-dev-server-example.ts');
+    return this.getMcpServerPath('software-development-server.ts');
   }
 
   /**
@@ -1386,7 +1386,8 @@ export class MCPManager {
             logError(`[MCPManager] Last error code: ${ve.code}, message: ${ve.message}`);
             logError(`[MCPManager] The chrome-devtools-mcp server may not be working correctly`);
             throw new Error(
-              'Chrome 浏览器未就绪，无法执行此操作: MCP connection verification failed after 5 attempts'
+              'Chrome 浏览器未就绪，无法执行此操作: MCP connection verification failed after 5 attempts',
+              { cause: verifyError }
             );
           }
         }
@@ -1395,7 +1396,7 @@ export class MCPManager {
       logError(`[MCPManager] ❌ Failed to start Chrome with debugging`);
       const startErrMsg = startError instanceof Error ? startError.message : String(startError);
       logError(`[MCPManager] Error: ${startErrMsg}`);
-      throw new Error(`Chrome 浏览器未就绪，无法执行此操作: ${startErrMsg}`);
+      throw new Error(`Chrome 浏览器未就绪，无法执行此操作: ${startErrMsg}`, { cause: startError });
     }
   }
 
@@ -1490,7 +1491,8 @@ export class MCPManager {
       // ENOENT means the Chrome executable was not found — re-throw so the caller knows
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new Error(
-          `Chrome executable not found at: ${chromePath}. Please install Google Chrome.`
+          `Chrome executable not found at: ${chromePath}. Please install Google Chrome.`,
+          { cause: error }
         );
       }
       logWarn(`[MCPManager] Chrome startup command completed with warning`);
@@ -1657,7 +1659,7 @@ export class MCPManager {
             payload: { serverId: result.serverId, error: errMsg },
           });
         }
-      } catch (_notifyErr) {
+      } catch {
         // Best-effort notification; logging already happened above
       }
 

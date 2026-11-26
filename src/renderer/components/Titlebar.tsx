@@ -1,24 +1,25 @@
+import { registerTitlebarBrandSlot } from '../hooks/use-titlebar-brand-slot';
+import { desktopClient } from '../features/desktop/api/desktop-client';
 import { Minus, Square, X, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-const isMac = typeof window !== 'undefined' && window.electronAPI?.platform === 'darwin';
-
 export function Titlebar() {
   const { t } = useTranslation();
+  const isMac = desktopClient.platform() === 'darwin';
   const [isMaximized, setIsMaximized] = useState(false);
 
   const handleMinimize = () => {
-    window.electronAPI?.window.minimize();
+    desktopClient.minimize();
   };
 
   const handleMaximize = () => {
-    window.electronAPI?.window.maximize();
+    desktopClient.maximize();
     setIsMaximized(!isMaximized);
   };
 
   const handleClose = () => {
-    window.electronAPI?.window.close();
+    desktopClient.close();
   };
 
   // macOS: traffic lights sit over the sidebar, so the strip is invisible —
@@ -30,7 +31,11 @@ export function Titlebar() {
   return (
     <div className="titlebar-drag flex h-10 shrink-0 items-center justify-between border-b border-border-subtle bg-[var(--glass-panel)]">
       {/* Windows / Linux: the sidebar portals the brand (logo + name + update badge) here */}
-      <div id="titlebar-brand-slot" className="flex min-w-0 items-center pl-3.5" />
+      <div
+        ref={registerTitlebarBrandSlot}
+        id="titlebar-brand-slot"
+        className="flex min-w-0 items-center pl-3.5"
+      />
       {/* Window Controls (macOS uses native traffic lights over the sidebar) */}
       <div className="flex items-center titlebar-no-drag h-full">
         <button

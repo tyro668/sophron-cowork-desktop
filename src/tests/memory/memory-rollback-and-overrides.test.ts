@@ -230,8 +230,7 @@ function createDatabaseInstance(db: Database.Database): DatabaseInstance {
       get: vi.fn(
         (id: string) =>
           db.prepare('SELECT * FROM sessions WHERE id = ? LIMIT 1').get(id) as
-            | SessionRow
-            | undefined
+            SessionRow | undefined
       ),
       getAll: vi.fn(
         () => db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[]
@@ -378,7 +377,7 @@ async function waitFor(predicate: () => boolean, attempts = 200): Promise<void> 
   throw new Error('waitFor timed out');
 }
 
-describe('memory round-4 review fixes', () => {
+describe('memory rollback and manual overrides', () => {
   let rawDb: Database.Database;
   let db: DatabaseInstance;
   let service: MemoryService;
@@ -427,7 +426,7 @@ describe('memory round-4 review fixes', () => {
   // fails mid-way. Once the fault heals, recovery must continue the SAME
   // rollback direction — never resume the forward journal — and certify the
   // complete OLD generation before reporting 'rolled_back'.
-  it('R4-01: recovery after a torn rollback continues the rollback, never re-commits', () => {
+  it('recovery after a torn rollback continues the rollback, never re-commits', () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     const backup = path.join(root, '.backup-rebuild');
@@ -478,7 +477,7 @@ describe('memory round-4 review fixes', () => {
   // R4-01b: a journal with a recorded rollback failure recovers the second
   // time — materials are preserved between attempts and the final state is a
   // complete old generation, not a mixed one.
-  it('R4-01b: failed rollback leaves materials for a later, complete recovery', () => {
+  it('failed rollback leaves materials for a later, complete recovery', () => {
     const root = memoryRoot();
     const staging = path.join(root, '.staging-rebuild');
     const backup = path.join(root, '.backup-rebuild');
@@ -536,7 +535,7 @@ describe('memory round-4 review fixes', () => {
 
   // R4-02: a failing commit must roll back ONLY its own writes — a concurrent
   // task's already-committed memory must survive the recovery untouched.
-  it('R4-02: a failed ingestion restores only its own commit, never a neighbour\u2019s', async () => {
+  it('a failed ingestion restores only its own commit, never a neighbour\u2019s', async () => {
     insertSession(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     insertSession(rawDb, { id: 's2', title: 'B', cwd: '/repo/b' });
 
@@ -613,7 +612,7 @@ describe('memory round-4 review fixes', () => {
   // R4-03: an unrelated NEWER message must not let an OLD fact supersede a
   // newer manual edit — effectiveAt comes from the action's supporting turn,
   // not the session tail. No evidence binding → never supersedes.
-  it('R4-03: evidence-bound effectiveAt keeps a newer manual edit over an old fact', async () => {
+  it('evidence-bound effectiveAt keeps a newer manual edit over an old fact', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A'),
@@ -695,7 +694,7 @@ describe('memory round-4 review fixes', () => {
   // R4-04: supersede decisions recorded while building a rebuild candidate
   // must not touch the live overlay ledger until the candidate commits. A
   // failed candidate leaves every manual record byte-identical.
-  it('R4-04: an abandoned rebuild never mutates the live manual overlay store', async () => {
+  it('an abandoned rebuild never mutates the live manual overlay store', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     for (const message of DEFAULT_MESSAGES('s1')) {
       insertMessage(rawDb, {
@@ -772,7 +771,7 @@ describe('memory round-4 review fixes', () => {
   // R4-05: tombstones are timestamped — an explicit re-assertion of the SAME
   // value, with evidence newer than the deletion, lifts both the tombstone
   // and the delete overlay. A replay of the OLD evidence stays blocked.
-  it('R4-05: a newer explicit same-value re-assertion revives a deleted fact', async () => {
+  it('a newer explicit same-value re-assertion revives a deleted fact', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     await service.enqueueIngestion({
       session: makeSession('s1', 'A'),
@@ -821,7 +820,7 @@ describe('memory round-4 review fixes', () => {
   // R4-06: disabling memory aborts the in-flight provider call itself and
   // fences the commit — the job returns to pending (no attempt burned) and
   // replays on re-enable.
-  it('R4-06: disabling mid-extraction aborts the call and resumes on re-enable', async () => {
+  it('disabling mid-extraction aborts the call and resumes on re-enable', async () => {
     insertSession(rawDb, { id: 's1', title: 'A' });
     // The re-enabled replay rebuilds its input from the DB — the messages
     // must exist as rows, not only inside the enqueued input.
@@ -870,7 +869,7 @@ describe('memory round-4 review fixes', () => {
   // R4-07: a rebuild that prepares sessions but fails to commit reports
   // prepared>0 yet committed=0 — the caller is never told sessions were
   // applied when the live generation was untouched.
-  it('R4-07: a commit failure reports committed=0 while prepared counts stay honest', async () => {
+  it('a commit failure reports committed=0 while prepared counts stay honest', async () => {
     insertSession(rawDb, { id: 's1', title: 'A', cwd: '/repo/a' });
     for (const message of DEFAULT_MESSAGES('s1')) {
       insertMessage(rawDb, {

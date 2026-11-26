@@ -29,18 +29,18 @@ describe('bundle-mcp staging', () => {
 
     fs.writeFileSync(path.join(sourceDir, 'gui-operate-server.js'), 'module.exports = "gui";\n');
     fs.writeFileSync(
-      path.join(sourceDir, 'software-dev-server-example.js'),
+      path.join(sourceDir, 'software-development-server.js'),
       'module.exports = "dev";\n'
     );
 
     await stageBundledServers(sourceDir, stagedDir, [
       { name: 'gui-operate-server' },
-      { name: 'software-dev-server-example' },
+      { name: 'software-development-server' },
     ]);
 
     expect(fs.readFileSync(path.join(stagedDir, 'gui-operate-server.js'), 'utf8')).toContain('gui');
     expect(
-      fs.readFileSync(path.join(stagedDir, 'software-dev-server-example.js'), 'utf8')
+      fs.readFileSync(path.join(stagedDir, 'software-development-server.js'), 'utf8')
     ).toContain('dev');
 
     const tempEntries = fs

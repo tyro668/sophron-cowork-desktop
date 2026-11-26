@@ -59,7 +59,7 @@ export function FieldPatternCells({
             placeholder={tr('patternPlaceholder')}
             aria-label={tr('patternLabel')}
             data-testid="field-pattern-input"
-            className="h-full min-w-0 flex-1 bg-transparent px-2.5 text-[13px] text-text-primary outline-none placeholder:text-text-muted"
+            className="h-full min-w-0 flex-1 bg-transparent px-2.5 text-ui-body text-text-primary outline-none placeholder:text-text-muted"
           />
           <button
             type="button"
@@ -67,7 +67,7 @@ export function FieldPatternCells({
             onClick={() => onApply(matched)}
             data-testid="field-pattern-apply"
             style={{ flex: '0 0 auto', width: 'auto' }}
-            className="h-full shrink-0 border-l border-border-subtle px-3 text-[12.5px] text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:text-text-muted disabled:hover:bg-transparent"
+            className="h-full shrink-0 border-l border-border-subtle px-3 text-ui-control text-accent hover:bg-accent-muted disabled:cursor-not-allowed disabled:text-text-muted disabled:hover:bg-transparent"
           >
             {tr('apply', { count: active ? matched.length : 0 })}
           </button>

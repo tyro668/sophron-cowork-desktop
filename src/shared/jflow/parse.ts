@@ -118,7 +118,7 @@ function runRule<T>(
   const parser = getJflowParser();
   parser.caseSites = [];
   parser.input = tokens;
-  let ast: T | null = null;
+  let ast: T | null;
   try {
     ast = (parser[rule] as () => T)();
   } catch (error) {
@@ -253,7 +253,7 @@ export function fieldCompletionContext(
   const parser = getJflowParser();
   const startRule =
     /^\s*\|/.test(before) && !/^\s*(pipeline|source|let)\b/m.test(before) ? 'steps' : 'file';
-  let expectsField = true;
+  let expectsField: boolean;
   try {
     const suggestions = (
       parser as unknown as {

@@ -6,7 +6,7 @@ import { AutomationActionRegistry } from '../../src/main/automation/automation-a
 import type { AutomationRunContext } from '../../src/main/automation/automation-action-registry';
 import { registerScriptRunAction } from '../../src/main/automation/script-run-action';
 import { BackgroundRepairs } from '../../src/main/automation/script-packages/background-repairs';
-import { SCRIPT_REPAIR_PENDING } from '../../src/shared/automation/script-package';
+import type { ScriptRepair } from '../../src/shared/automation/script-package';
 import type { AutomationStore } from '../../src/main/automation/automation-store';
 import type { AutomationRun } from '../../src/shared/automation/types';
 import { ScriptPackageService } from '../../src/main/automation/script-packages/service';
@@ -39,13 +39,17 @@ let lastError: string | null;
 
 /** Minimal run store: the runner records a failed run with the thrown message. */
 const store = {
+  setRunScriptRepair: (id: string, nodeId: string, repair: ScriptRepair) => {
+    const run = runs.get(id)!;
+    run.scriptRepairs = { ...run.scriptRepairs, [nodeId]: repair };
+  },
   listRuns: () => [...runs.values()],
   updateRun: (id: string, updates: Partial<AutomationRun>) => {
     const next = { ...runs.get(id)!, ...updates } as AutomationRun;
     runs.set(id, next);
     return next;
   },
-  get: () => ({ id: 'a1', lastError }),
+  get: () => ({ id: 'a1', lastError, actionGraph: { nodes: [], edges: [], version: 1 } }),
   setRuntimeState: (_id: string, updates: { lastError?: string | null }) => {
     if (updates.lastError !== undefined) lastError = updates.lastError;
     return null;
@@ -107,10 +111,11 @@ function setup(generator?: ScriptFilesGenerator, repairPolicy = { cooldownMs: 0,
   };
   const registry = new AutomationActionRegistry();
   registerScriptRunAction(registry, {
+    locale: 'zh',
     scripts,
     commands: commands as unknown as DataCommandService,
     generator,
-    ...(generator ? { store } : {}),
+    store,
     repairs,
     repairPolicy,
     now: () => clock,
@@ -198,7 +203,7 @@ describe('script.run action', () => {
       onScriptError: 'notify',
     };
     await expect(action.execute(config, context(), node(config))).rejects.toThrow(
-      '汇率：选择器失效'
+      '汇率: 选择器失效'
     );
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     expect(startSession).not.toHaveBeenCalled();
@@ -234,20 +239,28 @@ describe('script.run action', () => {
       rawTableId: 'raw-1',
       onScriptError: 'ai_repair',
     };
-    expect(await failRun(action, config)).toBe(`汇率：选择器失效${SCRIPT_REPAIR_PENDING}`);
+    expect(await failRun(action, config)).toBe('汇率: 选择器失效');
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('pending');
     const run = await settled();
-    const outcome = '汇率：选择器失效 · AI 已修复为 v3（试运行 1 行），等你确认使用';
-    expect(run.error).toBe(outcome);
-    expect(run.executionSummary?.steps?.[0]?.error).toBe(outcome);
-    expect(lastError).toBe(outcome);
+    expect(run.scriptRepairs?.n1).toEqual({
+      packageId: 'fx',
+      status: 'ready',
+      version: 3,
+      rows: 1,
+    });
+    expect(run.executionSummary?.steps?.[0]?.error).toBe(run.error);
+    expect(lastError).toBe(run.error);
     // The self-test uses the node's timeout.
     expect(check).toHaveBeenCalledWith('fx', 20_000, expect.any(AbortSignal));
     expect(commands.updateRawTable).not.toHaveBeenCalled();
     expect(generate).not.toHaveBeenCalled();
     // Second failure while the v3 draft waits for review: no new repair.
-    expect(await failRun(action, config)).toContain(
-      'AI 已修复为 v3（试运行 1 行），等你确认使用；本次不再修复'
-    );
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1).toMatchObject({
+      status: 'awaitingReview',
+      version: 3,
+      rows: 1,
+    });
     await repairs.idle();
     expect(fix).toHaveBeenCalledTimes(1);
     const summary = await scripts.summary('fx');
@@ -268,15 +281,22 @@ describe('script.run action', () => {
     const { action } = setup({ generate: vi.fn(), fix }, { cooldownMs: 60_000, dailyCap: 2 });
     const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
     await failRun(action, config);
-    expect((await settled()).error).toContain('AI 修复失败：模型不可用');
-    expect(await failRun(action, config)).toContain('未交给 AI 修复：距上次修复不足 1 分钟');
+    expect((await settled()).scriptRepairs?.n1).toMatchObject({
+      status: 'failed',
+      reason: expect.stringContaining('模型不可用'),
+    });
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('cooldown');
     clock += 2 * 60_000;
-    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('pending');
     await repairs.idle();
     clock += 2 * 60_000;
-    expect(await failRun(action, config)).toContain('未交给 AI 修复：24 小时内已自动修复 2 次');
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('dailyLimit');
     clock += 24 * 60 * 60_000;
-    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('pending');
     await repairs.idle();
     expect(fix).toHaveBeenCalledTimes(3);
   });
@@ -297,7 +317,7 @@ describe('script.run action', () => {
     repairs.stop('other-automation');
     expect(repairs.isRunning('fx')).toBe(true);
     repairs.stop('a1');
-    expect((await settled()).error).toContain('AI 修复已停止');
+    expect((await settled()).scriptRepairs?.n1?.status).toBe('stopped');
     expect(repairs.isRunning('fx')).toBe(false);
   });
 
@@ -316,13 +336,15 @@ describe('script.run action', () => {
     await failRun(action, config);
     await vi.waitFor(() => expect(fix).toHaveBeenCalled());
     repairs.stop('a1');
-    expect((await settled()).error).toContain('本次不计入修复次数');
+    expect((await settled()).scriptRepairs?.n1?.status).toBe('stopped');
     // Nothing was saved, and the next failure may repair again despite cooldown and cap = 1.
     expect((await scripts.summary('fx')).draft?.source).not.toBe('ai_repair');
-    expect(await failRun(action, config)).toContain(SCRIPT_REPAIR_PENDING);
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('pending');
     await repairs.idle();
     expect(fix).toHaveBeenCalledTimes(2);
-    expect(await failRun(action, config)).toContain('未交给 AI 修复');
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('cooldown');
   });
 
   it('AI 修复 cancelled during its final trial run saves no draft and restores the folder', async () => {
@@ -363,7 +385,8 @@ describe('script.run action', () => {
     await breakPublished();
     const { action } = setup();
     const config = { packageId: 'fx', timeoutMs: 20_000, onScriptError: 'ai_repair' };
-    await expect(action.execute(config, context(), node(config))).rejects.toThrow('AI 修复不可用');
+    await failRun(action, config);
+    expect(runs.get('r1')?.scriptRepairs?.n1?.status).toBe('unavailable');
   });
 });
 

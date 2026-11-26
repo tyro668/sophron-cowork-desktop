@@ -31,12 +31,7 @@ export const automationClient = {
     delete: (...args: Parameters<AutomationApi['groups']['delete']>) =>
       api().groups.delete(...args),
   },
-  scripts: {
-    list: () => api().scripts.list(),
-    get: (...args: Parameters<AutomationApi['scripts']['get']>) => api().scripts.get(...args),
-    publish: (...args: Parameters<AutomationApi['scripts']['publish']>) =>
-      api().scripts.publish(...args),
-    chatTurns: (...args: Parameters<AutomationApi['scripts']['chatTurns']>) =>
-      api().scripts.chatTurns(...args),
+  get scripts(): AutomationApi['scripts'] {
+    return api().scripts;
   },
 };

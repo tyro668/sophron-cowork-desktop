@@ -27,7 +27,8 @@ export async function getDisplayConfiguration(): Promise<DisplayConfiguration> {
       return config;
     } catch (error: unknown) {
       throw new Error(
-        `Failed to get display information on Windows: ${error instanceof Error ? error.message : String(error)}`
+        `Failed to get display information on Windows: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
       );
     }
   }
@@ -283,7 +284,8 @@ export async function getDisplayConfiguration(): Promise<DisplayConfiguration> {
       return config;
     } catch (fallbackError: unknown) {
       throw new Error(
-        `Failed to get display information: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`
+        `Failed to get display information: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`,
+        { cause: fallbackError }
       );
     }
   }

@@ -483,7 +483,8 @@ export async function executeCommandSafe(
     };
   } catch (error: unknown) {
     throw new Error(
-      `Command execution failed: ${error instanceof Error ? error.message : String(error)}`
+      `Command execution failed: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }

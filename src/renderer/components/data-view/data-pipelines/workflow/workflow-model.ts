@@ -1,9 +1,7 @@
+import { toWorkflowSaveInput } from '../../../../../shared/workflow-plan/workflow-save-input';
+export { toWorkflowSaveInput };
 import type { Edge, Node } from '@xyflow/react';
-import type {
-  DataPipelineWorkflow,
-  DataWorkflowNode,
-  DataWorkflowSaveInput,
-} from '../../../../types';
+import type { DataPipelineWorkflow, DataWorkflowNode } from '../../../../types';
 
 export const WORKFLOW_NODE_WIDTH = 148;
 export const WORKFLOW_NODE_HEIGHT = 48;
@@ -38,26 +36,6 @@ export const EMPTY_WORKFLOW_ALIGNMENT_GUIDES: WorkflowAlignmentGuides = {
   horizontal: null,
   vertical: null,
 };
-
-export function toWorkflowSaveInput(workflow: DataPipelineWorkflow): DataWorkflowSaveInput {
-  return {
-    nodes: workflow.nodes.map((node) => ({
-      id: node.id,
-      type: node.type,
-      label: node.label,
-      x: node.x,
-      y: node.y,
-      config: node.config,
-    })),
-    edges: workflow.edges.map((edge) => ({
-      id: edge.id,
-      sourceNodeId: edge.sourceNodeId,
-      targetNodeId: edge.targetNodeId,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-    })),
-  };
-}
 
 export function getWorkflowSaveInputSignature(workflow: DataPipelineWorkflow): string {
   return JSON.stringify(toWorkflowSaveInput(workflow));

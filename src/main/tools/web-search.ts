@@ -20,7 +20,7 @@ export async function duckDuckGoSearch(query: string): Promise<string> {
     });
   } catch (error) {
     if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
-      throw new Error('请求超时，请检查网络连接后重试');
+      throw new Error('请求超时，请检查网络连接后重试', { cause: error });
     }
     throw error;
   }

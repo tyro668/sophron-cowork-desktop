@@ -105,7 +105,7 @@ export class DataPipelineStore {
   private readonly summarizer: InputSourceSummaryService;
   private readonly normalizerService: NormalizerService;
   private readonly rawTables: RawTableService;
-  private readonly rawSources: RawSourceService;
+  readonly rawSources: RawSourceService;
   private readonly pipelineService: PipelineService;
   private readonly validator: WorkflowValidator;
   private readonly commitCoordinator: OutputCommitCoordinator;

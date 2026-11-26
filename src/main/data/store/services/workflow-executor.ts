@@ -1,3 +1,4 @@
+import { toWorkflowSaveInput } from '../../../../shared/workflow-plan/workflow-save-input';
 import { logWarn } from '../../../utils/logger';
 import { inputSourceFingerprint } from '../source-fingerprint';
 import type { WatermarkUpdate } from '../repositories/watermark-repository';
@@ -35,7 +36,6 @@ import {
   WorkflowOutputMode,
   findWorkflowTerminalNodeId,
   normalizeRuntimeWorkflowInput,
-  runtimeWorkflowToSaveInput,
   toPersistentCreateTableSql,
   workflowRequiresPipelineSource,
 } from '../workflow-model';
@@ -271,7 +271,7 @@ export class WorkflowExecutor {
       runtimeWorkflow.nodes.length > 0
         ? await this.validator.validateWorkflowPlanForPipeline(
             pipeline.id,
-            runtimeWorkflowToSaveInput(runtimeWorkflow)
+            toWorkflowSaveInput(runtimeWorkflow)
           )
         : [];
     const planErrors = planDiagnostics.filter((item) => item.severity === 'error');
@@ -717,8 +717,8 @@ export class WorkflowExecutor {
       (node) => node.type === 'output' && node.config.disabled !== true
     );
     const stagedSinks: Array<{ nodeId: string; stagingTable: string }> = [];
-    let rowCount = 0;
-    let columnCount = 0;
+    let rowCount: number;
+    let columnCount: number;
     if (outputNodes.length > 0) {
       for (const [index, sinkNode] of outputNodes.entries()) {
         const sinkEdge =

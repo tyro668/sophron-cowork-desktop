@@ -1,3 +1,4 @@
+import { toWorkflowSaveInput } from '../../../../shared/workflow-plan/workflow-save-input';
 import { assertIncrementalWriteAllowed } from './workflow-executor';
 /** Pipeline lifecycle orchestration: CRUD, run, save workflow, cleanup. */
 import type { WatermarkUpdate } from '../repositories/watermark-repository';
@@ -25,7 +26,6 @@ import { WorkflowRepository } from '../repositories/workflow-repository';
 import {
   normalizeRuntimeWorkflowInput,
   normalizeScopedWorkflowInputs,
-  runtimeWorkflowToSaveInput,
   workflowExecutionSignature,
 } from '../workflow-model';
 import { OutputCommitCoordinator } from './output-commit-coordinator';
@@ -118,7 +118,7 @@ export class PipelineService {
       const runtimeWorkflow = input.workflow
         ? normalizeRuntimeWorkflowInput(id, input.workflow, this.ctx.now())
         : await this.workflows.getRuntimeWorkflow(id);
-      const workflow = input.workflow ?? runtimeWorkflowToSaveInput(runtimeWorkflow);
+      const workflow = input.workflow ?? toWorkflowSaveInput(runtimeWorkflow);
       const signature = workflowExecutionSignature(workflow);
       const trigger: DataPipelineRunTrigger = input.outputMode === 'temporary' ? 'trial' : 'run';
       const runId = uuidv4();
@@ -421,7 +421,7 @@ export class PipelineService {
     }
 
     const executionChanged =
-      workflowExecutionSignature(runtimeWorkflowToSaveInput(previousWorkflow)) !==
+      workflowExecutionSignature(toWorkflowSaveInput(previousWorkflow)) !==
       workflowExecutionSignature({ nodes, edges });
     if (executionChanged) {
       await this.caches.deleteWorkflowNodeCachesForPipeline(

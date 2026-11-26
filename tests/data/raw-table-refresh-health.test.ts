@@ -35,9 +35,10 @@ describe('raw table refresh checks', () => {
 
     // Column gone.
     fs.writeFileSync(csv, `id\n${Array.from({ length: 20 }, (_, i) => i).join('\n')}\n`, 'utf8');
-    await expect(store.updateRawTable({ id: table.id, filePath: csv })).rejects.toThrow(
-      /E_RAW_TABLE_ABNORMAL: 刷新后缺少列：value/
-    );
+    await expect(store.updateRawTable({ id: table.id, filePath: csv })).rejects.toMatchObject({
+      code: 'E_RAW_TABLE_ABNORMAL',
+      message: expect.stringContaining('value'),
+    });
     let record = await store.getRawTableRecord(table.id);
     expect(record?.rowCount).toBe(20);
     expect(record?.health).toMatchObject({ status: 'abnormal', reason: '刷新后缺少列：value' });

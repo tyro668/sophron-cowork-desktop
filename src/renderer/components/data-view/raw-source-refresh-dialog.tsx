@@ -239,7 +239,7 @@ export function useRawSourceRefresh(onChanged: () => void) {
     } else if (result.failed.length)
       showToast(
         'error',
-        `${summary(result)}\n${formatDataErrorMessage(result.failed[0].error, t)}`
+        `${summary(result)}\n${formatDataErrorMessage(result.failed[0].issue ?? result.failed[0].error, t)}`
       );
     else showToast('success', summary(result));
     onChanged();

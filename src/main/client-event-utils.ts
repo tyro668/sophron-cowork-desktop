@@ -1,6 +1,11 @@
 import type { ClientEvent } from '../shared/contracts';
 
-export function eventRequiresSessionManager(event: ClientEvent): boolean {
+type SessionEvent = Extract<
+  ClientEvent,
+  { type: `session.${string}` | 'permission.response' | 'sudo.password.response' }
+>;
+
+export function eventRequiresSessionManager(event: ClientEvent): event is SessionEvent {
   switch (event.type) {
     case 'session.start':
     case 'session.continue':
@@ -12,6 +17,7 @@ export function eventRequiresSessionManager(event: ClientEvent): boolean {
     case 'session.list':
     case 'session.getMessages':
     case 'session.getTraceSteps':
+    case 'sudo.password.response':
     case 'permission.response':
       return true;
     default:

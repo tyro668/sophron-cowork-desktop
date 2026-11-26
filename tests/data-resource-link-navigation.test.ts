@@ -105,7 +105,11 @@ describe('data resource chat links', () => {
 
     // Every lookup channel must carry a positional input schema so main-side
     // handlers validate IPC arguments.
-    for (const channel of ['data.getPipeline', 'data.getRawTable', 'data.getResultTable']) {
+    for (const channel of [
+      'data.getPipeline',
+      'data.getRawTable',
+      'data.getResultTable',
+    ] as const) {
       expect(IPC_INPUT_SCHEMAS[channel]).toBeDefined();
     }
   });

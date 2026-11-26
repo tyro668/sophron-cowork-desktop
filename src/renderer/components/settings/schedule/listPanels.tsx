@@ -52,7 +52,9 @@ import { Button } from '../../ui/button';
 import { useAppStore } from '../../../store';
 import { ipcErrorMessage } from '../../../utils/ipc-error';
 import { showToast } from '../../../utils/toast';
-import { SCRIPT_REPAIR_PENDING } from '../../../../shared/automation/script-package';
+import type { ScriptRepair } from '../../../../shared/automation/script-package';
+import i18n from '../../../i18n/config';
+import { automationClient } from '../../../features/automation/api/automation-client';
 
 export function AutomationListPanel({
   automations,
@@ -256,7 +258,7 @@ export function AutomationRunLogPanel({
     ({ run }) =>
       run.status === 'running' ||
       run.status === 'queued' ||
-      Boolean(run.error?.includes(SCRIPT_REPAIR_PENDING))
+      Object.values(run.scriptRepairs ?? {}).some((repair) => repair.status === 'pending')
   );
   const [runQuery, setRunQuery] = useState('');
   const normalizedRunQuery = runQuery.trim().toLowerCase();
@@ -722,6 +724,7 @@ function RunLogRow({
   const nodes = graph?.nodes ?? [];
   const failed = run.status === 'failed';
   const lastExecutedId = [...nodes].reverse().find((node) => executed.has(node.id))?.id;
+  const repairs = Object.values(run.scriptRepairs ?? {});
   const stepById = new Map((run.executionSummary?.steps ?? []).map((step) => [step.nodeId, step]));
   return (
     <>
@@ -778,6 +781,13 @@ function RunLogRow({
       {expanded &&
         nodes.map((node, index) => {
           const step = stepById.get(node.id);
+          const repair = run.scriptRepairs?.[node.id];
+          const stepDetail = [
+            step?.error ?? step?.output ?? node.type,
+            repair && formatScriptRepair(repair),
+          ]
+            .filter(Boolean)
+            .join(' · ');
           const state = step
             ? step.status
             : executed.has(node.id)
@@ -824,18 +834,23 @@ function RunLogRow({
               <td className="px-2 text-text-muted">—</td>
               <td
                 className={`truncate px-2 ${step?.error ? 'text-error' : 'text-text-muted'}`}
-                title={step?.error ?? step?.output ?? node.type}
+                title={stepDetail}
               >
-                {step?.error ?? step?.output ?? node.type}
+                {stepDetail}
               </td>
             </tr>
           );
         })}
-      {expanded && run.error && (
+      {expanded && (run.error || repairs.length > 0) && (
         <tr className="border-b border-border-muted/85 bg-error/[0.04]">
           <td colSpan={8} className="whitespace-pre-wrap break-words px-8 py-2 text-xs text-error">
             {run.error}
-            <ScriptRepairActions error={run.error} nodes={nodes} tr={tr} />
+            {Object.entries(run.scriptRepairs ?? {}).map(([nodeId, repair]) => (
+              <div key={nodeId}>
+                {formatScriptRepair(repair)}
+                <ScriptRepairActions repair={repair} tr={tr} />
+              </div>
+            ))}
           </td>
         </tr>
       )}
@@ -843,30 +858,31 @@ function RunLogRow({
   );
 }
 
-/**
- * A failed 执行脚本 run whose AI 修复 produced a version: open it, or confirm it right here.
- * Matches the suffix written by script-run-action's repairWithAi.
- */
+export function formatScriptRepair(repair: ScriptRepair): string {
+  if (repair.status === 'failed' && repair.reasonKey) {
+    return i18n.t('schedule.repair.status.failed', {
+      reason: i18n.t(`schedule.scriptRunMessages.${repair.reasonKey}`),
+    });
+  }
+  return i18n.t(`schedule.repair.status.${repair.status}`, repair);
+}
+
 export function ScriptRepairActions({
-  error,
-  nodes,
+  repair,
   tr,
 }: {
-  error: string;
-  nodes: Automation['actionGraph']['nodes'];
+  repair: ScriptRepair;
   tr: (key: string, fallback?: string) => string;
 }) {
   const openScriptEditor = useAppStore((state) => state.openScriptEditor);
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
-  const match = /AI 已修复为 v(\d+)|AI 修复的 v(\d+)/.exec(error);
-  const packageId = nodes.find((node) => node.type === 'script.run')?.config?.packageId;
-  if (!match || typeof packageId !== 'string' || !packageId) return null;
-  const version = Number(match[1] ?? match[2]);
-  const passed = Boolean(match[1]);
+  if (!('version' in repair)) return null;
+  const { packageId, version } = repair;
+  const passed = repair.status === 'ready' || repair.status === 'awaitingReview';
   const publish = async () => {
     setState('busy');
     try {
-      await window.electronAPI.automation.scripts.publish(packageId, version);
+      await automationClient.scripts.publish(packageId, version);
       setState('done');
       showToast('success', tr('schedule.repair.published').replace('{{version}}', String(version)));
     } catch (err) {
@@ -909,7 +925,10 @@ function formatExecutionSummary(
   run: AutomationRun,
   tr: (key: string, fallback?: string) => string
 ): string {
-  if (run.error) return run.error;
+  if (run.error)
+    return [run.error, ...Object.values(run.scriptRepairs ?? {}).map(formatScriptRepair)].join(
+      ' · '
+    );
   if (!run.executionSummary) return '—';
   if (run.executionSummary.skippedNodeIds.length === 0) {
     return tr('schedule.executionSummaryAll').replace(

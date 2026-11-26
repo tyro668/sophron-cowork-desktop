@@ -31,7 +31,7 @@ function makeDir(dirPath: string): void {
 function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
   // Common FATAL resources
   makeFile(path.join(root, '.bundle-resources/mcp/gui-operate-server.js'));
-  makeFile(path.join(root, '.bundle-resources/mcp/software-dev-server-example.js'));
+  makeFile(path.join(root, '.bundle-resources/mcp/software-development-server.js'));
   makeDir(path.join(root, 'dist-electron'));
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));
@@ -58,7 +58,7 @@ function populateDarwinArtifacts(root: string, arch: string = 'arm64'): void {
  */
 function populateWin32Artifacts(root: string): void {
   makeFile(path.join(root, '.bundle-resources/mcp/gui-operate-server.js'));
-  makeFile(path.join(root, '.bundle-resources/mcp/software-dev-server-example.js'));
+  makeFile(path.join(root, '.bundle-resources/mcp/software-development-server.js'));
   makeDir(path.join(root, 'dist-electron'));
   makeDir(path.join(root, 'dist'));
   makeDir(path.join(root, 'assets/skills'));

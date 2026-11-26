@@ -96,9 +96,13 @@ describe('AgentRunner sophron SDK integration', () => {
   });
 
   it('uses the normalized route protocol so openrouter follows the openai-compatible path', () => {
-    expect(agentRunnerContent).toContain('resolvePiRouteProtocol');
-    expect(agentRunnerContent).toContain('const configProtocol = resolvePiRouteProtocol(');
-    expect(agentRunnerContent).toContain('resolveSyntheticPiModelFallback');
+    const modelSource = readFileSync(
+      path.join(path.dirname(agentRunnerPath), 'agent-runner-model.ts'),
+      'utf8'
+    );
+    expect(agentRunnerContent).toContain('await resolveRunModel(');
+    expect(modelSource).toContain('const configProtocol = resolvePiRouteProtocol(');
+    expect(modelSource).toContain('resolveSyntheticPiModelFallback');
   });
 
   it('nudges the model to proceed with reasonable assumptions', () => {

@@ -14,7 +14,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { DataPipeline, DataRawTable, DataResultTable } from '../../../types';
+import type { DataPipeline, DataRawTable, DataResultTable } from '../../../../shared/contracts';
 import { RESULT_TABLE_INPUT_CHOICES_LIMIT } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
 import type { RawTableDraft } from '../model/types';

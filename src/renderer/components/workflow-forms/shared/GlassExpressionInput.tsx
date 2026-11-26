@@ -802,11 +802,11 @@ export const FORMULA_EDITOR_GRID_COLUMNS =
 const EDITOR_HEIGHT = 96;
 const ROW_BORDER = 'border-b border-border-subtle';
 const COL_BORDER = 'border-r border-border-subtle';
-const PANE_HEADER = `flex h-[30px] shrink-0 items-center bg-background-secondary px-3 text-[11.5px] font-medium text-text-muted ${ROW_BORDER}`;
+const PANE_HEADER = `flex h-[30px] shrink-0 items-center bg-background-secondary px-3 text-ui-caption font-medium text-text-muted ${ROW_BORDER}`;
 const PANE_SEARCH = `relative flex h-9 shrink-0 items-center ${ROW_BORDER}`;
 const PANE_SEARCH_INPUT =
-  'h-full w-full bg-transparent pl-8 pr-3 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted';
-const LIST_ROW = `flex h-9 w-full shrink-0 cursor-pointer items-center gap-2.5 px-2.5 text-left text-[13px] transition-colors ${ROW_BORDER} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30`;
+  'h-full w-full bg-transparent pl-8 pr-3 text-ui-control text-text-primary outline-none placeholder:text-text-muted';
+const LIST_ROW = `flex h-9 w-full shrink-0 cursor-pointer items-center gap-2.5 px-2.5 text-left text-ui-body transition-colors ${ROW_BORDER} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30`;
 
 function sortFields(fields: string[], query: string): string[] {
   const filtered = query.trim()
@@ -857,7 +857,7 @@ function FunctionDetailPanel({
 }) {
   if (!token) {
     return (
-      <div className="flex flex-1 items-center justify-center px-3 text-center text-[12px] text-text-muted">
+      <div className="flex flex-1 items-center justify-center px-3 text-center text-ui-label text-text-muted">
         {tr('expressionFunctionDetailHint')}
       </div>
     );
@@ -865,11 +865,13 @@ function FunctionDetailPanel({
   const row = (label: string, body: ReactNode, key: string) => (
     <Fragment key={key}>
       <div
-        className={`flex min-h-9 items-center bg-background-secondary px-3 text-[12px] text-text-muted ${ROW_BORDER} ${COL_BORDER}`}
+        className={`flex min-h-9 items-center bg-background-secondary px-3 text-ui-label text-text-muted ${ROW_BORDER} ${COL_BORDER}`}
       >
         {label}
       </div>
-      <div className={`flex min-h-9 min-w-0 items-center px-3 py-1.5 text-[12.5px] ${ROW_BORDER}`}>
+      <div
+        className={`flex min-h-9 min-w-0 items-center px-3 py-1.5 text-ui-control ${ROW_BORDER}`}
+      >
         {body}
       </div>
     </Fragment>
@@ -932,7 +934,7 @@ function FunctionDetailPanel({
         .map((ex, i) =>
           row(
             i === 0 ? tr('expressionDetailExample') : '',
-            <code className="break-all font-mono text-[12.5px] text-text-primary">
+            <code className="break-all font-mono text-ui-control text-text-primary">
               {localizeExample(ex, tr)}
             </code>,
             `ex-${i}`
@@ -944,7 +946,7 @@ function FunctionDetailPanel({
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onInsert(token.apply, token.cursorOffset)}
-          className="text-[12.5px] text-accent hover:underline"
+          className="text-ui-control text-accent hover:underline"
         >
           {tr('expressionInsertAtCursor')}
         </button>,
@@ -1003,7 +1005,7 @@ function FunctionList({
       </div>
       <div className="fx-list min-h-0 flex-1" role="listbox">
         {groups.length === 0 ? (
-          <div className="px-3 py-4 text-center text-[12px] text-text-muted">
+          <div className="px-3 py-4 text-center text-ui-label text-text-muted">
             {tr('fieldPicker.noMatch')}
           </div>
         ) : (
@@ -1022,7 +1024,7 @@ function FunctionList({
                       return next;
                     })
                   }
-                  className={`flex h-[30px] w-full items-center gap-1.5 bg-background-secondary px-3 text-left text-[12px] text-text-muted hover:text-text-secondary ${ROW_BORDER}`}
+                  className={`flex h-[30px] w-full items-center gap-1.5 bg-background-secondary px-3 text-left text-ui-label text-text-muted hover:text-text-secondary ${ROW_BORDER}`}
                 >
                   <ChevronDown
                     className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}
@@ -1042,7 +1044,7 @@ function FunctionList({
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => onSelect(token)}
                         onDoubleClick={() => onInsert(token.apply, token.cursorOffset)}
-                        className={`${LIST_ROW} font-mono text-[12.5px] ${
+                        className={`${LIST_ROW} font-mono text-ui-control ${
                           isSelected
                             ? 'bg-accent-muted text-accent'
                             : 'text-text-secondary hover:bg-surface-hover'
@@ -1109,7 +1111,7 @@ export function GlassExpressionInput({
         aria-label={label}
         title={value || undefined}
         style={{ paddingLeft: 10 }}
-        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 py-1 pr-8 text-left font-mono text-[12.5px] leading-[18px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 py-1 pr-8 text-left font-mono text-ui-control leading-[18px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
       >
         {/* Long formulas wrap to up to 3 lines (full text in the tooltip/editor) instead of a one-line ellipsis. */}
         <span
@@ -1321,19 +1323,19 @@ function ExpressionEditorDialog({
     : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}${aggregateIssue && !wizard ? '30px ' : ''}minmax(0,1fr) 48px`;
 
   const tabClass = (active: boolean) =>
-    `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors ${ROW_BORDER} ${
+    `flex items-center justify-center border-l border-border-subtle text-ui-control font-medium transition-colors ${ROW_BORDER} ${
       active
         ? 'bg-accent-muted text-accent'
         : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
     }`;
 
-  const footerButton = `flex items-center justify-center border-l border-border-subtle text-[12.5px] font-medium transition-colors`;
+  const footerButton = `flex items-center justify-center border-l border-border-subtle text-ui-control font-medium transition-colors`;
 
   const discardFooter = confirmDiscard && (
     <Fragment key="discard">
       <div
         style={{ gridColumn: `span ${titleSpan}` }}
-        className="flex items-center gap-2 px-3 text-[12.5px] text-text-primary"
+        className="flex items-center gap-2 px-3 text-ui-control text-text-primary"
         role="alert"
       >
         <AlertCircle className="h-3.5 w-3.5 text-warning" />
@@ -1379,7 +1381,7 @@ function ExpressionEditorDialog({
           className={`flex min-w-0 items-center gap-2.5 px-3 ${ROW_BORDER}`}
         >
           <h3 className="shrink-0 text-[14px] font-semibold text-text-primary">{title}</h3>
-          {subtitle && <span className="truncate text-[12.5px] text-text-muted">{subtitle}</span>}
+          {subtitle && <span className="truncate text-ui-control text-text-muted">{subtitle}</span>}
         </div>
         {assistantPanel ? (
           <>
@@ -1447,7 +1449,7 @@ function ExpressionEditorDialog({
                 type="button"
                 onClick={() => jumpTo(issue.from)}
                 style={{ gridColumn: '1 / -1' }}
-                className={`flex min-w-0 items-center gap-2 bg-error/[0.06] px-3 text-left text-[12px] text-error ${ROW_BORDER}`}
+                className={`flex min-w-0 items-center gap-2 bg-error/[0.06] px-3 text-left text-ui-label text-error ${ROW_BORDER}`}
               >
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 <b className="shrink-0 font-semibold">
@@ -1467,7 +1469,7 @@ function ExpressionEditorDialog({
                 key="aggregate-issue"
                 data-testid="expression-aggregate-issue"
                 style={{ gridColumn: '1 / -1' }}
-                className={`flex min-w-0 items-center gap-2 bg-warning/[0.08] px-3 text-[12px] text-text-primary ${ROW_BORDER}`}
+                className={`flex min-w-0 items-center gap-2 bg-warning/[0.08] px-3 text-ui-label text-text-primary ${ROW_BORDER}`}
               >
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 text-warning" />
                 <b className="shrink-0 font-semibold">{aggregateIssue.message}</b>
@@ -1479,7 +1481,7 @@ function ExpressionEditorDialog({
                     type="button"
                     data-testid="expression-aggregate-fix"
                     onClick={() => replaceExpression(aggregateIssue.fixText!)}
-                    className="ml-auto shrink-0 rounded-md border border-border-subtle px-2 py-0.5 text-[12px] font-medium text-accent hover:bg-accent-muted"
+                    className="ml-auto shrink-0 rounded-md border border-border-subtle px-2 py-0.5 text-ui-label font-medium text-accent hover:bg-accent-muted"
                   >
                     {tr('expressionAddOverFix')}
                   </button>
@@ -1506,7 +1508,7 @@ function ExpressionEditorDialog({
               </div>
               <div className="fx-list min-h-0 flex-1">
                 {sortedFields.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-[12px] text-text-muted">
+                  <div className="px-3 py-4 text-center text-ui-label text-text-muted">
                     {tr('fieldPicker.noMatch')}
                   </div>
                 ) : (
@@ -1558,10 +1560,10 @@ function ExpressionEditorDialog({
                 <div
                   key="status"
                   style={{ gridColumn: 'span 5' }}
-                  className="flex min-w-0 items-center gap-2.5 px-3 text-[12px] text-text-muted"
+                  className="flex min-w-0 items-center gap-2.5 px-3 text-ui-label text-text-muted"
                 >
                   {issues.length > 0 && (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-error/[0.08] px-2 py-0.5 text-[12.5px] text-error">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-error/[0.08] px-2 py-0.5 text-ui-control text-error">
                       <span className="h-1.5 w-1.5 rounded-full bg-error" />
                       {tr('expressionIssueCount', { count: issues.length })}
                     </span>
@@ -1569,7 +1571,7 @@ function ExpressionEditorDialog({
                   {issues.length === 0 && analysis?.ok && analysis.type && (
                     <span
                       data-testid="expression-result-type"
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent-muted px-2 py-0.5 text-[12.5px] text-accent"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent-muted px-2 py-0.5 text-ui-control text-accent"
                     >
                       {tr('expressionResultType', {
                         type: helpTerm(tr, 'types', EXPR_TYPE_HELP[analysis.type] ?? 'any'),
@@ -1580,7 +1582,7 @@ function ExpressionEditorDialog({
                     <span
                       data-testid="expression-grammar-error"
                       title={analysis.error?.message}
-                      className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-error/[0.08] px-2 py-0.5 text-[12.5px] text-error"
+                      className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-error/[0.08] px-2 py-0.5 text-ui-control text-error"
                     >
                       {analysis.error?.message}
                     </span>
@@ -1591,7 +1593,7 @@ function ExpressionEditorDialog({
                       data-testid="expression-case-quickfix"
                       onClick={applyCaseRewrite}
                       title={caseRewrite}
-                      className="shrink-0 rounded-md border border-primary/30 px-2 py-0.5 text-[12.5px] text-primary hover:bg-primary/[0.08]"
+                      className="shrink-0 rounded-md border border-primary/30 px-2 py-0.5 text-ui-control text-primary hover:bg-primary/[0.08]"
                     >
                       {tr('expressionCaseQuickFix')}
                     </button>

@@ -124,7 +124,7 @@ export const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>
         data-state={active ? 'active' : 'inactive'}
         onClick={() => context.onValueChange?.(value)}
         className={cn(
-          'inline-flex h-7 select-none items-center justify-center whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-colors',
+          'inline-flex h-7 select-none items-center justify-center whitespace-nowrap rounded-md px-2.5 text-ui-body font-medium transition-colors',
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50',
           'disabled:pointer-events-none disabled:opacity-50',
           active

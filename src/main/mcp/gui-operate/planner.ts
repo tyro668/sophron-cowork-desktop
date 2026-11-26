@@ -117,7 +117,8 @@ export async function planGUIActions(
       'JSON Parse Error'
     );
     throw new Error(
-      `Failed to parse action plan JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. JSON string: ${jsonMatch[0].substring(0, 500)}`
+      `Failed to parse action plan JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}. JSON string: ${jsonMatch[0].substring(0, 500)}`,
+      { cause: parseError }
     );
   }
 

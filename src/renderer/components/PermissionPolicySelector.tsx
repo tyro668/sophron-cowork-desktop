@@ -156,7 +156,7 @@ export function PermissionPolicySelect({
           align={align}
           sideOffset={6}
           collisionPadding={12}
-          className="z-[10000] w-[17.5rem] overflow-hidden rounded-xl border border-border-muted bg-surface p-1.5 text-text-primary shadow-elevated"
+          className="z-[10000] w-[17.5rem] overflow-hidden rounded-lg border border-border-muted bg-surface p-1 text-text-primary shadow-elevated"
         >
           <div className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-text-muted">
             {t('chat.permissionPolicyMenuTitle')}
@@ -169,9 +169,9 @@ export function PermissionPolicySelect({
                   key={option.id}
                   value={option.id}
                   className={cn(
-                    'relative flex cursor-pointer select-none items-start gap-2.5 rounded-lg px-2.5 py-2 pr-7 outline-none transition-colors',
+                    'relative flex cursor-pointer select-none items-start gap-2.5 rounded-md px-2.5 py-2 pr-7 outline-none transition-colors',
                     'data-[highlighted]:bg-surface-hover',
-                    isSelected && 'bg-accent-muted/75'
+                    isSelected && 'bg-accent-muted'
                   )}
                 >
                   {renderPolicyIcon(

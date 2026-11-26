@@ -43,7 +43,7 @@ export async function listRecentWorkspaceFiles(
       continue;
     }
 
-    let entries: Dirent[] = [];
+    let entries: Dirent[];
     try {
       entries = await fs.readdir(currentDir, { withFileTypes: true });
     } catch {

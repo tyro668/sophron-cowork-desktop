@@ -688,7 +688,8 @@ function validateNodeTransform(content: string): void {
     program = parse(content, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
   } catch (error) {
     throw new Error(
-      `Node normalizer transform contains invalid JavaScript: ${error instanceof Error ? error.message : String(error)}`
+      `Node normalizer transform contains invalid JavaScript: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
   const body = program.body as Array<{

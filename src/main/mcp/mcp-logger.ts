@@ -165,7 +165,7 @@ process.on('uncaughtException', (error) => {
       const logPath = path.join(logDir, mcpLogFilename);
       const errorLog = `\n${'='.repeat(80)}\nUNCAUGHT EXCEPTION at ${new Date().toISOString()}\n${error.stack || error.message}\n${'='.repeat(80)}\n`;
       fsSync.appendFileSync(logPath, errorLog);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -180,7 +180,7 @@ process.on('unhandledRejection', (reason) => {
       const logPath = path.join(logDir, mcpLogFilename);
       const errorLog = `\n${'='.repeat(80)}\nUNHANDLED REJECTION at ${new Date().toISOString()}\n${String(reason)}\n${'='.repeat(80)}\n`;
       fsSync.appendFileSync(logPath, errorLog);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }

@@ -43,7 +43,7 @@ function buildCheckList(platform, arch) {
     },
     {
       label: 'Software Dev MCP server bundle',
-      relPath: '.bundle-resources/mcp/software-dev-server-example.js',
+      relPath: '.bundle-resources/mcp/software-development-server.js',
       type: 'file',
       severity: 'fatal',
     },

@@ -477,7 +477,7 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+      throw new Error(`${label} timed out after ${timeoutMs}ms`, { cause: error });
     }
     throw error;
   } finally {

@@ -277,7 +277,7 @@ export class WecomChannel extends ChannelBase {
       return { status: 405, data: { error: 'Method not allowed' } };
     }
 
-    let encrypted = '';
+    let encrypted: string;
     try {
       const envelope = JSON.parse(body) as { encrypt?: unknown };
       if (!envelope || typeof envelope.encrypt !== 'string') {

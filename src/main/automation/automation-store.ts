@@ -1,3 +1,4 @@
+import type { ScriptRepair } from '../../shared/automation/script-package';
 import {
   DEFAULT_TABLE_POLICY,
   getAutomationTableBindings,
@@ -74,6 +75,7 @@ export interface AutomationStore {
       >
     >
   ): Automation | null;
+  setRunScriptRepair(runId: string, nodeId: string, repair: ScriptRepair): void;
   createRun(input: AutomationRunCreateInput): AutomationRun;
   updateRun(id: string, updates: AutomationRunUpdateInput): AutomationRun | null;
   listRuns(automationId: string, query?: AutomationRunQuery): AutomationRun[];
@@ -115,6 +117,7 @@ interface AutomationGroupRow {
 }
 
 interface AutomationRunRow {
+  script_repairs_json?: string | null;
   execution_summary_json?: string | null;
   id: string;
   automation_id: string;
@@ -533,6 +536,19 @@ export function createAutomationStore(db: DatabaseInstance): AutomationStore {
       return mapRunRow(row);
     },
 
+    setRunScriptRepair: (runId, nodeId, repair) => {
+      raw.transaction(() => {
+        const row = raw
+          .prepare('SELECT script_repairs_json FROM automation_runs WHERE id = ?')
+          .get(runId) as Pick<AutomationRunRow, 'script_repairs_json'> | undefined;
+        if (!row) return;
+        const previous = parseJson<Record<string, ScriptRepair>>(row.script_repairs_json, {});
+        updateById(raw, 'automation_runs', runId, {
+          script_repairs_json: JSON.stringify({ ...previous, [nodeId]: repair }),
+        });
+      })();
+    },
+
     updateRun: (id, updates) => {
       const mapped: Record<string, unknown> = {};
       if (updates.status !== undefined) mapped.status = updates.status;
@@ -642,6 +658,19 @@ function recoverInterruptedAutomationRuns(
   raw: DatabaseInstance['raw'],
   now: number
 ): AutomationRunRecoveryResult {
+  const interruptedRepairs = raw
+    .prepare(
+      "SELECT id, script_repairs_json FROM automation_runs WHERE EXISTS (SELECT 1 FROM json_each(script_repairs_json) WHERE json_extract(value, '$.status') = 'pending')"
+    )
+    .all() as Pick<AutomationRunRow, 'id' | 'script_repairs_json'>[];
+  for (const row of interruptedRepairs) {
+    const repairs = parseJson<Record<string, ScriptRepair>>(row.script_repairs_json, {});
+    for (const [nodeId, repair] of Object.entries(repairs)) {
+      if (repair.status === 'pending')
+        repairs[nodeId] = { packageId: repair.packageId, status: 'stopped' };
+    }
+    updateById(raw, 'automation_runs', row.id, { script_repairs_json: JSON.stringify(repairs) });
+  }
   const runningRows = raw
     .prepare(
       `SELECT * FROM automation_runs
@@ -825,6 +854,7 @@ function mapAutomationGroupRow(row: AutomationGroupRow): AutomationGroup {
 
 function mapRunRow(row: AutomationRunRow): AutomationRun {
   return {
+    scriptRepairs: parseJson(row.script_repairs_json, undefined),
     executionSummary: row.execution_summary_json
       ? parseJson(row.execution_summary_json, undefined)
       : undefined,

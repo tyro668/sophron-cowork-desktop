@@ -3,7 +3,7 @@
  * state, editor state, and UI state are built from. Pure types only; no
  * component or IPC logic lives here.
  */
-import type { DataDashboard, DataRawTable, DataResultTable } from '../../../types';
+import type { DataDashboard, DataRawTable, DataResultTable } from '../../../../shared/contracts';
 
 export type DataTab =
   'pipelines' | 'raw_tables' | 'result_tables' | 'cloud_analysis' | 'cloud_connection';

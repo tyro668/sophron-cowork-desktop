@@ -25,7 +25,7 @@ export function GlassValueChip({
   return (
     <span
       title={missing ? missingTitle : undefined}
-      className={`inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1 rounded-md border px-2 text-[12px] font-medium ${
+      className={`inline-flex h-6 max-w-[180px] shrink-0 items-center gap-1 rounded-md border px-2 text-ui-label font-medium ${
         missing
           ? 'border-error/25 bg-error/10 text-error'
           : 'border-accent/20 bg-accent-muted text-accent'

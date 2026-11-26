@@ -1,3 +1,4 @@
+import { resolveRunModel } from './agent-runner-model';
 /**
  * @module main/agent/agent-runner
  *
@@ -55,38 +56,18 @@ import { runPiAiOneShot } from './pi-ai-one-shot';
 import { PathResolver } from '../sandbox/path-resolver';
 import { MCPManager } from '../mcp/mcp-manager';
 import { mcpConfigStore } from '../mcp/mcp-config-store';
-import {
-  log,
-  logWarn,
-  logError,
-  logCtx,
-  logCtxWarn,
-  logCtxError,
-  logTiming,
-} from '../utils/logger';
+import { log, logWarn, logError, logCtx, logCtxError, logTiming } from '../utils/logger';
 import * as path from 'path';
-import * as fs from 'fs';
 import { spawn } from 'child_process';
 import { setMaxListeners } from 'node:events';
-import { getSandboxAdapter } from '../sandbox/sandbox-adapter';
-import { SandboxSync } from '../sandbox/sandbox-sync';
 import { PluginRuntimeService } from '../skills/plugin-runtime-service';
 import type { SkillsAdapter } from '../skills/skills-adapter';
 import { AgentRuntimeExtensionManager } from '../extensions/agent-runtime-extension-manager';
 import { configStore } from '../config/config-store';
-import { normalizeOpenAICompatibleBaseUrl } from '../config/auth-utils';
 import { toUserFacingErrorText } from './agent-runner-message-end';
 import { AGENT_TURN_RETRY_SETTINGS } from './agent-runner-retry';
-import {
-  applyPiModelRuntimeOverrides,
-  buildSyntheticPiModel,
-  resolvePiRegistryModel,
-  resolvePiRouteProtocol,
-  resolveSyntheticPiModelFallback,
-} from './pi-model-resolution';
 import { buildPiSessionRuntimeSignature } from './pi-session-runtime';
 import { buildColdStartAgentHistory } from './agent-protocol-safety';
-import { fetchOllamaModelInfo } from '../config/ollama-api';
 import { ensureCodexCredentials } from '../config/codex-auth';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { createSandboxCodingTools } from './sandbox-tool-operations';
@@ -98,7 +79,7 @@ import {
   getBundledNodePaths,
   enrichProcessPathForBuild,
 } from './agent-runner-env';
-import { initSandboxSyncForRun } from './agent-runner-sandbox-sync';
+import { initSandboxSyncForRun, syncRunWorkspaceToHost } from './agent-runner-sandbox-sync';
 import { AgentRunEventBridge } from './agent-runner-event-bridge';
 import { safeStringify, toErrorText } from './agent-runner-log-utils';
 import {
@@ -204,9 +185,7 @@ export class AgentRunner {
   private toolDisplayNameCache: Map<string, string> = new Map();
   private static readonly MAX_CACHED_SESSIONS = 50;
 
-  // Per-instance caches — invalidated when the underlying config changes.
   private _mcpServersCache: { fingerprint: string; servers: Record<string, unknown> } | null = null;
-  private _skillsSetupDone = false;
   private readonly skills: AgentRunnerSkills;
 
   /**
@@ -260,7 +239,7 @@ export class AgentRunner {
 
   /** Call after the user installs / removes a skill so the next query re-links everything. */
   invalidateSkillsSetup(): void {
-    this._skillsSetupDone = false;
+    this.skills.invalidateSetup();
   }
 
   /** Call after the user changes MCP server config so the next query rebuilds mcpServers. */
@@ -269,17 +248,6 @@ export class AgentRunner {
     // Sessions stay alive — MCP tools are rebuilt each query via buildMcpCustomTools()
     log('[AgentRunner] MCP servers cache invalidated — tools will rebuild on next query');
   }
-
-  // TODO: Credentials should be served via a secure MCP tool or IPC channel,
-  // not injected as plaintext into the system prompt. The getCredentialsPrompt()
-  // method was removed to eliminate credential leakage risk.
-
-  /**
-   * Generate bundled executable path hints for production mode system prompt.
-   * In dev mode returns empty string (user PATH already works).
-   * This is a defense-in-depth layer — even if PATH enrichment works, explicit
-   * paths help the model avoid ambiguity when Skills reference bare commands.
-   */
 
   constructor(
     options: AgentRunnerOptions,
@@ -306,6 +274,153 @@ export class AgentRunner {
     log('[AgentRunner] Skills enabled: settingSources=[user, project], Skill tool enabled');
     if (mcpManager) {
       log('[AgentRunner] MCP support enabled');
+    }
+  }
+
+  private prepareMcpConfiguration(imageCapable: boolean): void {
+    // Build MCP servers configuration for SDK
+    // IMPORTANT: SDK uses tool names in format: mcp__<ServerKey>__<toolName>
+    const mcpServers: Record<string, unknown> = {};
+    if (this.mcpManager) {
+      const serverStatuses = this.mcpManager.getServerStatus();
+      const connectedServers = serverStatuses.filter((s) => s.connected);
+      log('[AgentRunner] MCP server statuses:', safeStringify(serverStatuses));
+      log('[AgentRunner] Connected MCP servers:', connectedServers.length);
+
+      let allConfigs: ReturnType<typeof mcpConfigStore.getEnabledServers>;
+      try {
+        allConfigs = mcpConfigStore.getEnabledServers();
+        log(
+          '[AgentRunner] Enabled MCP configs:',
+          allConfigs.map((c) => c.name)
+        );
+      } catch (error) {
+        logWarn(
+          '[AgentRunner] Failed to read enabled MCP configs; MCP tools will be unavailable this query',
+          error
+        );
+        allConfigs = [];
+      }
+
+      // Cache key: serialized config list + imageCapable flag.  The bundled node
+      // paths are stable for the lifetime of the process so they don't need to be
+      // part of the fingerprint.
+      const mcpFingerprint = JSON.stringify(allConfigs) + String(imageCapable);
+      if (this._mcpServersCache?.fingerprint === mcpFingerprint) {
+        Object.assign(mcpServers, this._mcpServersCache.servers);
+        log('[AgentRunner] MCP servers config reused from cache');
+      } else {
+        // Use the module-level memoized helper — no more per-query fs.existsSync calls.
+        const bundledNodePaths = getBundledNodePaths();
+        const bundledNpx = bundledNodePaths?.npx ?? null;
+
+        for (const config of allConfigs) {
+          try {
+            // Use a simpler key without spaces to avoid issues
+            const serverKey = config.name;
+
+            if (config.type === 'stdio') {
+              // 当命令是 npx 或 node 时优先使用内置路径
+              const command =
+                config.command === 'npx' && bundledNpx
+                  ? bundledNpx
+                  : config.command === 'node' && bundledNodePaths
+                    ? bundledNodePaths.node
+                    : config.command;
+
+              // 使用内置 npx/node 时，将内置 node bin 注入 PATH
+              const serverEnv = { ...config.env };
+              if (bundledNodePaths && (config.command === 'npx' || config.command === 'node')) {
+                const nodeBinDir = path.dirname(bundledNodePaths.node);
+                const currentPath = process.env.PATH || '';
+                // Prepend bundled node bin to PATH so npx can find node
+                serverEnv.PATH = `${nodeBinDir}${path.delimiter}${currentPath}`;
+                log(`[AgentRunner]   Added bundled node bin to PATH: ${nodeBinDir}`);
+              }
+
+              if (!imageCapable) {
+                serverEnv.SOPHRON_DISABLE_IMAGE_TOOL_OUTPUT = '1';
+              }
+
+              // Resolve path placeholders for presets
+              let resolvedArgs = config.args || [];
+
+              // Check if any args contain placeholders that need resolving
+              const hasPlaceholders = resolvedArgs.some(
+                (arg) =>
+                  arg.includes('{SOFTWARE_DEV_SERVER_PATH}') ||
+                  arg.includes('{GUI_OPERATE_SERVER_PATH}')
+              );
+
+              if (hasPlaceholders) {
+                // Get the appropriate preset based on config name
+                let presetKey: string | null = null;
+                if (
+                  config.name === 'Software_Development' ||
+                  config.name === 'Software Development'
+                ) {
+                  presetKey = 'software-development';
+                } else if (config.name === 'GUI_Operate' || config.name === 'GUI Operate') {
+                  presetKey = 'gui-operate';
+                }
+
+                if (presetKey) {
+                  const preset = mcpConfigStore.createFromPreset(presetKey, true);
+                  if (preset && preset.args) {
+                    resolvedArgs = preset.args;
+                  }
+                }
+              }
+
+              mcpServers[serverKey] = {
+                type: 'stdio',
+                command,
+                args: resolvedArgs,
+                env: serverEnv,
+              };
+              log(`[AgentRunner] Added STDIO MCP server: ${serverKey}`);
+              log(`[AgentRunner]   Command: ${command} ${resolvedArgs.join(' ')}`);
+              log(`[AgentRunner]   Tools will be named: mcp__${serverKey}__<toolName>`);
+            } else if (config.type === 'sse') {
+              mcpServers[serverKey] = {
+                type: 'sse',
+                url: config.url,
+                headers: config.headers || {},
+              };
+              log(`[AgentRunner] Added SSE MCP server: ${serverKey}`);
+            }
+          } catch (error) {
+            logError('[AgentRunner] Failed to prepare MCP server config, skipping server', {
+              serverId: config.id,
+              serverName: config.name,
+              error: toErrorText(error),
+            });
+          }
+        }
+
+        // Store in cache for subsequent queries
+        this._mcpServersCache = { fingerprint: mcpFingerprint, servers: { ...mcpServers } };
+      }
+
+      const mcpServersSummary = Object.entries(mcpServers).map(([name, serverConfig]) => {
+        const typedServerConfig = serverConfig as {
+          type?: string;
+          command?: string;
+          args?: unknown[];
+          env?: Record<string, unknown>;
+        };
+        return {
+          name,
+          type: typedServerConfig.type ?? 'unknown',
+          command: typedServerConfig.command ?? '',
+          argsCount: Array.isArray(typedServerConfig.args) ? typedServerConfig.args.length : 0,
+          envKeys: typedServerConfig.env ? Object.keys(typedServerConfig.env).length : 0,
+        };
+      });
+      log('[AgentRunner] Final mcpServers summary:', safeStringify(mcpServersSummary, 2));
+      if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
+        log('[AgentRunner] Final mcpServers config:', safeStringify(mcpServers, 2));
+      }
     }
   }
 
@@ -830,6 +945,7 @@ export class AgentRunner {
       sandboxPath = syncState.sandboxPath;
       useSandboxIsolation = syncState.useSandboxIsolation;
       const sandbox = syncState.sandbox;
+      controller.signal.throwIfAborted();
 
       // Check if current user message includes images
       const lastUserMessage =
@@ -848,84 +964,12 @@ export class AgentRunner {
       // Resolve model via pi-ai
       const runtimeConfig = runtimeConfigOverride ?? configStore.getAll();
       const modelString = this.getCurrentModelString(runtimeConfig.model);
-      const configProtocol = resolvePiRouteProtocol(
-        runtimeConfig.provider,
-        runtimeConfig.customProtocol
+      const { piModel, provider, usedSyntheticModel } = await resolveRunModel(
+        runtimeConfig,
+        modelString
       );
 
-      // Normalize base URL for OpenAI-compatible providers (strips copy-pasted endpoint suffixes)
-      const rawBaseUrl = runtimeConfig.baseUrl?.trim() || undefined;
-      const effectiveBaseUrl =
-        configProtocol === 'openai' && runtimeConfig.provider !== 'ollama'
-          ? normalizeOpenAICompatibleBaseUrl(rawBaseUrl) || rawBaseUrl
-          : rawBaseUrl;
-
-      let usedSyntheticModel = false;
-      let piModel = resolvePiRegistryModel(modelString, {
-        configProvider: configProtocol,
-        customBaseUrl: effectiveBaseUrl,
-        rawProvider: runtimeConfig.provider,
-        customProtocol: runtimeConfig.customProtocol,
-      });
-
-      if (!piModel) {
-        usedSyntheticModel = true;
-        // Synthetic fallback: construct a Model for unknown/custom models
-        const synthetic = resolveSyntheticPiModelFallback({
-          rawModel: runtimeConfig.model,
-          resolvedModelString: modelString,
-          rawProvider: runtimeConfig.provider,
-          routeProtocol: configProtocol,
-          baseUrl: effectiveBaseUrl,
-        });
-        piModel = buildSyntheticPiModel(
-          synthetic.modelId,
-          synthetic.provider,
-          configProtocol,
-          effectiveBaseUrl,
-          undefined,
-          undefined,
-          runtimeConfig.contextWindow,
-          runtimeConfig.maxTokens
-        );
-        // Apply the same runtime overrides (developer role compat, base URL, API downgrade)
-        // that resolvePiRegistryModel applies to registry models
-        piModel = applyPiModelRuntimeOverrides(piModel, {
-          configProvider: configProtocol,
-          customBaseUrl: effectiveBaseUrl,
-          rawProvider: runtimeConfig.provider,
-          customProtocol: runtimeConfig.customProtocol,
-        });
-        logCtxWarn(
-          '[AgentRunner] Model not in pi-ai registry, using synthetic model:',
-          modelString,
-          '→',
-          piModel.api
-        );
-      }
-      logCtx('[AgentRunner] Resolved pi-ai model:', piModel.provider, piModel.id);
-
-      // For Ollama: query actual context window from /api/show if user hasn't configured one
-      const provider = runtimeConfig.provider || 'anthropic';
-      if (provider === 'ollama' && !runtimeConfig.contextWindow) {
-        const ollamaBaseUrl =
-          piModel.baseUrl || runtimeConfig.baseUrl || 'http://localhost:11434/v1';
-        const ollamaInfo = await fetchOllamaModelInfo({
-          baseUrl: ollamaBaseUrl,
-          model: piModel.id,
-          apiKey: runtimeConfig.apiKey,
-        });
-        if (ollamaInfo.contextWindow) {
-          log(
-            '[AgentRunner] Ollama /api/show reported contextWindow:',
-            ollamaInfo.contextWindow,
-            '(was:',
-            piModel.contextWindow,
-            ')'
-          );
-          piModel = { ...piModel, contextWindow: ollamaInfo.contextWindow };
-        }
-      }
+      controller.signal.throwIfAborted();
 
       // Send context window info to renderer for UI display
       this.sendToRenderer({
@@ -990,82 +1034,7 @@ export class AgentRunner {
         task: prompt,
       });
 
-      // Use app-specific agent config directory to avoid conflicts with user settings
-      // SDK uses CLAUDE_CONFIG_DIR to locate skills
-      const appAgentDir = this.skills.getAppAgentDir();
-
-      // Skills directory setup: only run on the first query per runner instance.
-      // Symlinks and directories are stable across queries; re-running every time
-      // wastes ~10-30 syscalls per query for no benefit. Call invalidateSkillsSetup()
-      // to force a re-run after the user installs or removes a skill.
-      if (!this._skillsSetupDone) {
-        // Set flag at start to prevent re-entrant calls from concurrent queries
-        this._skillsSetupDone = true;
-
-        // Ensure app agent config directory exists
-        if (!fs.existsSync(appAgentDir)) {
-          fs.mkdirSync(appAgentDir, { recursive: true });
-        }
-
-        // Ensure app agent skills directory exists
-        const appSkillsDir = this.skills.getRuntimeSkillsDir();
-        if (!fs.existsSync(appSkillsDir)) {
-          fs.mkdirSync(appSkillsDir, { recursive: true });
-        }
-
-        // Copy built-in skills to app agent skills directory if they don't exist
-        const builtinSkillsPath = this.skills.getBuiltinSkillsPath();
-        if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
-          // Symlinks into .asar archives don't work at the OS level (ENOTDIR),
-          // so always copy when the source is inside an asar archive.
-          // Use regex to match .asar/ but NOT .asar.unpacked/ (which is a real directory).
-          const sourceInsideAsar = /\.asar[/\\]/.test(builtinSkillsPath);
-          const builtinSkills = fs.readdirSync(builtinSkillsPath);
-          for (const skillName of builtinSkills) {
-            const builtinSkillPath = path.join(builtinSkillsPath, skillName);
-            const userSkillPath = path.join(appSkillsDir, skillName);
-
-            // Clean up broken symlinks pointing into .asar from previous versions
-            try {
-              const lstat = fs.lstatSync(userSkillPath);
-              if (lstat.isSymbolicLink()) {
-                const linkTarget = fs.readlinkSync(userSkillPath);
-                if (/\.asar[/\\]/.test(linkTarget)) {
-                  fs.unlinkSync(userSkillPath);
-                  log(`[AgentRunner] Removed broken asar symlink: ${userSkillPath}`);
-                }
-              }
-            } catch {
-              // Path doesn't exist — fine, we'll create it below
-            }
-
-            // Only set up if it's a directory and doesn't exist in app directory
-            if (fs.statSync(builtinSkillPath).isDirectory() && !fs.existsSync(userSkillPath)) {
-              if (sourceInsideAsar) {
-                // Source is inside .asar — must copy (symlinks to asar paths fail at OS level)
-                this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
-                log(`[AgentRunner] Copied built-in skill from asar: ${skillName}`);
-              } else {
-                // Source is a real directory — symlink for space efficiency
-                try {
-                  fs.symlinkSync(builtinSkillPath, userSkillPath, 'dir');
-                  log(`[AgentRunner] Linked built-in skill: ${skillName}`);
-                } catch (err) {
-                  logWarn(`[AgentRunner] Failed to symlink ${skillName}, copying instead:`, err);
-                  this.skills.copyDirectorySync(builtinSkillPath, userSkillPath);
-                }
-              }
-            }
-          }
-        }
-
-        this.skills.syncUserSkillsToAppDir(appSkillsDir);
-        this.skills.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
-      }
-
-      // Build available skills section dynamically — now handled by pi's DefaultResourceLoader
-      // via additionalSkillPaths. No custom prompt building needed.
-
+      const appAgentDir = this.skills.prepareRuntimeDirectory();
       log('[AgentRunner] App agent dir:', appAgentDir);
       log('[AgentRunner] User working directory:', workingDir);
 
@@ -1229,150 +1198,7 @@ export class AgentRunner {
       }
       logTiming('before building MCP servers config', runStartTime);
 
-      // Build MCP servers configuration for SDK
-      // IMPORTANT: SDK uses tool names in format: mcp__<ServerKey>__<toolName>
-      const mcpServers: Record<string, unknown> = {};
-      if (this.mcpManager) {
-        const serverStatuses = this.mcpManager.getServerStatus();
-        const connectedServers = serverStatuses.filter((s) => s.connected);
-        log('[AgentRunner] MCP server statuses:', safeStringify(serverStatuses));
-        log('[AgentRunner] Connected MCP servers:', connectedServers.length);
-
-        let allConfigs: ReturnType<typeof mcpConfigStore.getEnabledServers> = [];
-        try {
-          allConfigs = mcpConfigStore.getEnabledServers();
-          log(
-            '[AgentRunner] Enabled MCP configs:',
-            allConfigs.map((c) => c.name)
-          );
-        } catch (error) {
-          logWarn(
-            '[AgentRunner] Failed to read enabled MCP configs; MCP tools will be unavailable this query',
-            error
-          );
-          allConfigs = [];
-        }
-
-        // Cache key: serialized config list + imageCapable flag.  The bundled node
-        // paths are stable for the lifetime of the process so they don't need to be
-        // part of the fingerprint.
-        const mcpFingerprint = JSON.stringify(allConfigs) + String(imageCapable);
-        if (this._mcpServersCache?.fingerprint === mcpFingerprint) {
-          Object.assign(mcpServers, this._mcpServersCache.servers);
-          log('[AgentRunner] MCP servers config reused from cache');
-        } else {
-          // Use the module-level memoized helper — no more per-query fs.existsSync calls.
-          const bundledNodePaths = getBundledNodePaths();
-          const bundledNpx = bundledNodePaths?.npx ?? null;
-
-          for (const config of allConfigs) {
-            try {
-              // Use a simpler key without spaces to avoid issues
-              const serverKey = config.name;
-
-              if (config.type === 'stdio') {
-                // 当命令是 npx 或 node 时优先使用内置路径
-                const command =
-                  config.command === 'npx' && bundledNpx
-                    ? bundledNpx
-                    : config.command === 'node' && bundledNodePaths
-                      ? bundledNodePaths.node
-                      : config.command;
-
-                // 使用内置 npx/node 时，将内置 node bin 注入 PATH
-                const serverEnv = { ...config.env };
-                if (bundledNodePaths && (config.command === 'npx' || config.command === 'node')) {
-                  const nodeBinDir = path.dirname(bundledNodePaths.node);
-                  const currentPath = process.env.PATH || '';
-                  // Prepend bundled node bin to PATH so npx can find node
-                  serverEnv.PATH = `${nodeBinDir}${path.delimiter}${currentPath}`;
-                  log(`[AgentRunner]   Added bundled node bin to PATH: ${nodeBinDir}`);
-                }
-
-                if (!imageCapable) {
-                  serverEnv.SOPHRON_DISABLE_IMAGE_TOOL_OUTPUT = '1';
-                }
-
-                // Resolve path placeholders for presets
-                let resolvedArgs = config.args || [];
-
-                // Check if any args contain placeholders that need resolving
-                const hasPlaceholders = resolvedArgs.some(
-                  (arg) =>
-                    arg.includes('{SOFTWARE_DEV_SERVER_PATH}') ||
-                    arg.includes('{GUI_OPERATE_SERVER_PATH}')
-                );
-
-                if (hasPlaceholders) {
-                  // Get the appropriate preset based on config name
-                  let presetKey: string | null = null;
-                  if (
-                    config.name === 'Software_Development' ||
-                    config.name === 'Software Development'
-                  ) {
-                    presetKey = 'software-development';
-                  } else if (config.name === 'GUI_Operate' || config.name === 'GUI Operate') {
-                    presetKey = 'gui-operate';
-                  }
-
-                  if (presetKey) {
-                    const preset = mcpConfigStore.createFromPreset(presetKey, true);
-                    if (preset && preset.args) {
-                      resolvedArgs = preset.args;
-                    }
-                  }
-                }
-
-                mcpServers[serverKey] = {
-                  type: 'stdio',
-                  command,
-                  args: resolvedArgs,
-                  env: serverEnv,
-                };
-                log(`[AgentRunner] Added STDIO MCP server: ${serverKey}`);
-                log(`[AgentRunner]   Command: ${command} ${resolvedArgs.join(' ')}`);
-                log(`[AgentRunner]   Tools will be named: mcp__${serverKey}__<toolName>`);
-              } else if (config.type === 'sse') {
-                mcpServers[serverKey] = {
-                  type: 'sse',
-                  url: config.url,
-                  headers: config.headers || {},
-                };
-                log(`[AgentRunner] Added SSE MCP server: ${serverKey}`);
-              }
-            } catch (error) {
-              logError('[AgentRunner] Failed to prepare MCP server config, skipping server', {
-                serverId: config.id,
-                serverName: config.name,
-                error: toErrorText(error),
-              });
-            }
-          }
-
-          // Store in cache for subsequent queries
-          this._mcpServersCache = { fingerprint: mcpFingerprint, servers: { ...mcpServers } };
-        }
-
-        const mcpServersSummary = Object.entries(mcpServers).map(([name, serverConfig]) => {
-          const typedServerConfig = serverConfig as {
-            type?: string;
-            command?: string;
-            args?: unknown[];
-            env?: Record<string, unknown>;
-          };
-          return {
-            name,
-            type: typedServerConfig.type ?? 'unknown',
-            command: typedServerConfig.command ?? '',
-            argsCount: Array.isArray(typedServerConfig.args) ? typedServerConfig.args.length : 0,
-            envKeys: typedServerConfig.env ? Object.keys(typedServerConfig.env).length : 0,
-          };
-        });
-        log('[AgentRunner] Final mcpServers summary:', safeStringify(mcpServersSummary, 2));
-        if (process.env.COWORK_LOG_SDK_MESSAGES_FULL === '1') {
-          log('[AgentRunner] Final mcpServers config:', safeStringify(mcpServers, 2));
-        }
-      }
+      this.prepareMcpConfiguration(imageCapable);
       logTiming('after building MCP servers config', runStartTime);
 
       const workspaceInfoPrompt =
@@ -1982,28 +1808,8 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       // Sync changes from sandbox back to host OS (but don't cleanup - sandbox persists)
       if (useSandboxIsolation && sandboxPath) {
         try {
-          const sandbox = getSandboxAdapter();
-
-          if (sandbox.isWSL) {
-            log('[AgentRunner] Syncing sandbox changes to Windows...');
-            const syncResult = await SandboxSync.syncToWindows(session.id);
-            if (syncResult.success) {
-              log('[AgentRunner] Sync completed successfully');
-            } else {
-              logError('[AgentRunner] Sync failed:', syncResult.error);
-              recordSandboxSyncFailure(syncResult.error || 'Windows sandbox sync failed.');
-            }
-          } else if (sandbox.isLima) {
-            log('[AgentRunner] Syncing sandbox changes to macOS...');
-            const { LimaSync } = await import('../sandbox/lima-sync');
-            const syncResult = await LimaSync.syncToMac(session.id);
-            if (syncResult.success) {
-              log('[AgentRunner] Sync completed successfully');
-            } else {
-              logError('[AgentRunner] Sync failed:', syncResult.error);
-              recordSandboxSyncFailure(syncResult.error || 'macOS sandbox sync failed.');
-            }
-          }
+          const failure = await syncRunWorkspaceToHost(session.id);
+          if (failure) recordSandboxSyncFailure(failure);
         } catch (syncErr) {
           logError('[AgentRunner] Sandbox sync error:', syncErr);
           const errorText = toErrorText(syncErr);

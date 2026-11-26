@@ -1,3 +1,4 @@
+import type { RawTableResult } from './data/issues';
 import type { ChatScriptProposal } from '../chat-to-script';
 import type { AutomationTableRef, AutomationTablePolicy } from '../automation/types';
 import type {
@@ -234,15 +235,15 @@ export interface ElectronApi {
       id: string,
       payload: DataWorkflowSaveInput
     ) => Promise<WorkflowPlanDiagnostic[]>;
-    importRawTable: (payload: DataImportRawTableInput) => Promise<DataRawTable>;
+    importRawTable: (payload: DataImportRawTableInput) => Promise<RawTableResult<DataRawTable>>;
     getRawTable: (id: string) => Promise<DataRawTable | null>;
-    updateRawTable: (payload: DataUpdateRawTableInput) => Promise<DataRawTable>;
+    updateRawTable: (payload: DataUpdateRawTableInput) => Promise<RawTableResult<DataRawTable>>;
     getResultTable: (id: string) => Promise<DataResultTable | null>;
     createResultTable: (payload?: DataCreateResultTableInput) => Promise<DataResultTable>;
     updateResultTable: (payload: DataUpdateResultTableInput) => Promise<DataResultTable>;
     previewRawTableSource: (
       payload: DataPreviewRawTableSourceInput
-    ) => Promise<DataRawTablePreview>;
+    ) => Promise<RawTableResult<DataRawTablePreview>>;
     previewRawTable: (payload: DataPreviewRawTableInput) => Promise<DataRawTablePreview>;
     exportTable: (payload: DataExportTableInput) => Promise<DataExportTableResult>;
     previewWorkflowNode: (payload: DataPreviewWorkflowNodeInput) => Promise<DataRawTablePreview>;
@@ -256,20 +257,27 @@ export interface ElectronApi {
     summarizeRawTableSource: (
       payload: DataSummarizeRawTableSourceInput
     ) => Promise<DataRawTableSourceSummary>;
-    listRawSources: () => Promise<DataRawSource[]>;
-    scanRawSource: (payload: DataScanRawSourceInput) => Promise<DataRawSourceScan>;
-    createRawSource: (payload: DataCreateRawSourceInput) => Promise<DataRawSourceCreateResult>;
-    refreshRawSource: (id: string) => Promise<DataRawSourceRefreshResult>;
+    listRawSources: () => Promise<RawTableResult<DataRawSource[]>>;
+    scanRawSource: (payload: DataScanRawSourceInput) => Promise<RawTableResult<DataRawSourceScan>>;
+    createRawSource: (
+      payload: DataCreateRawSourceInput
+    ) => Promise<RawTableResult<DataRawSourceCreateResult>>;
+    refreshRawSource: (id: string) => Promise<RawTableResult<DataRawSourceRefreshResult>>;
     changeRawSourcePath: (
       payload: DataChangeRawSourcePathInput
-    ) => Promise<DataRawSourceRefreshResult>;
-    setRawSourceAutoInclude: (id: string, autoInclude: boolean) => Promise<DataRawSource>;
+    ) => Promise<RawTableResult<DataRawSourceRefreshResult>>;
+    setRawSourceAutoInclude: (
+      id: string,
+      autoInclude: boolean
+    ) => Promise<RawTableResult<DataRawSource>>;
     resolveRawSourceRenames: (
       input: DataResolveRawSourceRenamesInput
-    ) => Promise<DataResolveRawSourceRenamesResult>;
-    getRawSourceRebuildImpact: (id: string) => Promise<DataRawSourceRebuildImpact>;
-    rebuildRawSource: (payload: DataRebuildRawSourceInput) => Promise<DataRawSourceCreateResult>;
-    deleteRawSource: (id: string) => Promise<boolean>;
+    ) => Promise<RawTableResult<DataResolveRawSourceRenamesResult>>;
+    getRawSourceRebuildImpact: (id: string) => Promise<RawTableResult<DataRawSourceRebuildImpact>>;
+    rebuildRawSource: (
+      payload: DataRebuildRawSourceInput
+    ) => Promise<RawTableResult<DataRawSourceCreateResult>>;
+    deleteRawSource: (id: string) => Promise<RawTableResult<boolean>>;
     generateRawTableNormalizerDraft: (
       payload: DataGenerateRawTableNormalizerDraftInput
     ) => Promise<DataGenerateRawTableNormalizerDraftResult>;

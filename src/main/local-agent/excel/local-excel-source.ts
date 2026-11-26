@@ -387,7 +387,8 @@ export class LocalExcelSource {
           sheetNames = (await this.load(f.fileName, password)).workbook!.sheetNames;
         } catch (error) {
           throw new Error(
-            `read sheets failed, file is ${f.fileName}: ${error instanceof Error ? error.message : String(error)}`
+            `read sheets failed, file is ${f.fileName}: ${error instanceof Error ? error.message : String(error)}`,
+            { cause: error }
           );
         }
         sheetNames.forEach((_n, i) => items.push({ ...base, sheetNo: i }));

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import { Check, ChevronDown } from 'lucide-react';
 import { computeDropdownPlacement, useDropdown } from '../../../hooks/useDropdown';
 import { computeDropdownWidth, measureMaxTextWidth } from './dropdownWidth';
 
@@ -195,7 +195,7 @@ export function GlassOptionSingleSelect({
         aria-label={ariaLabel}
         title={selectedItem?.description}
         data-testid={testId}
-        className={`flex min-h-8 items-center rounded border text-[13px] outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
+        className={`flex min-h-8 items-center rounded border text-ui-body outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-40 ${
           variant === 'highlight'
             ? 'border-transparent bg-[rgb(var(--color-surface-active-rgb))] text-accent-text'
             : variant === 'muted'
@@ -236,15 +236,17 @@ export function GlassOptionSingleSelect({
               maxWidth: position.maxWidth,
               maxHeight,
             }}
-            className="operator-ui scrollbar-hover fixed z-[10000] overflow-y-auto rounded-lg border border-border-muted bg-surface py-1 shadow-elevated"
+            className="operator-ui scrollbar-hover fixed z-[10000] overflow-y-auto rounded-lg border border-border-muted bg-surface p-1 shadow-elevated"
           >
             {groups.map((g, gi) => (
-              <div key={g.key}>
-                {gi > 0 && !g.header && (
-                  <div className="mx-3 my-0.5 border-t border-border-muted" />
-                )}
+              <div key={g.key} className="space-y-0.5">
+                {gi > 0 && !g.header && <div className="my-1 border-t border-border-subtle" />}
                 {g.header && (
-                  <div className="px-3 py-1.5 text-[12px] font-medium text-text-muted uppercase">
+                  <div
+                    className={`px-2.5 py-1 text-ui-label font-medium text-text-muted ${
+                      gi > 0 ? 'mt-1 border-t border-border-subtle pt-1.5' : ''
+                    }`}
+                  >
                     {g.header}
                   </div>
                 )}
@@ -252,6 +254,7 @@ export function GlassOptionSingleSelect({
                   const globalIdx =
                     groups.slice(0, gi).reduce((sum, g) => sum + g.items.length, 0) + oi;
                   const selected = o.value === value;
+                  const highlighted = globalIdx === highlightedIndex;
                   return (
                     <button
                       key={o.value}
@@ -260,11 +263,13 @@ export function GlassOptionSingleSelect({
                       aria-selected={selected}
                       title={o.title}
                       data-index={globalIdx}
-                      className={`min-h-8 w-full overflow-hidden text-ellipsis whitespace-nowrap px-3 py-1.5 text-left text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
+                      className={`flex min-h-8 w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-ui-body outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${
                         selected
-                          ? 'text-accent font-medium bg-accent-muted ring-1 ring-inset ring-accent/20'
-                          : 'text-text-secondary hover:bg-surface-hover'
-                      } ${globalIdx === highlightedIndex && !selected ? 'bg-surface-hover' : ''}`}
+                          ? 'bg-accent-muted font-medium text-accent'
+                          : highlighted
+                            ? 'bg-surface-hover text-text-primary'
+                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                      }`}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
@@ -274,23 +279,22 @@ export function GlassOptionSingleSelect({
                       onMouseEnter={() => setHighlightedIndex(globalIdx)}
                     >
                       {o.description ? (
-                        <span className="flex min-w-0 items-start gap-2">
+                        <span className="flex min-w-0 flex-1 items-start gap-2">
                           {o.icon && <span className="mt-px inline-flex shrink-0">{o.icon}</span>}
-                          <span className="flex min-w-0 flex-col">
+                          <span className="flex min-w-0 flex-1 flex-col">
                             <span className="truncate">{o.label}</span>
-                            <span className="whitespace-normal text-[11.5px] font-normal leading-4 text-text-muted">
+                            <span className="whitespace-normal text-ui-caption font-normal leading-4 text-text-muted">
                               {o.description}
                             </span>
                           </span>
                         </span>
                       ) : (
-                        <>
-                          {o.icon && (
-                            <span className="mr-2 inline-flex shrink-0 align-middle">{o.icon}</span>
-                          )}
-                          {o.label}
-                        </>
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          {o.icon && <span className="inline-flex shrink-0">{o.icon}</span>}
+                          <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                        </span>
                       )}
+                      {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
                     </button>
                   );
                 })}

@@ -47,7 +47,7 @@ export async function maybeGenerateSessionTitle(deps: TitleFlowDeps): Promise<vo
   deps.log('[SessionTitle] Generating title...', deps.sessionId);
 
   const titlePrompt = buildTitlePrompt(deps.prompt);
-  let generatedTitle: string | null = null;
+  let generatedTitle: string | null;
   try {
     generatedTitle = normalizeGeneratedTitle(await deps.generateTitle(titlePrompt));
   } catch (error) {

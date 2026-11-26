@@ -162,23 +162,23 @@
 
 新代码一律优先从 `src/renderer/components/ui` 导入基础原语，禁止裸写重复样式；样式合并统一使用 `cn()`（`tailwind-merge`）。`components/Glass*` 仅作既有调用点的兼容封装，不再用于新代码。
 
-| 原语                      | 关键能力与约定                                                                                                                                                                            |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Button`                  | `variant`: `primary` / `secondary` / `ghost` / `danger` / `danger-outline`；`size`: `sm(28px)` / `md(32px)` / `lg(36px)` / `icon(32×32)`；内置 `loading` 态与 `focus-visible` 环。        |
-| `Input`                   | 默认 `h-8 rounded-lg text-[13px]`，支持 `error` 态自动切换错误边框与 focus ring。                                                                                                         |
-| `Select` / `DropdownMenu` | 基于 Radix，实底 `bg-surface` + `shadow-elevated`，导出标准类（`selectTriggerClass`、`menuContentClass`、`menuItemClass`）供组合扩展；支持异步加载 spinner 与固定底栏（如「加载更多」）。 |
-| `Switch`                  | 基于 Radix，支持 `md` / `sm`，开启为 `bg-accent`，关闭为 `bg-surface-active`。                                                                                                            |
-| `Dialog`                  | 含 `DialogHeader` / `DialogTitle` / `DialogDescription` / `DialogBody` / `DialogFooter`，默认不点击遮罩关闭（`closeOnOverlayClick={false}`）。                                            |
-| `Badge`                   | `tone`: `default` / `accent` / `success` / `warning` / `error`，`rounded-md` 紧凑圆角标签。                                                                                               |
-| `Tabs`                    | 语义化 Radix Tabs，配合 `underlineTabTriggerClass` / `bottomTabTriggerClass` 实现工作区页签。                                                                                             |
-| `InlineBanner`            | `tone`: `info` / `success` / `warning` / `error`；用于页内持久错误与警告提示（**优先替代瞬时 Toast**），支持 `detail` 折叠原始技术报错和 `actions` 操作区。                               |
-| `Kbd`                     | 快捷键徽章（`xs` / `sm`），`bg-surface` + 细边框。                                                                                                                                        |
+| 原语                      | 关键能力与约定                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Button`                  | `variant`: `primary` / `secondary` / `ghost` / `danger` / `danger-outline`；`size`: `sm(28px)` / `md(32px)` / `lg(36px)` / `icon(32×32)`；内置 `loading` 态与 `focus-visible` 环。                                                                                                                                                                                                                       |
+| `Input`                   | 默认 `h-8 rounded-lg text-ui-body`，支持 `error` 态自动切换错误边框与 focus ring。                                                                                                                                                                                                                                                                                                                       |
+| `Select` / `DropdownMenu` | 基于 Radix，统一浮层容器（`rounded-lg border-border-muted bg-surface p-1 shadow-elevated`）与同心圆角选项行（`rounded-md px-2.5 py-1.5`，悬停 `bg-surface-hover`，选中 `bg-accent-muted text-accent` + `Check`，不加行分隔线与内描边，不预留 `scrollbar-gutter: stable` 右侧空白）；导出标准类（`selectTriggerClass`、`menuContentClass`、`menuItemClass`）供组合扩展；支持异步加载 spinner 与固定底栏。 |
+| `Switch`                  | 基于 Radix，支持 `md` / `sm`，开启为 `bg-accent`，关闭为 `bg-surface-active`。                                                                                                                                                                                                                                                                                                                           |
+| `Dialog`                  | 含 `DialogHeader` / `DialogTitle` / `DialogDescription` / `DialogBody` / `DialogFooter`，默认不点击遮罩关闭（`closeOnOverlayClick={false}`）。                                                                                                                                                                                                                                                           |
+| `Badge`                   | `tone`: `default` / `accent` / `success` / `warning` / `error`，`rounded-md` 紧凑圆角标签。                                                                                                                                                                                                                                                                                                              |
+| `Tabs`                    | 语义化 Radix Tabs，配合 `underlineTabTriggerClass` / `bottomTabTriggerClass` 实现工作区页签。                                                                                                                                                                                                                                                                                                            |
+| `InlineBanner`            | `tone`: `info` / `success` / `warning` / `error`；用于页内持久错误与警告提示（**优先替代瞬时 Toast**），支持 `detail` 折叠原始技术报错和 `actions` 操作区。                                                                                                                                                                                                                                              |
+| `Kbd`                     | 快捷键徽章（`xs` / `sm`），`bg-surface` + 细边框。                                                                                                                                                                                                                                                                                                                                                       |
 
 ### 6.2 控件选型强制约定
 
 - **分段控件 vs 下拉框**：
-  - 分段控件**仅用于** 2–3 个简短、互斥且值得同时看到的选项（如 升序 / 降序、复用 / AI 生成、浅色 / 深色 / 跟随系统）。
-  - 以下场景**一律使用占满单元的下拉框（Select）**：≥4 个选项；文案较长；实体列表（表、数据加工、模型、空间/项目）；超过 3 个值的频率/类型/模式；非多选的星期选择；自动化「触发方式」「执行频率」「处理方式」「失败时」「写入方式」；排序/状态筛选；表格中逐行重复的选择。
+  - 分段控件**仅用于** 2–3 个简短、互斥且值得同时看到的选项（如 复用 / AI 生成、浅色 / 深色 / 跟随系统）。
+  - 以下场景**一律使用占满单元的下拉框（Select）**：≥4 个选项；文案较长；实体列表（表、数据加工、模型、空间/项目）；超过 3 个值的频率/类型/模式；非多选的星期选择；自动化「触发方式」「执行频率」「处理方式」「失败时」「写入方式」；排序方式 / 排序与状态筛选；表格中逐行重复的选择。
 - **多选控件**：
   - 少量开关型多选（如执行星期）使用多选切换按钮。
   - 字段/选项多选统一复用 `workflow-forms/shared/GlassOptionMultiSelect`（支持 `overflow: collapse | scroll`、`dropdown: portal | inline`、`onClear` 及受控开关），已选标签统一通过 `GlassValueChip` / `GlassOverflowTagList` 渲染，禁止手写内联 chip 复刻（受 `glass-overflow-tag-list.test.ts` 保护）。
@@ -193,7 +193,7 @@
 - **静默标题栏**：高 `h-12`，采用 `glass-panel-header titlebar-drag` 网格居中显示会话标题，左侧不显示应用名，右侧仅展示必要状态（如 MCP 连接数）与辅助操作；滚动后在标题栏下方浮现「回到顶部」轻胶囊。
 - **阅读宽度**：消息流与底部输入栏统一最大宽度 `max-w-[980px]`。
 - **消息呈现**：用户消息为右对齐、无边框扁平浅底气泡（`.message-user`，`18px` 圆角、`bg-accent-muted`）；助手回复直接平铺排版（`.prose-chat`，`14px / 1.75` 行高），强调词与链接使用 `--color-accent-text` 系色值。
-- **底部输入壳**：`.chat-composer-panel`（`12px` 圆角、实底卡片阴影、聚焦时主色边框 + 轻外环；对话页最小高度 `128px` / `sm:140px`，欢迎页文本框 `96px–220px` 自适应）；底栏以浅分隔线承接统一 `h-7 rounded-lg` 的紧凑扁平控件（`.composer-flat-button` / `.composer-flat-pill`），附件与 `@` 技能后以竖线区分权限策略、工作目录与右侧模型选择器、主色发送按钮；权限策略与模型选择器浮层统一采用 `rounded-xl p-1.5` 卡片 + `rounded-lg` 选项行（内置/自定义稳定分组，权限菜单附单行说明）。
+- **底部输入壳**：`.chat-composer-panel`（`12px` 圆角、实底卡片阴影、聚焦时主色边框 + 轻外环；对话页最小高度 `128px` / `sm:140px`，欢迎页文本框 `96px–220px` 自适应）；底栏以浅分隔线承接统一 `h-7 rounded-lg` 的紧凑扁平控件（`.composer-flat-button` / `.composer-flat-pill`），附件与 `@` 技能后以竖线区分权限策略、工作目录与右侧模型选择器、主色发送按钮；权限策略、工作目录与模型选择器浮层统一采用 `rounded-lg p-1` 卡片 + `rounded-md` 选项行（内置/自定义稳定分组，权限菜单附单行说明）。
 
 ### 7.2 列表页与数据网格
 

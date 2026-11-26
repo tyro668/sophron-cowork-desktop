@@ -1,4 +1,6 @@
 // @vitest-environment happy-dom
+import i18n from '../../src/renderer/i18n/config';
+import { RawTableError } from '../../src/shared/contracts/data/issues';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { confirmLeave, useLeaveGuard } from '../../src/renderer/utils/leave-guard';
@@ -103,11 +105,23 @@ describe('formatDataErrorMessage', () => {
         : key) as never;
     expect(
       formatDataErrorMessage(
-        new Error(
-          'Error invoking remote method: E_RAW_TABLE_ABNORMAL: 刷新后缺少列：销售额。原始表保留上次的数据'
-        ),
+        { kind: 'raw-table-issue', code: 'E_RAW_TABLE_ABNORMAL', message: '刷新后缺少列：销售额' },
         t
       )
     ).toBe('数据异常：刷新后缺少列：销售额。已保留上次的数据。');
   });
 });
+
+it.each(['en', 'zh'])(
+  'renders structured data errors in %s with the complete cause',
+  (language) => {
+    const translate = i18n.getFixedT(language);
+    const reason = 'invalid field. Expected two columns.';
+    expect(
+      formatDataErrorMessage(new RawTableError('E_RAW_TABLE_ABNORMAL', reason), translate)
+    ).toBe(translate('data.rawTables.errors.abnormal', { reason }));
+    expect(
+      formatDataErrorMessage(new RawTableError('DATA_CSV_ENCODING_ERROR', reason), translate)
+    ).toBe(translate('data.rawTables.errors.csvEncoding'));
+  }
+);

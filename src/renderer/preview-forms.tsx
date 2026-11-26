@@ -156,7 +156,7 @@ function PreviewApp() {
       node: nodeFor('rename', {
         mappings: [
           { source: 'amount', targetMode: 'rename', targetValue: 'amt' },
-          { source: 'name', targetMode: 'keep' },
+          { source: 'name', targetMode: 'rename', targetValue: 'name' },
         ],
       }),
       C: FormFieldMapping,

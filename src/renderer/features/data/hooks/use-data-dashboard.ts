@@ -18,7 +18,7 @@ import type {
   DataGroup,
   DataResultTable,
   WorkflowNodeRunStat,
-} from '../../../types';
+} from '../../../../shared/contracts';
 import { getTablePageCount } from '../../../components/data-view/shared';
 import { TABLE_PAGE_SIZE } from '../../../components/data-view/shared';
 import { buildGroupSections } from '../../../components/data-view/group-ui';

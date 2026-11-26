@@ -18,7 +18,7 @@ describe('operator UI foundations', () => {
     );
 
     expect(html).toContain('min-h-8');
-    expect(html).toContain('text-[13px]');
+    expect(html).toContain('text-ui-body');
   });
 
   it('left-aligns the selected value in ordinary option selects', () => {

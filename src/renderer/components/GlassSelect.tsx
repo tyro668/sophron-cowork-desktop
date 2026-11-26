@@ -154,7 +154,10 @@ export function GlassSelect({
             </div>
           )}
           <Select.Viewport
-            className={cn('p-1', (searchable || footer) && 'min-h-0 flex-1 overflow-y-auto')}
+            className={cn(
+              'space-y-0.5 p-1',
+              (searchable || footer) && 'min-h-0 flex-1 overflow-y-auto'
+            )}
           >
             {searchable && visibleOptions.length === 0 && (
               <div className="px-2.5 py-3 text-center text-[12px] text-text-muted">
@@ -182,7 +185,7 @@ export function GlassSelect({
                       {option.hint}
                     </span>
                   ) : null}
-                  <Select.ItemIndicator className="absolute right-1.5 flex items-center text-accent-text">
+                  <Select.ItemIndicator className="absolute right-2 flex items-center text-accent">
                     <Check className="h-3.5 w-3.5" />
                   </Select.ItemIndicator>
                 </Select.Item>

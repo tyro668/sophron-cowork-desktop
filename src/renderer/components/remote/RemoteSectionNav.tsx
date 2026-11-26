@@ -24,7 +24,7 @@ export function RemoteSectionNav({ activeSection, pendingPairings, onSectionChan
     <Tabs value={activeSection} onValueChange={(v) => onSectionChange(v as RemoteSection)}>
       <TabsList
         aria-label={t('remote.navigationLabel')}
-        className="flex w-full items-center gap-1 overflow-x-auto rounded-none border-0 border-b border-border-subtle bg-transparent px-2"
+        className="flex h-10 w-full items-stretch gap-0 overflow-x-auto rounded-none border-0 border-b border-border-subtle bg-surface-muted/35 p-0"
       >
         {items.map(({ id, label, icon: Icon, count }) => (
           <TabsTrigger
@@ -35,13 +35,13 @@ export function RemoteSectionNav({ activeSection, pendingPairings, onSectionChan
             aria-controls={id === activeSection ? `remote-panel-${id}` : undefined}
             className={cn(
               underlineTabTriggerClass,
-              'flex h-auto shrink-0 items-center gap-2 px-3 py-3 text-sm'
+              'flex h-full shrink-0 items-center gap-1.5 px-3.5 text-[12.5px]'
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-3.5 w-3.5" />
             <span>{label}</span>
             {!!count && (
-              <span className="min-w-5 rounded-full bg-warning/15 px-1.5 py-0.5 text-center text-[10px] font-semibold text-warning">
+              <span className="min-w-4 rounded bg-warning/15 px-1 py-0.5 text-center text-[10px] font-semibold leading-none tabular-nums text-warning">
                 {count}
               </span>
             )}

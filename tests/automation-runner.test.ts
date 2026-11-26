@@ -53,6 +53,7 @@ function createStore(): AutomationStore & {
   return {
     runs,
     artifacts,
+    setRunScriptRepair: vi.fn(),
     updateTogether: vi.fn(),
     getTablePolicy: vi.fn(() => ({ runOnChange: false, runOnTrigger: true })),
     setTablePolicy: vi.fn(),

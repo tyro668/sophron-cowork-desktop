@@ -63,16 +63,16 @@ const BANNED: Array<{ pattern: RegExp; label: string }> = [
 // the historical migration strings and the legacy-name constants.
 const ALLOWED_OCCURRENCES: Array<{ file: string; pattern: RegExp }> = [
   { file: 'src/main/sandbox/lima-instance-name.ts', pattern: /['"]claude-sandbox['"]/ },
-  // software-dev-server-example spawns the external claude-code CLI; its log
+  // software-development-server spawns the external claude-code CLI; its log
   // prefix names the third-party tool it wraps.
-  { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\[Claude[A-Za-z]*\]/ },
-  { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
+  { file: 'src/main/mcp/software-development-server.ts', pattern: /\[Claude[A-Za-z]*\]/ },
+  { file: 'src/main/mcp/software-development-server.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
   // plugin-runtime-service types mirror the external `claude plugin` CLI's
   // JSON output shapes — the Claude* names are accurate third-party naming.
   { file: 'src/main/skills/plugin-runtime-service.ts', pattern: /\bClaude[A-Z][A-Za-z]*\b/ },
-  // software-dev-server-example wraps the external claude-code CLI and reads
+  // software-development-server wraps the external claude-code CLI and reads
   // the CLAUDE_CODE_PATH env var.
-  { file: 'src/main/mcp/software-dev-server-example.ts', pattern: /\bclaude[A-Z][A-Za-z]*\b/ },
+  { file: 'src/main/mcp/software-development-server.ts', pattern: /\bclaude[A-Z][A-Za-z]*\b/ },
   // `claudeCodeAvailable` reports whether the external claude CLI is installed
   // in the sandbox — accurate third-party naming, shared across the bridge.
   ...[

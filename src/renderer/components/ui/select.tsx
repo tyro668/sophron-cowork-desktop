@@ -9,16 +9,16 @@ import { cn } from './cn';
  * parts with custom trigger/item content. Solid surfaces, no blur.
  */
 export const selectTriggerClass =
-  'flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-[13px] text-text-primary transition-colors ' +
+  'flex h-8 w-full items-center justify-between gap-1.5 rounded-lg border border-border-muted bg-surface px-2.5 text-ui-body text-text-primary transition-colors ' +
   'focus-visible:outline-none focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25 ' +
   'disabled:cursor-not-allowed disabled:opacity-50 data-[placeholder]:text-text-muted [&>span]:truncate';
 
 export const selectContentClass =
-  'z-[10000] max-h-80 min-w-[8rem] overflow-hidden rounded-lg border border-border-subtle bg-surface text-text-primary shadow-elevated';
+  'z-[10000] max-h-80 min-w-[8rem] overflow-hidden rounded-lg border border-border-muted bg-surface text-text-primary shadow-elevated';
 
 export const selectItemClass =
-  'relative flex cursor-pointer select-none items-center rounded-md py-1.5 pl-2 pr-7 text-[13px] text-text-primary outline-none transition-colors ' +
-  'data-[highlighted]:bg-accent-muted data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
+  'relative flex cursor-pointer select-none items-center rounded-md py-1.5 pl-2.5 pr-7 text-ui-body text-text-primary outline-none transition-colors ' +
+  'data-[highlighted]:bg-surface-hover data-[state=checked]:bg-accent-muted data-[state=checked]:font-medium data-[state=checked]:text-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50';
 
 export const Select = SelectPrimitive.Root;
 export const SelectValue = SelectPrimitive.Value;
@@ -53,7 +53,7 @@ export const SelectContent = React.forwardRef<
       )}
       {...rest}
     >
-      <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+      <SelectPrimitive.Viewport className="space-y-0.5 p-1">{children}</SelectPrimitive.Viewport>
     </SelectPrimitive.Content>
   </SelectPrimitive.Portal>
 ));
@@ -64,7 +64,7 @@ export const SelectItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(({ className, children, ...rest }, ref) => (
   <SelectPrimitive.Item ref={ref} className={cn(selectItemClass, className)} {...rest}>
-    <SelectPrimitive.ItemIndicator className="absolute right-1.5 flex items-center text-accent-text">
+    <SelectPrimitive.ItemIndicator className="absolute right-2 flex items-center text-accent">
       <Check className="h-3.5 w-3.5" aria-hidden />
     </SelectPrimitive.ItemIndicator>
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

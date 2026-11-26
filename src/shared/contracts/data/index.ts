@@ -1,3 +1,4 @@
+import type { RawTableIssue } from './issues';
 /**
  * Cross-process data contracts. Shared by main, preload, and renderer.
  * Must not import from main/, renderer/, or preload/.
@@ -53,6 +54,7 @@ export interface DataGroup {
   createdAt: number;
 }
 
+/** A saved processing task. Its workflow defines the graph and its result table identifies an output. */
 export interface DataPipeline {
   id: string;
   name: string;
@@ -668,7 +670,7 @@ export interface DataRawSourceRefreshResult {
   refreshed: string[];
   added: string[];
   missing: string[];
-  failed: Array<{ id: string; error: string }>;
+  failed: Array<{ id: string; error: string; issue?: RawTableIssue }>;
   /** Suspected renames; their tables keep the last import but are flagged missing until the user decides. */
   renames: DataRawSourceRenameCandidate[];
   addedItems: DataRawSourceChangeItem[];
@@ -689,7 +691,7 @@ export interface DataResolveRawSourceRenamesResult {
   renamed: string[];
   added: string[];
   missing: string[];
-  failed: Array<{ id: string; error: string }>;
+  failed: Array<{ id: string; error: string; issue?: RawTableIssue }>;
 }
 
 export interface DataRawTableHealth {
@@ -1100,6 +1102,7 @@ export interface DataWorkflowEdge {
   createdAt: number;
 }
 
+/** The editable operator graph belonging to one pipeline. */
 export interface DataPipelineWorkflow {
   pipeline: DataPipeline;
   nodes: DataWorkflowNode[];

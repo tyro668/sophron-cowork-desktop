@@ -2,15 +2,14 @@ import { Fragment, useCallback, useMemo } from 'react';
 import { Settings } from 'lucide-react';
 import type { OperatorFormProps } from './types';
 import { GlassOptionMultiSelect } from './shared/GlassOptionMultiSelect';
-import { GlassOptionSingleSelect } from './shared/GlassOptionSingleSelect';
-import { MetricExpressionCell, autoMetricAlias } from './shared/MetricExpressionCell';
+import { MetricValueCells } from './shared/MetricValueCells';
+import { autoMetricAlias } from './shared/MetricExpressionCell';
 import {
   AddRow,
   Cell,
   ErrorRow,
   FormGrid,
   FormScroll,
-  GlassCommitTextInput,
   GridRow,
   LabelCell,
   RowActionsCell,
@@ -283,42 +282,27 @@ export default function FormAggregate({
           return (
             <Fragment key={metric.id ?? `metric-${index}`}>
               <GridRow {...rowProps(index)} testId={`aggregate-metric-row-${index}`}>
-                <Cell v={['ctl']}>
-                  <GlassOptionSingleSelect
-                    value={metric.function}
-                    groups={functionGroups}
-                    onChange={(value) =>
-                      updateMetric(index, { function: value as AggregateFunction })
-                    }
-                    className="w-full"
-                  />
-                </Cell>
-                <Cell v={['ctl', issue.expressionError && 'err']}>
-                  <MetricExpressionCell
-                    value={metric.expression ?? ''}
-                    onChange={(value) => updateMetric(index, { expression: value })}
-                    fieldCompletions={fieldCompletions}
-                    columnTypes={columnTypes}
-                    allowAllRows={metric.function === 'count'}
-                    placeholder={tr('aggregateExpressionPlaceholder')}
-                  />
-                </Cell>
-                <Cell v={['ctl', issue.aliasError && 'err']}>
-                  <GlassCommitTextInput
-                    value={metric.alias ?? ''}
-                    onCommit={(value) => updateMetric(index, { alias: value.trim() })}
-                    placeholder={
-                      autoMetricAlias(
-                        metric.function,
-                        metric.expression ?? '',
-                        tr('metricRowsAlias')
-                      ) || tr('aggregateAliasPlaceholder')
-                    }
-                    ariaLabel={tr('aggregateAlias')}
-                    ariaInvalid={issue.aliasError}
-                    className="h-full w-full px-2.5 text-[13px]"
-                  />
-                </Cell>
+                <MetricValueCells
+                  metric={metric}
+                  issue={issue}
+                  functionGroups={functionGroups}
+                  fieldCompletions={fieldCompletions}
+                  columnTypes={columnTypes}
+                  expressionPlaceholder={tr('aggregateExpressionPlaceholder')}
+                  aliasPlaceholder={
+                    autoMetricAlias(
+                      metric.function,
+                      metric.expression ?? '',
+                      tr('metricRowsAlias')
+                    ) || tr('aggregateAliasPlaceholder')
+                  }
+                  aliasLabel={tr('aggregateAlias')}
+                  onFunctionChange={(value) =>
+                    updateMetric(index, { function: value as AggregateFunction })
+                  }
+                  onExpressionChange={(expression) => updateMetric(index, { expression })}
+                  onAliasChange={(alias) => updateMetric(index, { alias })}
+                />
                 <RowActionsCell
                   labels={rowLabels}
                   onAdd={() => addMetricAfter(index)}

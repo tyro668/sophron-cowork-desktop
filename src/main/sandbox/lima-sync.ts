@@ -495,7 +495,7 @@ export class LimaSync {
         stderr: result.stderr || '',
       };
     } catch (error: unknown) {
-      throw new Error(error instanceof Error ? error.message : String(error));
+      throw new Error(error instanceof Error ? error.message : String(error), { cause: error });
     }
   }
 

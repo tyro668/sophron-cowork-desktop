@@ -100,7 +100,8 @@ export class ToolExecutor {
       return fs.readFileSync(pathToRead, 'utf-8');
     } catch (error) {
       throw new Error(
-        `Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to read file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
       );
     }
   }
@@ -121,7 +122,8 @@ export class ToolExecutor {
       fs.writeFileSync(pathToWrite, content, 'utf-8');
     } catch (error) {
       throw new Error(
-        `Failed to write file: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to write file: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
       );
     }
   }
@@ -151,7 +153,8 @@ export class ToolExecutor {
       return result.length > 0 ? result.join('\n') : 'Directory is empty';
     } catch (error) {
       throw new Error(
-        `Failed to list directory: ${error instanceof Error ? error.message : 'Unknown error'}`
+        `Failed to list directory: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
       );
     }
   }
@@ -169,7 +172,7 @@ export class ToolExecutor {
     try {
       parsed = new URL(trimmed);
     } catch (error) {
-      throw new Error('Invalid URL');
+      throw new Error('Invalid URL', { cause: error });
     }
 
     if (!['http:', 'https:'].includes(parsed.protocol)) {
@@ -187,7 +190,7 @@ export class ToolExecutor {
         error instanceof Error &&
         (error.name === 'AbortError' || error.name === 'TimeoutError')
       ) {
-        throw new Error('请求超时，请检查网络连接后重试');
+        throw new Error('请求超时，请检查网络连接后重试', { cause: error });
       }
       throw error;
     }
@@ -413,7 +416,8 @@ export class ToolExecutor {
           regex = new RegExp(pattern, 'gi');
         } catch (regexError) {
           throw new Error(
-            `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : 'unknown error'}`
+            `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : 'unknown error'}`,
+            { cause: regexError }
           );
         }
         await this.searchDirectoryContents(pathToSearch, regex, results);
@@ -431,7 +435,10 @@ export class ToolExecutor {
         return files.length > 0 ? files.slice(0, 100).join('\n') : 'No files found';
       }
     } catch (error) {
-      throw new Error(`Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(
+        `Search failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { cause: error }
+      );
     }
   }
 
@@ -460,7 +467,9 @@ export class ToolExecutor {
       const newContent = content.split(oldString).join(newString);
       fs.writeFileSync(resolvedPath, newContent, 'utf-8');
     } catch (error) {
-      throw new Error(`Edit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Edit failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+        cause: error,
+      });
     }
   }
 
@@ -488,7 +497,9 @@ export class ToolExecutor {
 
       return files.length > 0 ? files.slice(0, 100).join('\n') : 'No files found';
     } catch (error) {
-      throw new Error(`Glob failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Glob failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+        cause: error,
+      });
     }
   }
 
@@ -512,14 +523,17 @@ export class ToolExecutor {
         regex = new RegExp(pattern, 'gi');
       } catch (regexError) {
         throw new Error(
-          `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : 'unknown error'}`
+          `Invalid regex pattern: ${regexError instanceof Error ? regexError.message : 'unknown error'}`,
+          { cause: regexError }
         );
       }
       await this.searchDirectoryContents(pathToSearch, regex, results);
 
       return results.length > 0 ? results.slice(0, 50).join('\n') : 'No matches found';
     } catch (error) {
-      throw new Error(`Grep failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new Error(`Grep failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+        cause: error,
+      });
     }
   }
 

@@ -1,14 +1,7 @@
-import { formatAppDateTime, formatClockTime } from '../../utils/i18n-format';
-import { getVisiblePageNumbers } from '../../utils/pagination';
-
-export { getVisiblePageNumbers };
-import { createContext, Fragment, useContext, useState, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { toolbarEndControlWidthClass } from './data-view-styles';
+import { Fragment, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Cloud,
   FileText,
   Folder,
@@ -19,7 +12,7 @@ import {
   Table2,
   type LucideIcon,
 } from 'lucide-react';
-import type { DataRawTable, DataResultTable, DataPipelineStatus } from '../../types';
+import type { DataRawTable, DataPipelineStatus } from '../../types';
 import type { RawTableSourceKind } from '../../features/data/model/types';
 import {
   GlassDropdownMenu,
@@ -30,9 +23,14 @@ import {
 import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
 
+export { getVisiblePageNumbers } from '../../utils/pagination';
+export * from './data-view-styles';
+export * from './data-pagination';
+export * from './data-format';
+export * from './tab-bar-action';
+
 export type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
-export const TABLE_PAGE_SIZE = 10;
 export const RAW_TABLE_PREVIEW_PAGE_SIZE = 100;
 export const RESULT_TABLE_INPUT_CHOICES_LIMIT = 200;
 export const DATA_DELETE_BATCH_SIZE = 200;
@@ -43,74 +41,6 @@ export function makeLocalId(prefix: string): string {
   }
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
-
-/**
- * Underline-tab trigger styling for `TabsTrigger` — preserves the legacy
- * text + bottom-accent-line look on top of the semantic `Tabs` primitives.
- */
-export const underlineTabTriggerClass =
-  'relative h-full rounded-none border-r border-border-subtle bg-transparent px-4 text-[13px] font-medium text-text-secondary shadow-none ' +
-  'hover:bg-surface-hover/60 hover:text-text-primary data-[state=active]:bg-accent-muted data-[state=active]:text-accent ' +
-  'data-[state=active]:shadow-none after:absolute after:bottom-0 after:left-0 after:h-0.5 ' +
-  'after:w-full data-[state=active]:after:bg-accent';
-
-/**
- * Fixed tab width shared by the data page top tabs, the raw/result editor
- * bottom tabs and the cloud space bottom tabs. Widths include the 1px divider,
- * so N tabs span exactly N × FIXED_TAB_WIDTH (the cloud tree = 4 tabs).
- */
-export const FIXED_TAB_WIDTH = 112;
-export const fixedTabWidthClass = 'w-[112px] min-w-0 flex-none justify-center px-2';
-export const fixedTabGroupWidth = (count: number) => count * FIXED_TAB_WIDTH;
-export const fixedUnderlineTabTriggerClass = `${underlineTabTriggerClass} ${fixedTabWidthClass}`;
-
-/**
- * Shared underline-tab bar chrome for the main workspace pages (data, skills,
- * automation): a fixed-height row with a baseline border that the active
- * trigger underline sits on. Keeps tab height/spacing identical across pages.
- */
-export const underlineTabBarClass =
-  'flex h-12 flex-shrink-0 items-stretch border-b border-border-subtle px-0';
-export const underlineTabListClass =
-  'inline-flex h-full items-stretch gap-0 rounded-none border-0 bg-transparent p-0';
-
-/**
- * Bottom tab bar (cloud list panels style): the strip sits at the panel's
- * bottom edge; the active tab is tinted and marked by a top accent line.
- */
-export const bottomTabBarClass =
-  'flex h-12 flex-shrink-0 items-stretch border-t border-border-muted';
-export const bottomTabListClass =
-  'flex h-full items-stretch gap-0 rounded-none border-0 bg-transparent p-0';
-export const bottomTabTriggerClass =
-  'relative h-full w-[112px] min-w-0 flex-none justify-center rounded-none border-r border-border-subtle bg-transparent px-2 text-xs font-medium text-text-secondary shadow-none ' +
-  'hover:bg-surface-hover/50 hover:text-text-primary ' +
-  'data-[state=active]:bg-accent-muted data-[state=active]:text-accent data-[state=active]:shadow-none ' +
-  'after:absolute after:inset-x-0 after:top-0 after:h-0.5 data-[state=active]:after:bg-accent';
-
-/**
- * Flat full-width header strip for workspace list pages: search/create on the
- * left, row actions on the right. Replaces the old floating `mb-3` toolbar so
- * the bar sits flush against the tab underline and the table below it.
- */
-export const flatToolbarRowClass =
-  'flex h-10 flex-shrink-0 items-stretch gap-0 border-b border-border-subtle p-0 ' +
-  '[&>div]:flex-nowrap [&>div]:items-stretch [&>div]:gap-0';
-
-/** Primary create button rendered as a flush toolbar cell (no radius / gap). */
-export const toolbarPrimaryCellClass =
-  'inline-flex h-full flex-shrink-0 items-center justify-center gap-1.5 rounded-none jade-primary-button px-4 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60';
-
-/**
- * Editor header strip (pipeline/raw-table/result-table editors): sits where the
- * workspace tab bar would be, so it must match `underlineTabBarClass` height
- * (h-12) to avoid a vertical shift when drilling into an editor.
- */
-export const editorHeaderRowClass =
-  'flex h-12 flex-shrink-0 items-center gap-2.5 border-b border-border-subtle px-3';
-
-/** Config / detail body: child `.ui-group` cards become edge-to-edge sections. */
-export const configFlushBodyClass = 'ui-config-flush min-h-0 flex-1 overflow-auto bg-surface';
 
 export function DataToolbarButton({
   icon,
@@ -322,83 +252,6 @@ export function LoadingState({ label }: { label: string }) {
   );
 }
 
-export function PaginationFooter({
-  count,
-  currentPage,
-  onPageChange,
-  embedded = false,
-}: {
-  count: number;
-  currentPage: number;
-  onPageChange: (page: number) => void;
-  embedded?: boolean;
-}) {
-  const { t } = useTranslation();
-  const pageCount = getTablePageCount(count);
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const pageNumbers = getVisiblePageNumbers(safeCurrentPage, pageCount);
-
-  return (
-    <div
-      className={`flex min-h-14 flex-col items-center justify-between gap-2 px-4 text-xs font-medium text-text-secondary sm:flex-row ${
-        embedded ? 'border-t border-border-muted py-1' : 'mt-3'
-      }`}
-    >
-      <span>{t('data.totalCount', { count })}</span>
-      <div className="flex items-center gap-2">
-        <Button
-          variant="secondary"
-          size="md"
-          className="min-w-[7rem] text-text-secondary shadow-soft"
-        >
-          {t('data.rowsPerPage', { count: TABLE_PAGE_SIZE })}
-          <ChevronDown className="h-3.5 w-3.5" />
-        </Button>
-        <div className="flex items-center gap-2">
-          {pageCount > 1 && (
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => onPageChange(safeCurrentPage - 1)}
-              disabled={safeCurrentPage <= 1}
-              className="text-text-muted shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:opacity-45"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          )}
-          {pageNumbers.map((pageNumber) => (
-            <Button
-              key={pageNumber}
-              variant="secondary"
-              size="icon"
-              onClick={() => onPageChange(pageNumber)}
-              aria-current={pageNumber === safeCurrentPage ? 'page' : undefined}
-              className={`text-sm shadow-soft ${
-                pageNumber === safeCurrentPage
-                  ? 'border-accent bg-accent-muted text-accent'
-                  : 'text-text-secondary hover:border-accent/30 hover:bg-accent-muted hover:text-accent'
-              }`}
-            >
-              {pageNumber}
-            </Button>
-          ))}
-          {pageCount > 1 && (
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => onPageChange(safeCurrentPage + 1)}
-              disabled={safeCurrentPage >= pageCount}
-              className="text-text-secondary shadow-soft hover:border-accent/30 hover:bg-accent-muted hover:text-accent disabled:opacity-45"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export function RawTableFormLabel({
   children,
   className = '',
@@ -489,64 +342,6 @@ export function RawTableCheckbox({
       {label}
     </label>
   );
-}
-
-export function getTablePageCount(count: number): number {
-  return Math.max(1, Math.ceil(count / TABLE_PAGE_SIZE));
-}
-
-export function isMatchingSearchText(value: string, query: string): boolean {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return true;
-  return value.toLowerCase().includes(normalizedQuery);
-}
-
-export function formatTimestamp(timestamp: number | null, t: (key: string) => string): string {
-  if (!timestamp) return '—';
-  const date = new Date(timestamp);
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startYesterday = startToday - 86_400_000;
-  const time = formatClockTime(date);
-
-  if (timestamp >= startToday) {
-    return `${t('data.relative.today')} ${time}`;
-  }
-  if (timestamp >= startYesterday) {
-    return `${t('data.relative.yesterday')} ${time}`;
-  }
-  return formatAppDateTime(date);
-}
-
-export function formatDateTime(timestamp: number | null): string {
-  if (!timestamp) return '—';
-  return formatAppDateTime(timestamp);
-}
-
-export function formatRelatedPipelineNames(
-  names: string[],
-  t: (key: string, options?: Record<string, unknown>) => string
-): string {
-  if (names.length === 0) return t('data.rawTables.noRelatedPipelines');
-  return names.join(', ');
-}
-
-export function formatResultTableRelatedPipelineNames(
-  resultTable: DataResultTable,
-  t: (key: string, options?: Record<string, unknown>) => string
-): string {
-  if (resultTable.relatedPipelineNames.length > 0) {
-    return formatRelatedPipelineNames(resultTable.relatedPipelineNames, t);
-  }
-  if (resultTable.sourceRawTableId) {
-    return t('data.resultTables.relatedRawTable');
-  }
-  return t('data.rawTables.noRelatedPipelines');
-}
-
-export function formatDisplayPath(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  return normalized.replace(/^\/Users\/[^/]+/, '~');
 }
 
 function statusBadgeClass(status: DataPipelineStatus): string {
@@ -646,34 +441,3 @@ export function formatCloudMirrorLocation(mirror: CloudMirrorInfo): string {
   ].filter((part): part is string => Boolean(part));
   return parts.join(' / ');
 }
-
-/**
- * List pages put their "+ 新建…" action at the far right of the top tab bar.
- * The page renders <TabBarActionSlot /> inside the tab bar and wraps its content in
- * the provider; panels render <TabBarAction> which portals into the slot (or renders
- * inline when no slot is present, e.g. isolated tests).
- */
-const TabBarActionContext = createContext<HTMLElement | null>(null);
-
-export function useTabBarActionSlot() {
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  return { slot, slotRef: setSlot, Provider: TabBarActionContext.Provider };
-}
-
-export function TabBarActionSlot({ slotRef }: { slotRef: (el: HTMLElement | null) => void }) {
-  return (
-    <div ref={slotRef} data-testid="tab-bar-action-slot" className="ml-auto flex items-stretch" />
-  );
-}
-
-export function TabBarAction({ children }: { children: ReactNode }) {
-  const slot = useContext(TabBarActionContext);
-  return slot ? createPortal(children, slot) : <>{children}</>;
-}
-
-/** Width of the trailing icon cell (toolbar ⋯ and the tab-bar split-button arrow). */
-export const toolbarEndControlWidthClass = 'w-10';
-
-/** Compact flush "+ 新建…" cell at the right end of the tab bar: accent text, hover tint. */
-export const tabBarNewCellClass =
-  'inline-flex h-full flex-shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle px-4 text-xs font-medium text-accent transition-colors hover:bg-accent-muted/60 disabled:cursor-not-allowed disabled:opacity-50';

@@ -586,21 +586,22 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
 
   return (
     <div className="w-full overflow-hidden rounded-md border border-border-subtle bg-surface">
-      <div className="space-y-3 p-3">
-        <GatewayControlCard
-          status={status}
-          isTogglingGateway={isTogglingGateway}
-          onToggle={toggleGateway}
-        />
-        {pendingPairings.length > 0 && activeSection !== 'users' && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/5 p-3">
-            <span role="status" className="text-sm text-text-primary">
-              {t('remote.pendingApprovalNotice', { count: pendingPairings.length })}
-            </span>
-            <Button onClick={() => setActiveSection('users')}>{t('remote.reviewPairings')}</Button>
-          </div>
-        )}
-      </div>
+      <GatewayControlCard
+        status={status}
+        isTogglingGateway={isTogglingGateway}
+        onToggle={toggleGateway}
+      />
+
+      {pendingPairings.length > 0 && activeSection !== 'users' && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border-subtle bg-warning/8 px-4 py-2">
+          <span role="status" className="text-[12.5px] font-medium text-text-primary">
+            {t('remote.pendingApprovalNotice', { count: pendingPairings.length })}
+          </span>
+          <Button size="sm" onClick={() => setActiveSection('users')}>
+            {t('remote.reviewPairings')}
+          </Button>
+        </div>
+      )}
 
       <RemoteSectionNav
         activeSection={activeSection}
@@ -609,24 +610,19 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
       />
 
       {!serviceRunning && (
-        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-hover/50 px-3 py-2 text-xs text-text-secondary">
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-surface-muted/55 px-4 py-2 text-[12px] text-text-secondary">
           <Info className="h-3.5 w-3.5 shrink-0 text-text-muted" />
           {t('remote.startToConfigure')}
         </div>
       )}
 
       <div
-        className={`p-3 ${!serviceRunning ? 'opacity-60' : ''}`}
+        className={!serviceRunning ? 'opacity-60' : ''}
         aria-disabled={!serviceRunning || undefined}
         {...(!serviceRunning ? { inert: '' } : {})}
       >
         {activeSection === 'channels' && (
-          <div
-            id="remote-panel-channels"
-            role="tabpanel"
-            aria-labelledby="remote-nav-tab-channels"
-            className="space-y-3"
-          >
+          <div id="remote-panel-channels" role="tabpanel" aria-labelledby="remote-nav-tab-channels">
             <ChannelList
               channels={channels}
               onSelect={(type) => openSetup(type)}
@@ -649,10 +645,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                 if (!open) setSetupMode(null);
               }}
               ariaLabelledBy="remote-config-title"
-              className="max-w-2xl"
+              className="max-w-2xl p-0 overflow-hidden"
             >
-              <div className="flex items-center justify-between gap-3">
-                <DialogTitle id="remote-config-title">
+              <div className="flex h-11 items-center justify-between gap-3 border-b border-border-subtle px-4">
+                <DialogTitle id="remote-config-title" className="text-[13px] font-semibold">
                   {t('remote.qr.title', { channel: selectedChannelModel.name })}
                 </DialogTitle>
                 <Button
@@ -661,11 +657,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
                   disabled={isSaving}
                   aria-label={t('common.close')}
                   onClick={() => setSetupMode(null)}
+                  className="h-7 w-7"
                 >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <DialogBody>
+              <DialogBody className="mt-0 max-h-[75vh] overflow-y-auto p-0">
                 {selectedChannel === 'lark' || selectedChannel === 'wechat' ? (
                   <AdditionalChannelSettings
                     key={selectedChannel}
@@ -738,12 +735,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {activeSection === 'users' && (
-          <div
-            id="remote-panel-users"
-            role="tabpanel"
-            aria-labelledby="remote-nav-tab-users"
-            className="space-y-4"
-          >
+          <div id="remote-panel-users" role="tabpanel" aria-labelledby="remote-nav-tab-users">
             {status?.running &&
               isPairingEnabled &&
               pendingPairings.length === 0 &&

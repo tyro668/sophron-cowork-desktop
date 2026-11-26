@@ -380,7 +380,7 @@ const scheduleAutomationConfig = z
 // Per-channel positional argument schemas (index i validates args[i]; extra
 // args pass through unvalidated for variadic channels).
 // ---------------------------------------------------------------------------
-export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
+export const IPC_INPUT_SCHEMAS = {
   // system / update / auth
   'get-version': [],
   'system.getTheme': [],
@@ -897,6 +897,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
     }),
   ],
   'data.createRawSource': [z.looseObject({ sourcePath: str, buildMode: str, name: strOpt })],
+  'data.setRawSourceAutoInclude': [str.trim().min(1), bool],
   'data.refreshRawSource': [str],
   'data.changeRawSourcePath': [z.looseObject({ sourceId: str, sourcePath: str })],
   'data.resolveRawSourceRenames': [
@@ -975,4 +976,6 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
       sheetName: strOpt,
     }),
   ],
-};
+} satisfies Record<string, readonly z.ZodType[]>;
+
+export type IpcChannel = keyof typeof IPC_INPUT_SCHEMAS;

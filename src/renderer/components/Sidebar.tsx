@@ -1,3 +1,5 @@
+import { desktopClient } from '../features/desktop/api/desktop-client';
+import { useTitlebarBrandSlot } from '../hooks/use-titlebar-brand-slot';
 import { formatIpcError } from '../utils/ipc-error';
 import { authClient } from '../features/auth/api/auth-client';
 import { automationClient } from '../features/automation/api/automation-client';
@@ -126,16 +128,9 @@ export function Sidebar({ forceCollapsed = false }: { forceCollapsed?: boolean }
   const isLogoutBusy = authBusyMode === 'logout';
 
   const normalizedQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
-  const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
+  const rendererPlatform = desktopClient.platform();
   const isMac = rendererPlatform === 'darwin';
-  const [titlebarBrandSlot, setTitlebarBrandSlot] = useState<HTMLElement | null>(null);
-  // Re-resolve every render: the titlebar slot can remount (e.g. HMR / route
-  // changes) and a stale detached node would make the brand disappear.
-  useEffect(() => {
-    if (isMac) return;
-    const slot = document.getElementById('titlebar-brand-slot');
-    if (slot !== titlebarBrandSlot) setTitlebarBrandSlot(slot);
-  });
+  const titlebarBrandSlot = useTitlebarBrandSlot();
 
   const persistedProjectNames = useMemo(() => {
     return buildProjectNameLookup(projects, rendererPlatform);

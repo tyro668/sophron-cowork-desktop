@@ -44,13 +44,10 @@ export function jflowTestWorkflow(text: string) {
 }
 
 function physicalOutputConfig(config: Record<string, unknown>): Record<string, unknown> {
-  const {
-    intent: _intent,
-    outputStrategy: _strategy,
-    resultTableName,
-    ref: _ref,
-    ...rest
-  } = config;
+  const { resultTableName, ...rest } = config;
+  delete rest.intent;
+  delete rest.outputStrategy;
+  delete rest.ref;
   return {
     ...rest,
     destination: 'duckdb_table',

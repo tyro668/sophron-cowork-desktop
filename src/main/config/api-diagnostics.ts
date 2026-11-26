@@ -670,7 +670,6 @@ async function runDiagnosticsImpl(input: DiagnosticInput): Promise<DiagnosticRes
   if (!failed) {
     stepMap.model.status = 'running';
     await stepModel(input, stepMap.model);
-    if (isFail(stepMap.model)) failed = true;
   }
 
   // Mark remaining pending steps as skipped

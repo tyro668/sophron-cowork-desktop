@@ -1,6 +1,9 @@
+import { RepairDraftError } from './script-packages/errors';
+import { scriptRunMessage } from './script-run-messages';
 import {
-  SCRIPT_REPAIR_PENDING,
+  type ScriptRepairStatus,
   SCRIPT_RUN_ACTION,
+  DEFAULT_SCRIPT_TIMEOUT_MS,
   scriptRunConfigSchema,
   type ScriptRunConfig,
 } from '../../shared/automation/script-package';
@@ -11,17 +14,14 @@ import type { AutomationRunContext } from './automation-action-registry';
 import type { AutomationStore } from './automation-store';
 import { cloudActionState } from './cloud-action-state';
 import { backgroundRepairs, type BackgroundRepairs } from './script-packages/background-repairs';
-import {
-  formatTimeout,
-  type AutoRepairPolicy,
-  type ScriptPackageService,
-} from './script-packages/service';
+import { type AutoRepairPolicy, type ScriptPackageService } from './script-packages/service';
 
 const REPAIR_TIMEOUT_MS = 20 * 60 * 1000;
 export const DEFAULT_REPAIR_POLICY: AutoRepairPolicy = { cooldownMs: 30 * 60 * 1000, dailyCap: 5 };
 
 export interface ScriptRunActionOptions {
   scripts: ScriptPackageService;
+  locale?: string;
   commands?: DataCommandService;
   store?: AutomationStore;
   /** The script generation agent used for onScriptError 'ai_repair'. */
@@ -43,7 +43,7 @@ export function registerScriptRunAction(
     category: 'data',
     icon: 'folder-code',
     version: 1,
-    defaultConfig: { packageId: '', timeoutMs: 120_000, onScriptError: 'notify' },
+    defaultConfig: { packageId: '', timeoutMs: DEFAULT_SCRIPT_TIMEOUT_MS, onScriptError: 'notify' },
     configSchema: objectSchema(
       {
         packageId: { type: 'string', title: 'Script package' },
@@ -56,7 +56,7 @@ export function registerScriptRunAction(
     ),
     validate: (config) => {
       if (!scriptRunConfigSchema.safeParse(config).success) {
-        throw new Error('执行脚本：请选择脚本包');
+        throw new Error(scriptRunMessage('packageRequired', {}, options.locale));
       }
     },
     execute: async (raw, context, node) => {
@@ -69,13 +69,17 @@ export function registerScriptRunAction(
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         context.log({ level: 'error', message: `${name}: ${reason}` });
-        const suffix =
-          config.onScriptError === 'ai_repair'
-            ? await startRepair(options, config, reason, context)
-            : '';
-        throw new Error(`${name}：${reason}${suffix}`, { cause: error });
+        if (config.onScriptError === 'ai_repair') {
+          await startRepair(options, config, reason, context, (outcome) =>
+            options.store?.setRunScriptRepair(context.runId, node.id, {
+              ...outcome,
+              packageId: config.packageId,
+            })
+          );
+        }
+        throw new Error(`${name}: ${reason}`, { cause: error });
       }
-      if (!options.commands) throw new Error('执行脚本：数据服务不可用');
+      if (!options.commands) throw new Error(scriptRunMessage('unavailable', {}, options.locale));
       let rawTableId = config.rawTableId || '';
       try {
         // No table chosen: reuse the one this package already feeds (an editor draft may not
@@ -115,7 +119,11 @@ export function registerScriptRunAction(
         }
       } catch (error) {
         throw new Error(
-          `${name}：写入原始表失败：${error instanceof Error ? error.message : String(error)}`,
+          scriptRunMessage(
+            'writeFailed',
+            { name, reason: error instanceof Error ? error.message : String(error) },
+            options.locale
+          ),
           { cause: error }
         );
       }
@@ -126,13 +134,14 @@ export function registerScriptRunAction(
         summary: `${output.rows} rows, ${output.columns.length} columns`,
         dataRef: { kind: 'raw_table', id: rawTableId },
       });
+      const rowCount = scriptRunMessage('rowCount', { name, rows: output.rows }, options.locale);
       if (output.warnings?.length) {
         // Passed with a fallback / suspicious shape: a yellow line in the run log, not a plain ✓.
         for (const warning of output.warnings)
-          context.log({ level: 'warning', message: `${name}：${warning}` });
-        return `${name} · ${output.rows} 行 · ⚠ ${output.warnings.join('；')}`;
+          context.log({ level: 'warning', message: `${name}: ${warning}` });
+        return `${rowCount} · ⚠ ${output.warnings.join('; ')}`;
       }
-      return `${name} · ${output.rows} 行`;
+      return rowCount;
     },
   });
 }
@@ -146,41 +155,37 @@ function availableName(taken: string[], base: string): string {
   return `${base} ${Date.now()}`;
 }
 
-/**
- * Hand the failure to the script generation agent (the same one as 脚本管理's AI 修复). The
- * run fails right away with SCRIPT_REPAIR_PENDING; the repair runs in the background, fixes
- * the published version, self-tests it with the node's timeout and saves the 「AI 修复」 draft,
- * then rewrites the run's error with the outcome. Skipped while an earlier AI 修复 draft waits
- * for review, during the cooldown, and past the daily cap.
- */
 async function startRepair(
   options: ScriptRunActionOptions,
   config: ScriptRunConfig,
   reason: string,
-  context: AutomationRunContext
-): Promise<string> {
-  if (!options.generator) return ' · AI 修复不可用';
+  context: AutomationRunContext,
+  record: (outcome: ScriptRepairStatus) => void
+): Promise<void> {
+  if (!options.generator) return record({ status: 'unavailable' });
   const repairs = options.repairs ?? backgroundRepairs;
   try {
     const summary = await options.scripts.summary(config.packageId);
     const pending = summary.draft;
     if (pending?.source === 'ai_repair') {
-      return pending.rows != null
-        ? ` · AI 已修复为 v${pending.version}（试运行 ${pending.rows} 行），等你确认使用；本次不再修复`
-        : ` · AI 修复的 v${pending.version} 未通过试运行，等你查看；本次不再修复`;
+      return record(
+        pending.rows != null
+          ? { status: 'awaitingReview', version: pending.version, rows: pending.rows }
+          : { status: 'awaitingFailedReview', version: pending.version, reason: '' }
+      );
     }
     const baseVersion = summary.published?.version ?? summary.draft?.version;
-    if (baseVersion == null) return ' · AI 修复不可用：没有可修复的版本';
-    if (repairs.isRunning(config.packageId)) return ' · AI 正在修复（由更早的一次运行发起）';
+    if (baseVersion == null) return record({ status: 'noVersion' });
+    if (repairs.isRunning(config.packageId)) return record({ status: 'inProgress' });
     const bookedAt = options.now();
     const booked = await options.scripts.reserveAutoRepair(
       config.packageId,
       bookedAt,
       options.repairPolicy ?? DEFAULT_REPAIR_POLICY
     );
-    if (!booked.ok) return ` · 未交给 AI 修复：${booked.reason}`;
+    if (!booked.ok) return record(booked.outcome);
     const generator = options.generator;
-    repairs.start(config.packageId, context.automationId, async (stop) => {
+    const started = repairs.start(config.packageId, context.automationId, async (stop) => {
       const outcome = await repairOnce(
         options,
         generator,
@@ -191,11 +196,18 @@ async function startRepair(
         stop,
         bookedAt
       );
-      await settleRunError(options, context, outcome);
+      record(outcome);
     });
-    return SCRIPT_REPAIR_PENDING;
+    if (!started) {
+      await options.scripts.releaseAutoRepair(config.packageId, bookedAt);
+      return record({ status: 'inProgress' });
+    }
+    record({ status: 'pending' });
   } catch (error) {
-    return ` · AI 修复失败：${error instanceof Error ? error.message : String(error)}`;
+    return record({
+      status: 'failed',
+      reason: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -208,19 +220,19 @@ async function repairOnce(
   context: AutomationRunContext,
   stop: AbortSignal,
   bookedAt: number
-): Promise<string> {
+): Promise<ScriptRepairStatus> {
   const signal = AbortSignal.any([stop, AbortSignal.timeout(REPAIR_TIMEOUT_MS)]);
   try {
     const summary = await options.scripts.summary(config.packageId);
     const result = await options.scripts.generateDraft(
       {
         packageId: config.packageId,
-        rulePrompt: `自动化运行失败：${reason}`.slice(0, 4000),
+        rulePrompt: `Automation run failed: ${reason}`.slice(0, 4000),
         baseVersion,
         runtime: summary.runtime,
         fix: {
           error: reason,
-          note: `自动化定时运行失败；修复后试运行需在 ${formatTimeout(config.timeoutMs)} 内完成。`,
+          note: `The scheduled run failed. Complete the trial within ${config.timeoutMs} ms.`,
         },
       },
       generator,
@@ -228,59 +240,19 @@ async function repairOnce(
     );
     const version = result.version.version;
     if (!result.check?.passed) {
-      return ` · AI 修复的 v${version} 未通过试运行：${result.check?.reason ?? ''}`;
+      return { status: 'trialFailed', version, reason: result.check?.reason ?? '' };
     }
-    return ` · AI 已修复为 v${version}（试运行 ${result.check.rows ?? 0} 行），等你确认使用`;
+    return { status: 'ready', version, rows: result.check.rows ?? 0 };
   } catch (error) {
     if (stop.aborted) {
       // Stopped by the user (pause / disable / delete) or app quit: the model request was
       // aborted and nothing was saved, so it doesn't count toward the cooldown / daily cap.
       await options.scripts.releaseAutoRepair(config.packageId, bookedAt).catch(() => undefined);
-      return ' · AI 修复已停止（自动化已暂停、停用或删除），本次不计入修复次数';
+      return { status: 'stopped' };
     }
-    if (signal.aborted) return ` · AI 修复超时（${formatTimeout(REPAIR_TIMEOUT_MS)}）`;
-    return ` · AI 修复失败：${error instanceof Error ? error.message : String(error)}`;
-  }
-}
-
-/** Swap SCRIPT_REPAIR_PENDING in the finished run (and the automation's last error) for the outcome. */
-async function settleRunError(
-  options: ScriptRunActionOptions,
-  context: AutomationRunContext,
-  outcome: string
-): Promise<void> {
-  const store = options.store;
-  if (!store) return;
-  for (let attempt = 0; attempt < 40; attempt += 1) {
-    const run = store
-      .listRuns(context.automationId, { limit: 200, status: 'all' })
-      .find((item) => item.id === context.runId);
-    if (!run) return;
-    if (run.status !== 'running' && run.status !== 'queued') {
-      const swap = <T extends string | null | undefined>(text: T): T =>
-        (text?.includes(SCRIPT_REPAIR_PENDING)
-          ? text.replace(SCRIPT_REPAIR_PENDING, outcome)
-          : text) as T;
-      const summary = run.executionSummary;
-      store.updateRun(run.id, {
-        error: swap(run.error) ?? null,
-        ...(summary?.steps
-          ? {
-              executionSummary: {
-                ...summary,
-                steps: summary.steps.map((step) =>
-                  step.error ? { ...step, error: swap(step.error) } : step
-                ),
-              },
-            }
-          : {}),
-      });
-      const automation = store.get(context.automationId);
-      if (automation?.lastError?.includes(SCRIPT_REPAIR_PENDING)) {
-        store.setRuntimeState(context.automationId, { lastError: swap(automation.lastError) });
-      }
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    if (signal.aborted) return { status: 'timeout', minutes: REPAIR_TIMEOUT_MS / 60_000 };
+    return error instanceof RepairDraftError
+      ? { status: 'failed', reason: error.message, reasonKey: error.reasonKey }
+      : { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }

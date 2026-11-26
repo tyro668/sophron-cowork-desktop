@@ -802,6 +802,13 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
       database.exec(SCRIPT_VERSIONS_TABLE_SQL);
     },
   },
+  {
+    version: 10,
+    name: 'automation_run_script_repairs',
+    up: (database) => {
+      database.exec('ALTER TABLE automation_runs ADD COLUMN script_repairs_json TEXT');
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =

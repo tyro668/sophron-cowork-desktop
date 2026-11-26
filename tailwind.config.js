@@ -58,6 +58,12 @@ module.exports = {
           hover: colorVar('--color-accent-text-hover-rgb'),
         },
       },
+      fontSize: {
+        'ui-body': '13px',
+        'ui-label': '12px',
+        'ui-control': '12.5px',
+        'ui-caption': '11.5px',
+      },
       fontFamily: {
         sans: [
           'PingFang SC',

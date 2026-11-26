@@ -35,8 +35,8 @@ function Countdown({ expiresAt }: { expiresAt: number }) {
   const time = minutes > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : `${seconds}s`;
 
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-text-tertiary">
-      <Clock className="w-3 h-3" />
+    <span className="inline-flex items-center gap-1 text-[11.5px] tabular-nums text-text-muted">
+      <Clock className="h-3 w-3" />
       {t('remote.expiresIn', { time })}
     </span>
   );
@@ -53,52 +53,59 @@ export function PairingRequestsSection({
   if (pendingPairings.length === 0 && !showEmpty) return null;
 
   return (
-    <div className="p-4 rounded-lg border border-warning/30 bg-warning/5">
-      <h3 className="font-medium text-warning mb-3 flex items-center gap-2">
-        <Shield className="w-4 h-4" />
-        {t('remote.pairingRequests')}
-      </h3>
-      {pendingPairings.length > 0 && (
-        <p className="mb-3 text-sm text-text-secondary">{t('remote.pairingReviewHint')}</p>
-      )}
+    <section className="border-b border-border-subtle">
+      <div className="ui-group-title justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-warning">
+          <Shield className="h-3.5 w-3.5" />
+          {t('remote.pairingRequests')}
+        </span>
+        {pendingPairings.length > 0 && (
+          <span className="text-[11px] font-normal text-text-muted">
+            {t('remote.pairingReviewHint')}
+          </span>
+        )}
+      </div>
+
       {pendingPairings.length === 0 ? (
-        <div className="text-sm text-text-secondary py-3 text-center">
+        <div className="px-4 py-4 text-center text-[12.5px] text-text-muted">
           {t('remote.noPendingPairings')}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="divide-y divide-border-subtle bg-warning/5">
           {pendingPairings.map((request) => (
             <div
               key={`${request.channelType}-${request.userId}`}
-              className="flex flex-wrap items-center justify-between gap-3 p-3 bg-surface rounded-lg"
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5"
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-text-primary">
+                  <span className="text-[13px] font-medium text-text-primary">
                     {request.userName || t('remote.unknownUser')}
                   </span>
-                  <span className="px-1.5 py-0.5 text-xs rounded bg-accent-muted text-accent capitalize">
+                  <span className="rounded bg-accent-muted px-1.5 py-0.5 text-[10.5px] font-medium capitalize text-accent">
                     {t(`remote.channelName.${request.channelType}`, {
                       defaultValue: request.channelType,
                     })}
                   </span>
                 </div>
-                <p className="mt-1 break-all text-xs text-text-secondary">{request.userId}</p>
-                <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary mt-1">
+                <p className="mt-0.5 break-all font-mono text-[11.5px] text-text-muted">
+                  {request.userId}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-3 text-[12px] text-text-secondary">
                   <span>
                     {t('remote.pairingCode')}:{' '}
-                    <span className="font-mono text-warning font-medium">{request.code}</span>
+                    <span className="font-mono font-medium text-warning">{request.code}</span>
                   </span>
                   <Countdown expiresAt={request.expiresAt} />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button onClick={() => onReject(request)}>
-                  <X className="w-4 h-4" />
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" onClick={() => onReject(request)}>
+                  <X className="h-3.5 w-3.5" />
                   {t('remote.reject')}
                 </Button>
-                <Button variant="primary" onClick={() => onApprove(request)}>
-                  <Check className="w-4 h-4" />
+                <Button variant="primary" size="sm" onClick={() => onApprove(request)}>
+                  <Check className="h-3.5 w-3.5" />
                   {t('remote.approve')}
                 </Button>
               </div>
@@ -106,6 +113,6 @@ export function PairingRequestsSection({
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }

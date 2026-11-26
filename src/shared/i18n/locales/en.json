@@ -53,10 +53,8 @@
     "crunchDataDesc": "Clean, analyze, and visualize",
     "organizeFiles": "Organize data files",
     "organizeFilesDesc": "Classify and manage local files",
-    "checkEmails": "Extract web data",
     "searchPapers": "Research data sources",
     "searchPapersDesc": "Find reliable data resources",
-    "summarizePapersToNotion": "Build research notes",
     "selectWorkingFolder": "Select Working Folder (required)",
     "defaultWorkingFolder": "Default working directory",
     "selectWorkingFolderFailed": "Failed to select working folder",
@@ -66,16 +64,12 @@
     "mentionSkill": "Reference a skill (@)",
     "letsGo": "Let's go",
     "starting": "Starting...",
-    "chromeRequired": "Chrome",
-    "notionRequired": "Notion",
     "logoAlt": "sophron cowork logo",
     "pastedImageAlt": "Pasted {{index}}",
     "quickPromptCreate": "Create a concise data report from the files in my workspace",
     "quickPromptCrunch": "Analyze, clean, and summarize the attached rawTable",
     "quickPromptOrganize": "Organize my data files by source, type, and date",
-    "quickPromptEmail": "Use Chrome to collect the relevant table or report data from the page I specify, then save a clean summary in my workspace.",
     "quickPromptPapers": "Use Chrome to research data sources related to [Topic], summarize the useful rawTables or reports, and include links and key fields.",
-    "quickPromptNotion": "Research three representative data sources related to [Topic], then add structured notes to a Notion page titled \"Data Sources\" with source, scope, fields, update cadence, and caveats.",
     "apiNotConfigured": "API not configured yet. Please go to Settings to set up your API provider and key.",
     "goToSettings": "Go to Settings"
   },
@@ -84,8 +78,7 @@
     "data": "Data",
     "cloudData": "Cloud Space",
     "skills": "Skills",
-    "automation": "Automations",
-    "tasks": "Tasks"
+    "automation": "Automations"
   },
   "automation": {
     "pageTitle": "Automations",
@@ -2675,6 +2668,7 @@
     "confidenceReasonSummary": "From a session summary",
     "confidenceReasonInference": "From model inference, pending validation",
     "source": "Source",
+    "updatedAt": "Updated",
     "recentUsage": "Recent usage",
     "noEvidence": "No source records",
     "viewAll": "View all",
@@ -4085,7 +4079,32 @@
       "optionVersion": "v{{version}}",
       "folderMissing": "Folder was deleted; only its versions remain"
     },
+    "scriptRunMessages": {
+      "packageRequired": "Select a script package.",
+      "unavailable": "The data service is unavailable.",
+      "writeFailed": "{{name}}: raw table write failed: {{reason}}",
+      "rowCount": "{{name}} · {{rows}} rows",
+      "baseRequired": "Select a base version for the repair.",
+      "modelFailed": "The model returned an error.",
+      "noChanges": "The repair did not change any files.",
+      "saveFailed": "The repair draft could not be saved."
+    },
     "repair": {
+      "status": {
+        "pending": "AI repair is running. This record will update when it finishes.",
+        "unavailable": "AI repair is unavailable",
+        "noVersion": "No version is available to repair",
+        "inProgress": "An earlier run is already repairing this script",
+        "stopped": "Repair stopped. This attempt does not count toward the limit.",
+        "failed": "AI repair failed: {{reason}}",
+        "timeout": "Repair timed out after {{minutes}} min",
+        "cooldown": "Try again in {{minutes}} min",
+        "dailyLimit": "The limit of {{count}} repairs in 24 hours has been reached",
+        "ready": "Repaired in v{{version}} ({{rows}} trial rows), ready for review",
+        "awaitingReview": "v{{version}} passed its trial ({{rows}} rows) and is awaiting review",
+        "trialFailed": "v{{version}} failed its trial: {{reason}}",
+        "awaitingFailedReview": "v{{version}} failed its trial and is awaiting review"
+      },
       "view": "View fix",
       "publish": "Use v{{version}} now",
       "published": "Now using v{{version}}",

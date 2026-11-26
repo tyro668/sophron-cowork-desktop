@@ -1604,7 +1604,8 @@ export async function migrateMetadataSchema(ctx: DataStoreContext): Promise<void
       await ctx.metaRunSql('ROLLBACK').catch(() => undefined);
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `Metadata migration v${migration.version} (${migration.name}) failed: ${message}`
+        `Metadata migration v${migration.version} (${migration.name}) failed: ${message}`,
+        { cause: error }
       );
     }
     applied.add(migration.version);

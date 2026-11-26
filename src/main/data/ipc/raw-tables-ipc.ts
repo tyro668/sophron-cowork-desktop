@@ -1,9 +1,9 @@
+import { rawTableIssue } from '../store/csv-encoding';
 import { cancelledError } from '../../../shared/cancel';
 import { cancelAiRun, startAiRun } from '../../agent/ai-runs';
 import { dialog } from 'electron';
 import * as fs from 'fs';
 import type {
-  DataResolveRawSourceRenamesInput,
   DataDeleteRawTableNormalizerVersionInput,
   DataExportTableInput,
   DataExportTableResult,
@@ -16,17 +16,11 @@ import type {
   DataPublishRawTableNormalizerVersionInput,
   DataSummarizeRawTableSourceInput,
   DataUpdateRawTableInput,
-  DataCreateRawSourceInput,
-  DataRebuildRawSourceInput,
-  DataChangeRawSourcePathInput,
-  DataScanRawSourceInput,
 } from '../../../shared/contracts';
 import { appContext } from '../../app/context';
 import type { DataIpcContext } from './types';
 import { handleIpc } from '../../ipc-handle';
 import { sanitizeRawTableForIpc } from '../store/input-source';
-
-/** Running normalizer generation / fix agents by progressId, for 取消. */
 
 export function registerRawTablesIpc({
   requireDataPipelineStore,
@@ -40,78 +34,11 @@ export function registerRawTablesIpc({
       return sanitizeRawTableForIpc(table);
     } catch (error) {
       logError('[Data] Error importing rawTable:', error);
+      const issue = rawTableIssue(error);
+      if (issue) return issue;
       throw error;
     }
   });
-
-  const sourceChannel = <A extends unknown[], R>(
-    channel: string,
-    label: string,
-    run: (...args: A) => Promise<R>
-  ) =>
-    handleIpc(channel, async (_event, ...args: never[]) => {
-      try {
-        return await run(...(args as unknown as A));
-      } catch (error) {
-        logError(`[Data] Error ${label}:`, error);
-        throw error;
-      }
-    });
-  sourceChannel('data.listRawSources', 'listing raw sources', () =>
-    requireDataPipelineStore().listRawSources()
-  );
-  sourceChannel('data.scanRawSource', 'scanning raw source', (payload: DataScanRawSourceInput) =>
-    requireDataPipelineStore().scanRawSource(payload)
-  );
-  sourceChannel(
-    'data.createRawSource',
-    'creating raw source',
-    (payload: DataCreateRawSourceInput) =>
-      requireDataPipelineStore()
-        .createRawSource(payload)
-        .then((result) => ({
-          ...result,
-          tables: result.tables.map((table) => sanitizeRawTableForIpc(table)),
-        }))
-  );
-  sourceChannel(
-    'data.resolveRawSourceRenames',
-    'resolving raw source renames',
-    (input: DataResolveRawSourceRenamesInput) =>
-      requireDataPipelineStore().resolveRawSourceRenames(input)
-  );
-  sourceChannel(
-    'data.setRawSourceAutoInclude',
-    'updating raw source',
-    (id: string, autoInclude: boolean) =>
-      requireDataPipelineStore().setRawSourceAutoInclude(id, autoInclude)
-  );
-  sourceChannel('data.refreshRawSource', 'refreshing raw source', (id: string) =>
-    requireDataPipelineStore().refreshRawSource(id)
-  );
-  sourceChannel(
-    'data.changeRawSourcePath',
-    'changing raw source path',
-    (payload: DataChangeRawSourcePathInput) =>
-      requireDataPipelineStore().changeRawSourcePath(payload)
-  );
-  sourceChannel('data.getRawSourceRebuildImpact', 'reading rebuild impact', (id: string) =>
-    requireDataPipelineStore().getRawSourceRebuildImpact(id)
-  );
-  sourceChannel(
-    'data.rebuildRawSource',
-    'rebuilding raw source',
-    (payload: DataRebuildRawSourceInput) =>
-      requireDataPipelineStore()
-        .rebuildRawSource(payload)
-        .then((result) => ({
-          ...result,
-          tables: result.tables.map((table) => sanitizeRawTableForIpc(table)),
-        }))
-  );
-  sourceChannel('data.deleteRawSource', 'deleting raw source', (id: string) =>
-    requireDataPipelineStore().deleteRawSource(id)
-  );
 
   handleIpc('data.getRawTable', async (_event, id: string) => {
     try {
@@ -129,6 +56,8 @@ export function registerRawTablesIpc({
       return sanitizeRawTableForIpc(table);
     } catch (error) {
       logError('[Data] Error updating rawTable:', error);
+      const issue = rawTableIssue(error);
+      if (issue) return issue;
       throw error;
     }
   });
@@ -140,6 +69,8 @@ export function registerRawTablesIpc({
         return await requireDataPipelineStore().previewRawTableSource(payload);
       } catch (error) {
         logError('[Data] Error previewing input table:', error);
+        const issue = rawTableIssue(error);
+        if (issue) return issue;
         throw error;
       }
     }

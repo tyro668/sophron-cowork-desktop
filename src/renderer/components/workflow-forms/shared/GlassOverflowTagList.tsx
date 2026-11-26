@@ -79,7 +79,7 @@ export function GlassOverflowTagList({
     >
       <div className="flex min-w-0 flex-shrink items-center gap-1.5 overflow-hidden">
         {values.length === 0 && placeholder && (
-          <span className="truncate text-[12px] italic text-text-muted">{placeholder}</span>
+          <span className="truncate text-ui-label italic text-text-muted">{placeholder}</span>
         )}
         {values.slice(0, count).map((label, index) => (
           <GlassValueChip

@@ -22,7 +22,77 @@ export interface AgentRunnerSkillsDeps {
 }
 
 export class AgentRunnerSkills {
+  private setupComplete = false;
+
   constructor(private readonly deps: AgentRunnerSkillsDeps) {}
+
+  invalidateSetup(): void {
+    this.setupComplete = false;
+  }
+
+  prepareRuntimeDirectory(): string {
+    const appAgentDir = this.getAppAgentDir();
+    if (this.setupComplete) return appAgentDir;
+    if (!fs.existsSync(appAgentDir)) {
+      fs.mkdirSync(appAgentDir, { recursive: true });
+    }
+
+    const appSkillsDir = this.getRuntimeSkillsDir();
+    if (!fs.existsSync(appSkillsDir)) {
+      fs.mkdirSync(appSkillsDir, { recursive: true });
+    }
+
+    // Copy built-in skills to app agent skills directory if they don't exist
+    const builtinSkillsPath = this.getBuiltinSkillsPath();
+    if (builtinSkillsPath && fs.existsSync(builtinSkillsPath)) {
+      // Symlinks into .asar archives don't work at the OS level (ENOTDIR),
+      // so always copy when the source is inside an asar archive.
+      // Use regex to match .asar/ but NOT .asar.unpacked/ (which is a real directory).
+      const sourceInsideAsar = /\.asar[/\\]/.test(builtinSkillsPath);
+      const builtinSkills = fs.readdirSync(builtinSkillsPath);
+      for (const skillName of builtinSkills) {
+        const builtinSkillPath = path.join(builtinSkillsPath, skillName);
+        const userSkillPath = path.join(appSkillsDir, skillName);
+
+        // Clean up broken symlinks pointing into .asar from previous versions
+        try {
+          const lstat = fs.lstatSync(userSkillPath);
+          if (lstat.isSymbolicLink()) {
+            const linkTarget = fs.readlinkSync(userSkillPath);
+            if (/\.asar[/\\]/.test(linkTarget)) {
+              fs.unlinkSync(userSkillPath);
+              log(`[AgentRunner] Removed broken asar symlink: ${userSkillPath}`);
+            }
+          }
+        } catch {
+          // Path doesn't exist — fine, we'll create it below
+        }
+
+        // Only set up if it's a directory and doesn't exist in app directory
+        if (fs.statSync(builtinSkillPath).isDirectory() && !fs.existsSync(userSkillPath)) {
+          if (sourceInsideAsar) {
+            // Source is inside .asar — must copy (symlinks to asar paths fail at OS level)
+            this.copyDirectorySync(builtinSkillPath, userSkillPath);
+            log(`[AgentRunner] Copied built-in skill from asar: ${skillName}`);
+          } else {
+            // Source is a real directory — symlink for space efficiency
+            try {
+              fs.symlinkSync(builtinSkillPath, userSkillPath, 'dir');
+              log(`[AgentRunner] Linked built-in skill: ${skillName}`);
+            } catch (err) {
+              logWarn(`[AgentRunner] Failed to symlink ${skillName}, copying instead:`, err);
+              this.copyDirectorySync(builtinSkillPath, userSkillPath);
+            }
+          }
+        }
+      }
+    }
+
+    this.syncUserSkillsToAppDir(appSkillsDir);
+    this.syncConfiguredSkillsToRuntimeDir(appSkillsDir);
+    this.setupComplete = true;
+    return appAgentDir;
+  }
 
   getBundledPathHints(): string {
     if (!app.isPackaged) return '';
@@ -187,7 +257,7 @@ ${hints.join('\n')}
 
       try {
         fs.symlinkSync(sourcePath, targetPath, 'dir');
-      } catch (err) {
+      } catch {
         try {
           this.copyDirectorySync(sourcePath, targetPath);
         } catch (copyErr) {
@@ -222,7 +292,7 @@ ${hints.join('\n')}
           }
         }
         fs.symlinkSync(sourcePath, targetPath, 'dir');
-      } catch (err) {
+      } catch {
         try {
           this.copyDirectorySync(sourcePath, targetPath);
         } catch (copyErr) {

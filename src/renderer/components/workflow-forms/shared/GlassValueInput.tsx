@@ -184,7 +184,7 @@ export function GlassValueInput({
                   onKeyDown={handleKeyDown}
                   onFocus={openOnFocus}
                   placeholder={tags.length === 0 ? placeholder : ''}
-                  className="h-6 min-w-[60px] flex-1 bg-transparent pl-1 text-[13px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+                  className="h-6 min-w-[60px] flex-1 bg-transparent pl-1 text-ui-body text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
                 />
               }
             />
@@ -200,7 +200,7 @@ export function GlassValueInput({
                 onFocus={openOnFocus}
                 onBlur={commitSingleValue}
                 placeholder={placeholder}
-                className="h-8 min-w-[60px] flex-1 bg-transparent pl-2 text-[13px] text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
+                className="h-8 min-w-[60px] flex-1 bg-transparent pl-2 text-ui-body text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed"
               />
             </div>
           )}
@@ -243,7 +243,7 @@ export function GlassValueInput({
               <button
                 key={s}
                 type="button"
-                className={`flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-[13px] outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'bg-accent-muted font-medium text-accent ring-1 ring-inset ring-accent/20' : 'text-text-secondary'}`}
+                className={`flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-ui-body outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30 ${!multi && s === inputText ? 'bg-accent-muted font-medium text-accent ring-1 ring-inset ring-accent/20' : 'text-text-secondary'}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -256,7 +256,7 @@ export function GlassValueInput({
             {multi && inputText && !filtered.includes(inputText) && (
               <button
                 type="button"
-                className="flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-[13px] text-accent outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+                className="flex min-h-8 w-full min-w-0 items-center overflow-hidden px-3 text-left text-ui-body text-accent outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
                 onMouseDown={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -272,7 +272,7 @@ export function GlassValueInput({
               <button
                 type="button"
                 onClick={onRetry}
-                className="flex h-8 w-full items-center justify-center gap-1.5 px-3 text-[12px] text-error outline-none transition-colors hover:bg-error/5"
+                className="flex h-8 w-full items-center justify-center gap-1.5 px-3 text-ui-label text-error outline-none transition-colors hover:bg-error/5"
               >
                 <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
                 {tr('loadFailed')}
@@ -280,7 +280,7 @@ export function GlassValueInput({
             ) : (
               filtered.length === 0 &&
               (!multi || !inputText) && (
-                <div className="px-3 py-3 text-center text-[12px] text-text-muted">
+                <div className="px-3 py-3 text-center text-ui-label text-text-muted">
                   {multi
                     ? (noSuggestionsLabel ?? tr('noSuggestions'))
                     : isLoading

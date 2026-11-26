@@ -239,9 +239,9 @@ export function AgentModelSelector({
                 key={option.id}
                 onSelect={() => onSelect(option.id)}
                 className={cn(
-                  'flex w-full cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-left outline-none transition-colors',
+                  'flex w-full cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none transition-colors',
                   'data-[highlighted]:bg-surface-hover',
-                  option.isActive ? 'bg-accent-muted/75 text-text-primary' : 'text-text-primary'
+                  option.isActive ? 'bg-accent-muted text-text-primary' : 'text-text-primary'
                 )}
               >
                 <span className="min-w-0 flex-1">
@@ -295,7 +295,7 @@ export function AgentModelSelector({
           align={align}
           sideOffset={6}
           collisionPadding={12}
-          className="z-[10000] w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border-muted bg-surface p-1.5 text-text-primary shadow-elevated"
+          className="z-[10000] w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border-muted bg-surface p-1 text-text-primary shadow-elevated"
         >
           <div className="scrollbar-hover max-h-[272px] overflow-y-auto">
             {options.length > 0 ? (
@@ -318,7 +318,7 @@ export function AgentModelSelector({
                 store.setSettingsTab('api');
                 store.setShowSettings(true);
               }}
-              className="flex w-full cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-text-secondary outline-none transition-colors data-[highlighted]:bg-surface-hover data-[highlighted]:text-text-primary"
+              className="flex w-full cursor-pointer select-none items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[12px] font-medium text-text-secondary outline-none transition-colors data-[highlighted]:bg-surface-hover data-[highlighted]:text-text-primary"
             >
               <Settings2 className="h-3.5 w-3.5 shrink-0 text-text-muted" />
               <span className="truncate">{t('chat.manageModels')}</span>

@@ -1,3 +1,8 @@
+import {
+  RawTableError,
+  isRawTableIssue,
+  type RawTableIssue,
+} from '../../../shared/contracts/data/issues';
 /**
  * CSV text-encoding handling for local imports.
  *
@@ -17,13 +22,12 @@ export type CsvEncoding = 'auto' | 'utf-8' | 'gbk';
 
 export const CSV_ENCODING_ERROR_CODE = 'DATA_CSV_ENCODING_ERROR';
 
-export class CsvEncodingError extends Error {
-  readonly code = CSV_ENCODING_ERROR_CODE;
+export class CsvEncodingError extends RawTableError {
   constructor(
     readonly filePath: string,
     readonly encoding: CsvEncoding
   ) {
-    super(`${CSV_ENCODING_ERROR_CODE}: unable to decode ${path.basename(filePath)} as ${encoding}`);
+    super(CSV_ENCODING_ERROR_CODE, `Unable to decode ${path.basename(filePath)} as ${encoding}`);
     this.name = 'CsvEncodingError';
   }
 }
@@ -120,6 +124,16 @@ export function isCsvDecodeError(error: unknown): boolean {
     message.includes(CSV_ENCODING_ERROR_CODE) ||
     /not utf-8 encoded|Invalid unicode \(byte sequence mismatch\)/i.test(message)
   );
+}
+
+export function rawTableIssue(error: unknown): RawTableIssue | undefined {
+  if (isRawTableIssue(error)) return { kind: error.kind, code: error.code, message: error.message };
+  if (isCsvDecodeError(error))
+    return {
+      kind: 'raw-table-issue',
+      code: CSV_ENCODING_ERROR_CODE,
+      message: error instanceof Error ? error.message : String(error),
+    };
 }
 
 /**

@@ -12,7 +12,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { DataRawTable, DataGroup } from '../../../types';
+import type { DataRawTable, DataGroup } from '../../../../shared/contracts';
 import { getTablePageCount, TABLE_PAGE_SIZE } from '../../../components/data-view/shared';
 import { buildGroupSections } from '../../../components/data-view/group-ui';
 import { dataClient } from '../api/data-client';

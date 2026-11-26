@@ -1,3 +1,4 @@
+import type { ScriptRepair } from './script-package';
 export type AutomationStatus = 'enabled' | 'disabled' | 'paused' | 'running' | 'failed';
 
 export type AutomationRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -254,6 +255,7 @@ export interface AutomationRunStep {
 }
 
 export interface AutomationRun {
+  scriptRepairs?: Record<string, ScriptRepair>;
   executionSummary?: {
     tables: AutomationTableRef[];
     executedNodeIds: string[];

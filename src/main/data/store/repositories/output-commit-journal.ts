@@ -57,7 +57,7 @@ export class OutputCommitJournal {
     );
     const row = rows[0];
     if (!row) return null;
-    let workflowSignature: string | null = null;
+    let workflowSignature: string | null;
     try {
       const metadata = JSON.parse(String(row.intended_metadata_json)) as {
         workflowSignature?: unknown;

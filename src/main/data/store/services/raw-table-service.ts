@@ -1,3 +1,4 @@
+import { RawTableError } from '../../../../shared/contracts/data/issues';
 /** Input/output table materialization: import, update, preview, export. */
 import type {
   DataRawTableColumnTypeOverride,
@@ -251,7 +252,7 @@ export class RawTableService {
         const problem = await this.inspectRefresh(rawTable, replacementTable, prepared.rowCount);
         if (problem) {
           await this.markAbnormal(rawTable.id, problem);
-          throw new Error(`E_RAW_TABLE_ABNORMAL: ${problem}。原始表保留上次的数据`);
+          throw new RawTableError('E_RAW_TABLE_ABNORMAL', problem);
         }
       }
       const now = this.ctx.now();
@@ -465,7 +466,7 @@ export class RawTableService {
       ]);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      let restored = false;
+      let restored: boolean;
       if (physicalCommitted) {
         try {
           await this.restoreTableCommit({

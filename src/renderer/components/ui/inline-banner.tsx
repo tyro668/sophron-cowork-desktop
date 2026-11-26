@@ -50,7 +50,7 @@ export function InlineBanner({
     <div
       role={tone === 'error' ? 'alert' : 'status'}
       className={cn(
-        'flex gap-2.5 rounded-lg border px-3 py-2.5 text-[13px]',
+        'flex gap-2.5 rounded-lg border px-3 py-2.5 text-ui-body',
         toneClasses[tone],
         className
       )}

@@ -2,30 +2,22 @@ import { memoryClient } from '../../features/memory/api/memory-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronLeft, ChevronRight, RefreshCw, Search } from 'lucide-react';
-import type {
-  CoreMemoryEntry,
-  MemoryInjectionRecord,
-  MemoryOverview,
-  ProjectMemoryEntry,
-} from '../../types';
+import { BrainCircuit, RefreshCw, Search } from 'lucide-react';
+import type { CoreMemoryEntry, MemoryOverview, ProjectMemoryEntry } from '../../types';
 import { useAppStore } from '../../store';
 import type { GlobalNoticeType } from '../../store';
 import { showToast } from '../../utils/toast';
-import { Switch } from '../ui';
+import { Badge, Button, Switch } from '../ui';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { underlineTabTriggerClass } from '../data-view/shared';
 import {
-  countDuplicateMemories,
-  formatMemoryDate,
   getEntryTime,
-  MEMORY_PAGE_SIZE,
   toMemoryRecord,
   type MemoryRecord,
   type MemoryTab,
 } from './memory/memory-helpers';
-import { MemoryDetailPanel, MemoryListItem, MemoryStat } from './memory/MemoryDetailAndList';
+import { MemoryDetailPanel, MemoryListItem } from './memory/MemoryDetailAndList';
 
 export function SettingsMemory() {
   const { t } = useTranslation();
@@ -40,11 +32,13 @@ export function SettingsMemory() {
   const hasWorkspace = Boolean(currentWorkspace);
 
   const [overview, setOverview] = useState<MemoryOverview | null>(null);
-  const [injections, setInjections] = useState<MemoryInjectionRecord[]>([]);
   const [coreEntries, setCoreEntries] = useState<CoreMemoryEntry[]>([]);
   const [projectEntries, setProjectEntries] = useState<ProjectMemoryEntry[]>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; tone: GlobalNoticeType } | null>(null);
+  const [activeTab, setActiveTab] = useState<MemoryTab>('all');
+  const [query, setQuery] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (status) {
@@ -52,21 +46,12 @@ export function SettingsMemory() {
       setStatus(null);
     }
   }, [status]);
-  const [activeTab, setActiveTab] = useState<MemoryTab>('all');
-  const [query, setQuery] = useState('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
 
   const enabled = overview?.enabled ?? appConfig?.memoryEnabled ?? true;
 
   const refreshOverview = async () => {
     const nextOverview = await memoryClient.getOverview(currentWorkspace || undefined);
     setOverview(nextOverview);
-    try {
-      setInjections(await memoryClient.listInjections(1));
-    } catch {
-      setInjections([]);
-    }
   };
 
   const refreshMemoryEntries = async () => {
@@ -86,18 +71,15 @@ export function SettingsMemory() {
     let cancelled = false;
     const load = async () => {
       try {
-        const [nextOverview, nextCoreEntries, nextProjectEntries, nextInjections] =
-          await Promise.all([
-            memoryClient.getOverview(currentWorkspace || undefined),
-            memoryClient.listCoreEntries(),
-            memoryClient.listProjectEntries(currentWorkspace || undefined),
-            memoryClient.listInjections(1),
-          ]);
+        const [nextOverview, nextCoreEntries, nextProjectEntries] = await Promise.all([
+          memoryClient.getOverview(currentWorkspace || undefined),
+          memoryClient.listCoreEntries(),
+          memoryClient.listProjectEntries(currentWorkspace || undefined),
+        ]);
         if (!cancelled) {
           setOverview(nextOverview);
           setCoreEntries(nextCoreEntries);
           setProjectEntries(nextProjectEntries);
-          setInjections(nextInjections);
         }
       } catch (error) {
         if (!cancelled) {
@@ -129,15 +111,9 @@ export function SettingsMemory() {
     return memoryRecords.filter((record) => {
       if (activeTab !== 'all' && record.kind !== activeTab) return false;
       if (!normalizedQuery) return true;
-      return `${record.title} ${record.summary} ${record.tags.join(' ')}`
-        .toLowerCase()
-        .includes(normalizedQuery);
+      return `${record.title} ${record.summary}`.toLowerCase().includes(normalizedQuery);
     });
   }, [activeTab, memoryRecords, query]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, query]);
 
   useEffect(() => {
     if (filteredRecords.length === 0) {
@@ -149,20 +125,8 @@ export function SettingsMemory() {
     }
   }, [filteredRecords, selectedId]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredRecords.length / MEMORY_PAGE_SIZE));
-  const safeCurrentPage = Math.min(Math.max(1, currentPage), pageCount);
-  const visibleRecords = filteredRecords.slice(
-    (safeCurrentPage - 1) * MEMORY_PAGE_SIZE,
-    safeCurrentPage * MEMORY_PAGE_SIZE
-  );
   const selectedRecord =
     filteredRecords.find((record) => record.id === selectedId) ?? filteredRecords[0] ?? null;
-  const duplicateCount = countDuplicateMemories(memoryRecords);
-  const pendingConfidenceCount = memoryRecords.filter((record) => record.confidence < 0.65).length;
-  const activeRecentCount = memoryRecords.filter((record) => {
-    const updatedAt = getEntryTime(record.raw);
-    return updatedAt > 0 && Date.now() - updatedAt <= 7 * 24 * 60 * 60 * 1000;
-  }).length;
 
   const runBusyAction = async (action: () => Promise<void>) => {
     setIsBusy(true);
@@ -245,10 +209,6 @@ export function SettingsMemory() {
       await runBusyAction(async () => {
         const result = await memoryClient.rebuildWorkspace(currentWorkspace);
         await refreshAll();
-        // Three honest outcomes: a commit-layer failure, a fully abandoned
-        // candidate (nothing was applied — the old generation is intact), or
-        // success. `succeededSessionCount` counts committed sessions only, so
-        // an abandoned rebuild must never claim sessions were rebuilt.
         setStatus({
           text:
             result.commitError || !result.success
@@ -272,206 +232,131 @@ export function SettingsMemory() {
   };
 
   return (
-    <div className="flex h-full min-h-[34rem] flex-col gap-2.5">
-      <section className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2.5">
-        <h3 className="text-[13px] font-semibold text-text-primary">{t('memory.policyTitle')}</h3>
-        <Switch
-          checked={enabled}
-          onCheckedChange={() => handleToggle()}
-          disabled={isBusy}
-          aria-label={t('memory.policyToggleLabel')}
-        />
-      </section>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border-subtle bg-surface">
+      {/* Compact top control bar */}
+      <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border-subtle px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <BrainCircuit className="h-4 w-4 shrink-0 text-text-muted" />
+          <h2 className="truncate text-[13px] font-semibold text-text-primary">
+            {t('memory.policyTitle')}
+          </h2>
+          {enabled && (
+            <span className="text-[11.5px] tabular-nums text-text-muted">
+              {t('memory.totalMemories', { count: memoryRecords.length })}
+            </span>
+          )}
+          {enabled && Boolean(overview?.failedSessionCount) && (
+            <Badge tone="error">
+              {t('memory.risky')} · {overview?.failedSessionCount}
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2.5">
+          {enabled && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleRebuildWorkspace}
+              disabled={!hasWorkspace || isBusy}
+              className="h-7 px-2.5 text-[12px]"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isBusy ? 'animate-spin' : ''}`} />
+              {t('memory.organizeAction')}
+            </Button>
+          )}
+          <Switch
+            size="sm"
+            checked={enabled}
+            onCheckedChange={handleToggle}
+            disabled={isBusy}
+            aria-label={t('memory.policyToggleLabel')}
+          />
+        </div>
+      </header>
 
       {enabled ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-2.5">
-          <section className="grid grid-cols-2 overflow-hidden rounded-md border border-border-subtle bg-surface xl:grid-cols-4">
-            <MemoryStat
-              label={t('memory.longTermMemory')}
-              value={overview?.coreCount ?? 0}
-              unit={t('memory.itemUnit')}
-            />
-            <MemoryStat
-              label={t('memory.projectMemoryMetric')}
-              value={overview?.projectCount ?? 0}
-              unit={t('memory.itemUnitShort')}
-            />
-            <MemoryStat
-              label={t('memory.recentActive')}
-              value={activeRecentCount}
-              unit={t('memory.itemUnit')}
-            />
-            <MemoryStat
-              label={t('memory.health')}
-              value={
-                overview?.failedSessionCount
-                  ? `${t('memory.risky')} · ${overview.failedSessionCount}`
-                  : t('memory.good')
-              }
-              tone={overview?.failedSessionCount ? 'error' : 'default'}
-            />
-            {injections[0] ? (
-              <div className="col-span-2 border-t border-border-subtle px-4 py-2 text-[11px] font-medium text-text-muted xl:col-span-4">
-                {t('memory.lastInjection', {
-                  time: formatMemoryDate(injections[0].timestamp),
-                  core: injections[0].coreKeys.length,
-                  project: injections[0].projectKeys.length,
-                  experience:
-                    injections[0].experienceChunkIds.length +
-                    injections[0].experienceSessionIds.length,
-                  chars: injections[0].totalChars.toLocaleString(),
-                })}
-                {injections[0].truncated ? ` · ${t('memory.injectionTruncated')}` : ''}
-              </div>
-            ) : null}
-          </section>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
+          {/* Left rail: filter tabs, flush search, smooth list */}
+          <aside className="flex w-full shrink-0 flex-col border-b border-border-subtle bg-background-secondary/45 md:w-[272px] md:border-b-0 md:border-r lg:w-[296px]">
+            <Tabs
+              value={activeTab}
+              onValueChange={(value) => setActiveTab(value as MemoryTab)}
+              className="contents"
+            >
+              <TabsList className="flex h-9 w-full shrink-0 items-stretch gap-0 rounded-none border-0 border-b border-border-subtle bg-surface-muted/35 p-0">
+                <TabsTrigger
+                  value="all"
+                  className={`${underlineTabTriggerClass} flex-1 justify-center px-2 text-[12px]`}
+                >
+                  {t('memory.allTab')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="core"
+                  className={`${underlineTabTriggerClass} flex-1 justify-center px-2 text-[12px]`}
+                >
+                  {t('memory.coreCapabilityTab')}
+                </TabsTrigger>
+                <TabsTrigger
+                  value="project"
+                  className={`${underlineTabTriggerClass} flex-1 justify-center px-2 text-[12px] border-r-0`}
+                >
+                  {t('memory.projectContextTab')}
+                </TabsTrigger>
+              </TabsList>
 
-          <section className="grid min-h-0 flex-1 gap-2.5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.95fr)]">
-            <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface">
-              <Tabs
-                value={activeTab}
-                onValueChange={(v) => setActiveTab(v as MemoryTab)}
-                className="contents"
-              >
-                <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border-subtle px-3 pt-1.5">
-                  <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
-                    <TabsTrigger value="all" className={underlineTabTriggerClass}>
-                      {t('memory.allTab')}
-                    </TabsTrigger>
-                    <TabsTrigger value="core" className={underlineTabTriggerClass}>
-                      {t('memory.coreCapabilityTab')}
-                    </TabsTrigger>
-                    <TabsTrigger value="project" className={underlineTabTriggerClass}>
-                      {t('memory.projectContextTab')}
-                    </TabsTrigger>
-                  </TabsList>
-                  <button
-                    type="button"
-                    onClick={handleRebuildWorkspace}
-                    disabled={!hasWorkspace || isBusy}
-                    className="mb-1.5 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    {t('memory.organizeAction')}
-                  </button>
+              <TabsContent value={activeTab} forceMount className="contents">
+                <label className="relative flex h-9 shrink-0 items-center border-b border-border-subtle bg-surface">
+                  <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-text-muted" />
+                  <input
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t('memory.searchListPlaceholder')}
+                    className="h-full w-full bg-transparent pl-8 pr-3 text-[12px] text-text-primary outline-none placeholder:text-text-muted"
+                  />
+                </label>
+
+                <div className="scrollbar-hover max-h-56 flex-1 space-y-0.5 overflow-y-auto p-1.5 md:max-h-none">
+                  {filteredRecords.length ? (
+                    filteredRecords.map((record) => (
+                      <MemoryListItem
+                        key={record.id}
+                        record={record}
+                        selected={selectedRecord?.id === record.id}
+                        onSelect={() => setSelectedId(record.id)}
+                      />
+                    ))
+                  ) : (
+                    <div className="px-3 py-8 text-center text-[12px] text-text-muted">
+                      {t('memory.noResults')}
+                    </div>
+                  )}
                 </div>
 
-                <TabsContent value={activeTab} forceMount className="contents">
-                  <label className="relative block border-b border-border-subtle px-3 py-2">
-                    <Search className="pointer-events-none absolute left-5.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
-                    <input
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                      placeholder={t('memory.searchListPlaceholder')}
-                      className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
-                    />
-                  </label>
+                <div className="flex h-8 shrink-0 items-center border-t border-border-subtle px-3 text-[11.5px] tabular-nums text-text-muted">
+                  {t('memory.totalMemories', { count: filteredRecords.length })}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </aside>
 
-                  <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                    {visibleRecords.length ? (
-                      visibleRecords.map((record) => (
-                        <MemoryListItem
-                          key={record.id}
-                          record={record}
-                          selected={selectedRecord?.id === record.id}
-                          isBusy={isBusy}
-                          onSelect={() => setSelectedId(record.id)}
-                          onConfirm={() => handleConfirm(record)}
-                          onDelete={() => handleDelete(record)}
-                        />
-                      ))
-                    ) : (
-                      <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-text-muted">
-                        {t('memory.noResults')}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex min-h-9 items-center justify-between gap-2 border-t border-border-subtle px-3 text-xs font-medium text-text-secondary">
-                    <span>
-                      {t('memory.totalMemories', {
-                        count: filteredRecords.length,
-                      })}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        disabled={safeCurrentPage <= 1}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-accent px-2 text-accent-foreground shadow-soft">
-                        {safeCurrentPage}
-                      </span>
-                      <span>/ {pageCount}</span>
-                      <button
-                        type="button"
-                        onClick={() => setCurrentPage((page) => Math.min(pageCount, page + 1))}
-                        disabled={safeCurrentPage >= pageCount}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-border-muted bg-surface transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </div>
-
-            <MemoryDetailPanel
-              record={selectedRecord}
-              isBusy={isBusy}
-              onConfirm={() => selectedRecord && handleConfirm(selectedRecord)}
-            />
-          </section>
-
-          {duplicateCount > 0 || pendingConfidenceCount > 0 ? (
-            <section className="flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-border-subtle bg-surface px-3 py-2">
-              {duplicateCount > 0 ? (
-                <span className="flex items-center gap-2 text-xs text-text-secondary">
-                  {t('memory.duplicateMemoryDesc', {
-                    count: duplicateCount,
-                  })}
-                  <button
-                    type="button"
-                    onClick={handleRebuildWorkspace}
-                    disabled={isBusy}
-                    className="inline-flex h-6 items-center rounded-md border border-border-muted bg-surface px-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-                  >
-                    {t('memory.organizeDuplicateAction')}
-                  </button>
-                </span>
-              ) : null}
-              {pendingConfidenceCount > 0 ? (
-                <span className="flex items-center gap-2 text-xs text-text-secondary">
-                  {t('memory.lowConfidenceDesc', {
-                    count: pendingConfidenceCount,
-                  })}
-                  <button
-                    type="button"
-                    disabled={isBusy}
-                    className="inline-flex h-6 items-center rounded-md border border-border-muted bg-surface px-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
-                    onClick={() => {
-                      setActiveTab('all');
-                      setQuery('');
-                      const lowConfidence = memoryRecords.find(
-                        (record) => record.confidence < 0.65
-                      );
-                      if (lowConfidence) {
-                        setSelectedId(lowConfidence.id);
-                      }
-                    }}
-                  >
-                    {t('memory.optimizeAction')}
-                  </button>
-                </span>
-              ) : null}
-            </section>
-          ) : null}
+          {/* Right pane: selected memory detail */}
+          <MemoryDetailPanel
+            record={selectedRecord}
+            isBusy={isBusy}
+            onConfirm={() => selectedRecord && handleConfirm(selectedRecord)}
+            onDelete={() => selectedRecord && handleDelete(selectedRecord)}
+          />
         </div>
-      ) : null}
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-8 text-center">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-border-subtle bg-surface-muted text-text-muted">
+            <BrainCircuit className="h-5 w-5" />
+          </div>
+          <p className="text-[13px] font-medium text-text-primary">{t('memory.disabledStatus')}</p>
+          <p className="mt-1 max-w-sm text-[12px] text-text-muted">{t('memory.toggleHint')}</p>
+        </div>
+      )}
     </div>
   );
 }

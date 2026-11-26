@@ -459,7 +459,7 @@ export function WelcomeView() {
                   side="top"
                   align="start"
                   sideOffset={6}
-                  className="scrollbar-hover max-h-72 w-64 overflow-y-auto rounded-xl border-border-muted p-1.5"
+                  className="scrollbar-hover max-h-72 w-64 overflow-y-auto"
                 >
                   {projectOptions.length > 0 && (
                     <>
@@ -472,8 +472,8 @@ export function WelcomeView() {
                             key={project.id}
                             title={project.cwd}
                             onSelect={() => void handleSelectProjectDir(project.cwd)}
-                            className={`rounded-lg border-b-0 px-2.5 py-1.5 text-[12.5px] data-[highlighted]:bg-surface-hover ${
-                              project.active ? 'bg-accent-muted/75 font-medium' : ''
+                            className={`text-[12.5px] ${
+                              project.active ? 'bg-accent-muted font-medium text-accent' : ''
                             }`}
                           >
                             <Folder className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
@@ -489,7 +489,7 @@ export function WelcomeView() {
                   )}
                   <DropdownMenuItem
                     onSelect={() => void handleSelectFolder()}
-                    className="rounded-lg border-b-0 px-2.5 py-1.5 text-[12.5px] text-text-secondary data-[highlighted]:bg-surface-hover data-[highlighted]:text-text-primary"
+                    className="text-[12.5px] text-text-secondary data-[highlighted]:text-text-primary"
                   >
                     <FolderOpen className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
                     <span>{t('welcome.openFolder')}</span>

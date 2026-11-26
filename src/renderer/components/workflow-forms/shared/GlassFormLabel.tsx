@@ -8,7 +8,7 @@ interface GlassFormLabelProps {
 export function GlassFormLabel({ children, className }: GlassFormLabelProps) {
   return (
     <span
-      className={`flex h-8 w-20 shrink-0 items-center whitespace-nowrap text-[13px] text-text-secondary ${className ?? ''}`}
+      className={`flex h-8 w-20 shrink-0 items-center whitespace-nowrap text-ui-body text-text-secondary ${className ?? ''}`}
     >
       {children}
     </span>

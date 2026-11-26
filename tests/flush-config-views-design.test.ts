@@ -27,7 +27,7 @@ describe('config / detail views use the flush group variant', () => {
     expect(read('src/renderer/components/data-view/cloud-connection-datasource.tsx')).toContain(
       'configFlushBodyClass'
     );
-    expect(read('src/renderer/components/data-view/shared.tsx')).toContain(
+    expect(read('src/renderer/components/data-view/data-view-styles.ts')).toContain(
       "export const configFlushBodyClass = 'ui-config-flush min-h-0 flex-1 overflow-auto bg-surface'"
     );
     expect(read('src/renderer/components/data-view/raw-source-detail.tsx')).toContain(

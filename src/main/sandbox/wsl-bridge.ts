@@ -159,7 +159,7 @@ export class WSLBridge implements SandboxExecutor {
       // First, try a simple WSL command to check if it works at all
       try {
         await execFileAsync('wsl', ['--status'], { timeout: 5000 });
-      } catch (statusError) {
+      } catch {
         log('[WSL] WSL --status failed, WSL may not be properly configured');
         // Continue anyway, as --status might not be available on older versions
       }
@@ -235,7 +235,7 @@ export class WSLBridge implements SandboxExecutor {
           nodeVersion = output;
           log('[WSL] Node.js found:', nodeVersion);
         }
-      } catch (error) {
+      } catch {
         // Try alternative: check with nvm
         try {
           const nvmResult = await execFileAsync(
@@ -283,7 +283,7 @@ export class WSLBridge implements SandboxExecutor {
             claudeCodeAvailable = true;
             log('[WSL] claude-code found:', output);
           }
-        } catch (error) {
+        } catch {
           log('[WSL] claude-code not found');
           claudeCodeAvailable = false;
         }
@@ -319,7 +319,7 @@ export class WSLBridge implements SandboxExecutor {
             pipAvailable = false;
           }
         }
-      } catch (error) {
+      } catch {
         log('[WSL] Python not found');
         pythonAvailable = false;
       }

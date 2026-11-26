@@ -1,3 +1,4 @@
+import { desktopClient } from '../features/desktop/api/desktop-client';
 import { useState, useEffect, useMemo } from 'react';
 import {
   DATA_OBJECT_ICONS,
@@ -76,11 +77,9 @@ export function ContextPanel() {
   const activeSession = activeSessionId ? sessions.find((s) => s.id === activeSessionId) : null;
   const currentWorkingDir = activeSession?.cwd || workingDir;
   const { displayArtifactSteps } = getArtifactSteps(steps);
-  const canShowItemInFolder =
-    typeof window !== 'undefined' && !!window.electronAPI?.showItemInFolder;
-  const canOpenGeneratedReport =
-    typeof window !== 'undefined' && !!window.electronAPI?.openGeneratedReport;
-  const canOpenPath = typeof window !== 'undefined' && !!window.electronAPI?.openPath;
+  const canShowItemInFolder = desktopClient.canReveal();
+  const canOpenGeneratedReport = desktopClient.canOpenReport();
+  const canOpenPath = desktopClient.canOpenPath();
 
   // Session info computations
   const messages = useMemo(
@@ -185,12 +184,7 @@ export function ContextPanel() {
     if (contextPanelCollapsed) {
       return;
     }
-    if (
-      typeof window === 'undefined' ||
-      !window.electronAPI?.artifacts?.listRecentFiles ||
-      !currentWorkingDir ||
-      !activeSession?.createdAt
-    ) {
+    if (!desktopClient.canListRecentFiles() || !currentWorkingDir || !activeSession?.createdAt) {
       setRecentWorkspaceFiles([]);
       return;
     }
@@ -198,7 +192,7 @@ export function ContextPanel() {
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const files = await window.electronAPI.artifacts.listRecentFiles(
+        const files = await desktopClient.listRecentFiles(
           currentWorkingDir,
           activeSession.createdAt,
           50
@@ -476,19 +470,11 @@ export function ContextPanel() {
                       className={`flex items-center gap-2 px-4 py-1.5 transition-colors ${canClick ? 'cursor-pointer hover:bg-surface-hover' : ''}`}
                       onClick={async () => {
                         if (!canClick) return;
-                        const api = window.electronAPI;
-                        const cwd = currentWorkingDir ?? undefined;
-                        // Open the file itself with the default app; only fall
-                        // back to revealing it when opening is unavailable/failed.
-                        const handled =
-                          (api.openPath
-                            ? await api.openPath(artifactPath, cwd)
-                            : isReport && api.openGeneratedReport
-                              ? await api.openGeneratedReport(artifactPath, cwd)
-                              : false) ||
-                          (api.showItemInFolder
-                            ? await api.showItemInFolder(artifactPath, cwd)
-                            : false);
+                        const handled = await desktopClient.openArtifact(
+                          artifactPath,
+                          currentWorkingDir ?? undefined,
+                          isReport
+                        );
                         if (!handled) {
                           setGlobalNotice({
                             id: `artifact-reveal-failed-${Date.now()}`,
@@ -521,15 +507,13 @@ export function ContextPanel() {
             <span
               className={`text-xs truncate flex-1 ${currentWorkingDir ? 'text-text-primary cursor-pointer hover:text-accent-primary transition-colors' : 'text-text-muted'}`}
               title={currentWorkingDir ? t('context.openInFileManager') : ''}
-              onClick={() =>
-                currentWorkingDir && window.electronAPI?.showItemInFolder(currentWorkingDir)
-              }
+              onClick={() => currentWorkingDir && desktopClient.reveal(currentWorkingDir)}
             >
               {currentWorkingDir ? formatPath(currentWorkingDir) : t('context.noFolderSelected')}
             </span>
             {currentWorkingDir && (
               <button
-                onClick={() => window.electronAPI?.showItemInFolder(currentWorkingDir)}
+                onClick={() => desktopClient.reveal(currentWorkingDir)}
                 className="text-text-muted hover:text-text-primary transition-colors shrink-0 ml-1"
                 title={t('context.openInFileManager')}
               >

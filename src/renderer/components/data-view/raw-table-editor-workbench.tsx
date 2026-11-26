@@ -1,3 +1,5 @@
+import { useNormalizerVersions } from '../../features/data/hooks/use-normalizer-versions';
+import { useGenerationLog } from '../../hooks/use-generation-log';
 import { formatIpcError } from '../../utils/ipc-error';
 import { isCancelledError } from '../../../shared/cancel';
 import { modesForSource } from './raw-source-detail';
@@ -51,7 +53,7 @@ import type {
   DataRawTableProcessingConfig,
   DataRawTableSourceKind,
   DataNormalizerLanguage,
-} from '../../types';
+} from '../../../shared/contracts';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
 import { getAgentModelLabel } from '../AgentModelSelector';
@@ -110,7 +112,6 @@ import {
   markNormalizerGenerationError,
   markNormalizerGenerationSuccess,
   withRawTableDataProcessing,
-  type NormalizerGenerationLog,
 } from './raw-table-normalizer-utils';
 
 export type RawTableEditorProps = {
@@ -216,18 +217,18 @@ export function RawTableEditorWorkbench({
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
   const secretReview = useSecretReview();
   const [secretsKey, setSecretsKey] = useState(0);
-  const [generationLog, setGenerationLog] = useState<NormalizerGenerationLog | null>(null);
-  const generationLogRef = useRef<NormalizerGenerationLog | null>(null);
-  const generationFlushTimerRef = useRef<number | null>(null);
+  const {
+    generationLog,
+    logRef: generationLogRef,
+    start: startLog,
+    flush: flushGenerationLog,
+    schedule: scheduleGenerationLogFlush,
+  } = useGenerationLog(50);
   const [codeCopied, setCodeCopied] = useState(false);
   const [customizeVersionActionId, setCustomizeVersionActionId] = useState<string | null>(null);
   const [deletingNormalizerVersionId, setDeletingNormalizerVersionId] = useState<string | null>(
     null
   );
-  const [normalizerVersions, setNormalizerVersions] = useState<
-    DataRawTableNormalizerArtifactVersion[]
-  >([]);
-  const [normalizerVersionsLoading, setNormalizerVersionsLoading] = useState(false);
   const [customizeGenerationError, setCustomizeGenerationError] = useState<string | null>(null);
   const [customizeModelMenuOpen, setCustomizeModelMenuOpen] = useState(false);
   const [customizeStep, setCustomizeStep] = useState<RawTableCustomizeStep>(() =>
@@ -318,12 +319,14 @@ export function RawTableEditorWorkbench({
     dataProcessing.rulePrompt.trim() &&
     !customizeGenerating
   );
+  const customizeArtifactId =
+    dataProcessing.strategy === 'customize' ? dataProcessing.artifactId : undefined;
+  const { normalizerVersions, normalizerVersionsLoading, refreshNormalizerVersions } =
+    useNormalizerVersions(customizeArtifactId, setCustomizeGenerationError);
   const currentNormalizerVersion =
     dataProcessing.strategy === 'customize'
       ? normalizerVersions.find((version) => version.id === dataProcessing.artifactVersionId)
       : undefined;
-  const customizeArtifactId =
-    dataProcessing.strategy === 'customize' ? dataProcessing.artifactId : undefined;
   const customizeArtifactVersionId =
     dataProcessing.strategy === 'customize' ? dataProcessing.artifactVersionId : undefined;
   const normalizerProjectFiles = useMemo(() => {
@@ -383,8 +386,7 @@ export function RawTableEditorWorkbench({
         ? persistedConfig.dataProcessing
         : null;
     setCustomizeGenerationError(null);
-    generationLogRef.current = null;
-    setGenerationLog(null);
+    startLog(null);
     setCustomizeGenerating(false);
     setCodeCopied(false);
     setCustomizeVersionActionId(null);
@@ -396,7 +398,7 @@ export function RawTableEditorWorkbench({
     setPreviewError(null);
     setPreviewPage(1);
     setPreviewRun(null);
-  }, [initialConfigKey, initialName, initialSourceKind, targetId]);
+  }, [initialConfigKey, initialName, initialSourceKind, targetId, startLog]);
 
   const initialViewTabRef = useRef(initialViewTab);
   useEffect(() => {
@@ -522,51 +524,6 @@ export function RawTableEditorWorkbench({
   // Progress deltas arrive per token — buffer them in the mutable log ref and
   // flush snapshots at ~20fps so the console repaints smoothly instead of
   // re-rendering once per IPC event.
-  const flushGenerationLog = useCallback(() => {
-    const current = generationLogRef.current;
-    if (!current) return;
-    setGenerationLog({ ...current, steps: [...current.steps] });
-  }, []);
-
-  const scheduleGenerationLogFlush = useCallback(() => {
-    if (generationFlushTimerRef.current !== null) return;
-    generationFlushTimerRef.current = window.setTimeout(() => {
-      generationFlushTimerRef.current = null;
-      flushGenerationLog();
-    }, 50);
-  }, [flushGenerationLog]);
-
-  useEffect(
-    () => () => {
-      if (generationFlushTimerRef.current !== null) {
-        window.clearTimeout(generationFlushTimerRef.current);
-      }
-    },
-    []
-  );
-
-  const refreshNormalizerVersions = useCallback(async (artifactId: string | undefined) => {
-    if (!artifactId) {
-      setNormalizerVersions([]);
-      return;
-    }
-    setNormalizerVersionsLoading(true);
-    try {
-      const result = await dataClient.listRawTableNormalizerVersions({
-        artifactId,
-      });
-      setNormalizerVersions(result.versions);
-    } catch (err) {
-      setCustomizeGenerationError(formatIpcError(err, String(err)));
-    } finally {
-      setNormalizerVersionsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshNormalizerVersions(customizeArtifactId);
-  }, [customizeArtifactId, refreshNormalizerVersions]);
-
   const generateCustomizeDraft = async () => {
     if (dataProcessing.strategy !== 'customize') return;
     const rawRulePrompt = dataProcessing.rulePrompt.trim();
@@ -585,8 +542,7 @@ export function RawTableEditorWorkbench({
       rulePrompt,
       t,
     });
-    generationLogRef.current = log;
-    setGenerationLog({ ...log, steps: [...log.steps] });
+    startLog(log);
     setCustomizeGenerating(true);
     fixNotesRef.current = [];
     setCustomizeGenerationError(null);
@@ -1079,8 +1035,7 @@ export function RawTableEditorWorkbench({
       verifyKind: 'preview',
       t,
     });
-    generationLogRef.current = log;
-    setGenerationLog({ ...log, steps: [...log.steps] });
+    startLog(log);
     const progressId = createNormalizerGenerationProgressId();
     activeAgentProgressRef.current = progressId;
     cancelRequestedRef.current = false;
@@ -1897,8 +1852,8 @@ export function RawTableEditorWorkbench({
                   const generateFailed =
                     generateCancelled ||
                     (!customizeGenerating && generationLog?.outcome?.status === 'error');
-                  let cols = '';
-                  let cells: ReactNode = null;
+                  let cols: string;
+                  let cells: ReactNode;
                   if (customizeStep === 'rules') {
                     cols = 'minmax(0,1fr) 160px';
                     cells = (

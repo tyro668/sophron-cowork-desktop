@@ -1,4 +1,4 @@
-import type { DataDashboard } from '../../../types';
+import type { DataDashboard } from '../../../../shared/contracts';
 import { dataClient } from './data-client';
 
 /** Pipeline selection must include every saved pipeline, not just the first workspace page. */

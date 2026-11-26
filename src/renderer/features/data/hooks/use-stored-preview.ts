@@ -5,7 +5,11 @@ import { formatIpcError } from '../../../utils/ipc-error';
  * state — preview failures don't touch the page error banner.
  */
 import { useCallback, useState } from 'react';
-import type { DataRawTable, DataRawTablePreview, DataResultTable } from '../../../types';
+import type {
+  DataRawTable,
+  DataRawTablePreview,
+  DataResultTable,
+} from '../../../../shared/contracts';
 import { RAW_TABLE_PREVIEW_PAGE_SIZE } from '../../../components/data-view/shared';
 import { dataClient } from '../api/data-client';
 import type { StoredPreviewTarget } from '../model/types';

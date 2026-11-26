@@ -1,3 +1,4 @@
+import enTranslations from '../../../shared/i18n/locales/en.json';
 import { ipcMain, dialog } from 'electron';
 import { isAbsolute } from 'path';
 import type { ClientEvent } from '../../../shared/contracts';
@@ -6,7 +7,7 @@ import {
   getPermissionRulesForPolicy,
   isPermissionPolicy,
 } from '../../../shared/permission-policies';
-import { appContext } from '../../app/context';
+import type { AppContext } from '../../app/context';
 import { sendToRenderer } from '../../app/events';
 import { mapProjectRow, listProjectsForRenderer } from '../../app/projects';
 import {
@@ -28,7 +29,17 @@ import { setPermissionRules } from '../../config/permission-rules-store';
 import { handleIpc } from '../../ipc-handle';
 import { logWarn, logError } from '../../utils/logger';
 
-export function registerSessionIpc(): void {
+type SessionIpcContext = Pick<
+  AppContext,
+  'sessionManager' | 'mainWindow' | 'currentWorkingDir' | 'appDatabase'
+>;
+
+export function registerSessionIpc(context: SessionIpcContext): void {
+  function openFolderDialog(options: Electron.OpenDialogOptions) {
+    return context.mainWindow
+      ? dialog.showOpenDialog(context.mainWindow, options)
+      : dialog.showOpenDialog(options);
+  }
   // IPC Handlers
   ipcMain.on('client-event', async (_event, raw: unknown) => {
     let data: ClientEvent;
@@ -63,7 +74,7 @@ export function registerSessionIpc(): void {
       sendToRenderer({
         type: 'error',
         payload: {
-          message: '当前方案未配置可用凭证，请先在 API 设置中完成配置',
+          message: enTranslations.api.configRequiredActiveSet,
           code: 'CONFIG_REQUIRED_ACTIVE_SET',
           action: 'open_api_settings',
         },
@@ -71,87 +82,112 @@ export function registerSessionIpc(): void {
       return null;
     }
 
-    if (eventRequiresSessionManager(event) && !appContext.sessionManager) {
-      throw new Error('Session manager not initialized');
-    }
-    // After the guard above, appContext.sessionManager is guaranteed non-null for session.* events.
-    // Use a local alias to satisfy TypeScript's control-flow narrowing.
-    const sm = appContext.sessionManager!;
+    if (eventRequiresSessionManager(event)) {
+      const sessionManager = context.sessionManager;
+      if (!sessionManager) throw new Error('Session manager not initialized');
+      switch (event.type) {
+        case 'session.start':
+          if (getWorkspacePathUnsupportedReason(event.payload.cwd)) {
+            sendToRenderer({
+              type: 'error',
+              payload: {
+                message: getWorkspacePathUnsupportedReason(event.payload.cwd)!,
+              },
+            });
+            return null;
+          }
+          return sessionManager.startSession(
+            event.payload.title,
+            event.payload.prompt,
+            event.payload.cwd,
+            event.payload.allowedTools,
+            event.payload.content,
+            event.payload.memoryEnabled,
+            undefined,
+            {
+              selectedSkillNames: event.payload.selectedSkillNames,
+              permissionPolicy:
+                event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
+              permissionRules: getPermissionRulesForPolicy(
+                event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
+              ),
+            }
+          );
 
-    switch (event.type) {
-      case 'session.start':
-        if (getWorkspacePathUnsupportedReason(event.payload.cwd)) {
+        case 'session.continue':
+          return sessionManager.continueSession(
+            event.payload.sessionId,
+            event.payload.prompt,
+            event.payload.content,
+            {
+              selectedSkillNames: event.payload.selectedSkillNames,
+              permissionPolicy:
+                event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
+              permissionRules: getPermissionRulesForPolicy(
+                event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
+              ),
+            }
+          );
+
+        case 'session.stop':
+          return sessionManager.stopSession(event.payload.sessionId);
+
+        case 'session.delete':
+          return sessionManager.deleteSession(event.payload.sessionId);
+
+        case 'session.rename':
+          return sessionManager.renameSession(event.payload.sessionId, event.payload.title);
+
+        case 'session.duplicate': {
+          const newId = sessionManager.duplicateSession(
+            event.payload.sessionId,
+            event.payload.titleSuffix
+          );
           sendToRenderer({
-            type: 'error',
+            type: 'session.list',
             payload: {
-              message: getWorkspacePathUnsupportedReason(event.payload.cwd)!,
+              sessions: sessionManager.listSessions(),
+              projects: listProjectsForRenderer(),
             },
           });
-          return null;
+          return newId;
         }
-        return sm.startSession(
-          event.payload.title,
-          event.payload.prompt,
-          event.payload.cwd,
-          event.payload.allowedTools,
-          event.payload.content,
-          event.payload.memoryEnabled,
-          undefined,
-          {
-            selectedSkillNames: event.payload.selectedSkillNames,
-            permissionPolicy: event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
-            permissionRules: getPermissionRulesForPolicy(
-              event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
-            ),
-          }
-        );
 
-      case 'session.continue':
-        return sm.continueSession(
-          event.payload.sessionId,
-          event.payload.prompt,
-          event.payload.content,
-          {
-            selectedSkillNames: event.payload.selectedSkillNames,
-            permissionPolicy: event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
-            permissionRules: getPermissionRulesForPolicy(
-              event.payload.permissionPolicy ?? configStore.get('permissionPolicy')
-            ),
-          }
-        );
+        case 'session.batchDelete':
+          return sessionManager.batchDeleteSessions(event.payload.sessionIds);
 
-      case 'session.stop':
-        return sm.stopSession(event.payload.sessionId);
+        case 'session.list': {
+          const sessions = sessionManager.listSessions();
+          sendToRenderer({
+            type: 'session.list',
+            payload: { sessions, projects: listProjectsForRenderer() },
+          });
+          return sessions;
+        }
 
-      case 'session.delete':
-        return sm.deleteSession(event.payload.sessionId);
+        case 'session.getMessages':
+          return sessionManager.getMessages(event.payload.sessionId);
 
-      case 'session.rename':
-        return sm.renameSession(event.payload.sessionId, event.payload.title);
+        case 'session.getTraceSteps':
+          return sessionManager.getTraceSteps(event.payload.sessionId);
 
-      case 'session.duplicate': {
-        const newId = sm.duplicateSession(event.payload.sessionId, event.payload.titleSuffix);
-        sendToRenderer({
-          type: 'session.list',
-          payload: { sessions: sm.listSessions(), projects: listProjectsForRenderer() },
-        });
-        return newId;
+        case 'permission.response':
+          return sessionManager.handlePermissionResponse(
+            event.payload.toolUseId,
+            event.payload.result
+          );
+
+        case 'sudo.password.response':
+          return sessionManager.handleSudoPasswordResponse(
+            event.payload.toolUseId,
+            event.payload.password
+          );
       }
+    }
 
-      case 'session.batchDelete':
-        return sm.batchDeleteSessions(event.payload.sessionIds);
-
-      case 'session.list': {
-        const sessions = sm.listSessions();
-        sendToRenderer({
-          type: 'session.list',
-          payload: { sessions, projects: listProjectsForRenderer() },
-        });
-        return sessions;
-      }
-
+    switch (event.type) {
       case 'project.rename': {
-        const db = appContext.appDatabase;
+        const db = context.appDatabase;
         if (!db?.projects) {
           throw new Error('Project store not initialized');
         }
@@ -167,7 +203,7 @@ export function registerSessionIpc(): void {
       }
 
       case 'project.renameByCwd': {
-        const db = appContext.appDatabase;
+        const db = context.appDatabase;
         if (!db?.projects) {
           throw new Error('Project store not initialized');
         }
@@ -184,7 +220,7 @@ export function registerSessionIpc(): void {
       }
 
       case 'project.delete': {
-        const db = appContext.appDatabase;
+        const db = context.appDatabase;
         if (!db?.projects) {
           throw new Error('Project store not initialized');
         }
@@ -193,20 +229,8 @@ export function registerSessionIpc(): void {
         return { success: true };
       }
 
-      case 'session.getMessages':
-        return sm.getMessages(event.payload.sessionId);
-
-      case 'session.getTraceSteps':
-        return sm.getTraceSteps(event.payload.sessionId);
-
-      case 'permission.response':
-        return sm.handlePermissionResponse(event.payload.toolUseId, event.payload.result);
-
-      case 'sudo.password.response':
-        return sm.handleSudoPasswordResponse(event.payload.toolUseId, event.payload.password);
-
       case 'folder.select': {
-        const folderResult = await dialog.showOpenDialog(appContext.mainWindow!, {
+        const folderResult = await openFolderDialog({
           properties: ['openDirectory'],
         });
         if (!folderResult.canceled && folderResult.filePaths.length > 0) {
@@ -229,8 +253,8 @@ export function registerSessionIpc(): void {
         const dialogDefaultPath =
           event.payload.currentPath && isAbsolute(event.payload.currentPath)
             ? event.payload.currentPath
-            : appContext.currentWorkingDir || undefined;
-        const workdirResult = await dialog.showOpenDialog(appContext.mainWindow!, {
+            : context.currentWorkingDir || undefined;
+        const workdirResult = await openFolderDialog({
           properties: ['openDirectory'],
           title: 'Select Working Directory',
           defaultPath: dialogDefaultPath,
@@ -272,11 +296,9 @@ export function registerSessionIpc(): void {
           if (nextLogoVariant) applyRuntimeLogo(nextLogoVariant);
           if (nextTheme) {
             applyNativeThemePreference(nextTheme);
-            if (appContext.mainWindow && !appContext.mainWindow.isDestroyed()) {
+            if (context.mainWindow && !context.mainWindow.isDestroyed()) {
               const effectiveTheme = resolveEffectiveTheme(nextTheme);
-              appContext.mainWindow.setBackgroundColor(
-                effectiveTheme === 'dark' ? DARK_BG : LIGHT_BG
-              );
+              context.mainWindow.setBackgroundColor(effectiveTheme === 'dark' ? DARK_BG : LIGHT_BG);
             }
           }
           if (nextPolicy) {

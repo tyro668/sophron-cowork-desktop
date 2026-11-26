@@ -202,7 +202,7 @@ class MCPConfigStore {
    * Get the path to the Software Development MCP server file
    */
   private getSoftwareDevServerPath(): string | null {
-    return this.getMcpServerPath('software-dev-server-example.ts');
+    return this.getMcpServerPath('software-development-server.ts');
   }
 
   /**

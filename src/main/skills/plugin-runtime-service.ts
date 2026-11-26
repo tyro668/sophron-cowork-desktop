@@ -375,13 +375,16 @@ export class PluginRuntimeService {
       const code = (error as { code?: string }).code;
       if (code === 'ENOENT') {
         throw new Error(
-          'Failed to install plugin: claude command not found. Please install Claude Code CLI first.'
+          'Failed to install plugin: claude command not found. Please install Claude Code CLI first.',
+          { cause: error }
         );
       }
 
       const stderr = (error as { stderr?: string }).stderr?.trim();
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to install plugin via Claude CLI: ${stderr || message}`);
+      throw new Error(`Failed to install plugin via Claude CLI: ${stderr || message}`, {
+        cause: error,
+      });
     }
   }
 
@@ -420,12 +423,16 @@ export class PluginRuntimeService {
     } catch (error) {
       const code = (error as { code?: string }).code;
       if (code === 'ENOENT') {
-        throw new Error('Failed to read installed plugins: claude command not found.');
+        throw new Error('Failed to read installed plugins: claude command not found.', {
+          cause: error,
+        });
       }
 
       const stderr = (error as { stderr?: string }).stderr?.trim();
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to read installed plugins from Claude CLI: ${stderr || message}`);
+      throw new Error(`Failed to read installed plugins from Claude CLI: ${stderr || message}`, {
+        cause: error,
+      });
     }
 
     let parsed: ClaudePluginListOutput | ClaudeInstalledPluginRecord[];
@@ -434,7 +441,7 @@ export class PluginRuntimeService {
         ClaudePluginListOutput | ClaudeInstalledPluginRecord[];
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to parse Claude plugin list JSON: ${message}`);
+      throw new Error(`Failed to parse Claude plugin list JSON: ${message}`, { cause: error });
     }
 
     if (Array.isArray(parsed)) {

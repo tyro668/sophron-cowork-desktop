@@ -177,7 +177,7 @@ export class RemoteGateway extends EventEmitter {
     for (const client of this.wsClients.values()) {
       try {
         client.ws.close(1000, 'Gateway shutting down');
-      } catch (e) {
+      } catch {
         // Ignore close errors
       }
     }

@@ -1,5 +1,8 @@
+import { useScriptPackageVersions } from '../../features/automation/hooks/use-script-package-versions';
+import { automationClient } from '../../features/automation/api/automation-client';
+import { useGenerationLog } from '../../hooks/use-generation-log';
 import { isCancelledError } from '../../../shared/cancel';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -29,7 +32,7 @@ import type {
 } from '../../../shared/automation/script-package';
 import { SCRIPT_SOURCE_KEYS } from './labels';
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from '../../../shared/automation/script-package';
-import type { Automation, DataRawTablePreview } from '../../types';
+import type { Automation, DataRawTablePreview } from '../../../shared/contracts';
 import { useAppStore, type ScriptEditorTarget } from '../../store';
 import { getAgentModelLabel } from '../AgentModelSelector';
 import {
@@ -128,7 +131,7 @@ export function ScriptPackageWorkbench({
 }) {
   const { t } = useTranslation();
   const { confirm, confirmDelete } = useConfirmDialog();
-  const api = window.electronAPI.automation.scripts;
+  const api = automationClient.scripts;
   const appConfig = useAppStore((state) => state.appConfig);
   const chat = target.chat;
   const sessions = useAppStore((state) => state.sessions);
@@ -137,12 +140,6 @@ export function ScriptPackageWorkbench({
   const [packageId, setPackageId] = useState<string | undefined>(
     target.packageId ?? chat?.packageId
   );
-  const [summary, setSummary] = useState<ScriptPackageSummary | null>(null);
-  const [versions, setVersions] = useState<ScriptPackageVersion[]>([]);
-  const [versionsLoading, setVersionsLoading] = useState(false);
-  const [viewVersion, setViewVersion] = useState<number | null>(target.version ?? null);
-  const [detail, setDetail] = useState<ScriptPackageVersionDetail | null>(null);
-  const [selectedPath, setSelectedPath] = useState('');
   const [step, setStep] = useState<Step>(
     chat ? 'generate' : (target.step ?? (target.packageId ? 'review' : 'rules'))
   );
@@ -156,10 +153,26 @@ export function ScriptPackageWorkbench({
   const [generating, setGenerating] = useState(false);
   const secretReview = useSecretReview();
   const [secretsKey, setSecretsKey] = useState(0);
-  const [generationLog, setGenerationLog] = useState<NormalizerGenerationLog | null>(null);
-  const logRef = useRef<NormalizerGenerationLog | null>(null);
-  const flushTimer = useRef<number | null>(null);
+  const {
+    generationLog,
+    logRef,
+    start: startLog,
+    flush: flushLog,
+    schedule: scheduleFlush,
+  } = useGenerationLog(120);
   const [error, setError] = useState<string | null>(null);
+  const {
+    summary,
+    setSummary,
+    versions,
+    versionsLoading,
+    viewVersion,
+    setViewVersion,
+    detail,
+    selectedPath,
+    setSelectedPath,
+    refresh,
+  } = useScriptPackageVersions(packageId, target.version, setError);
   const [testing, setTesting] = useState(false);
   const [trial, setTrial] = useState<ScriptTestRunResult | null>(null);
   const [trialOpen, setTrialOpen] = useState(false);
@@ -203,22 +216,6 @@ export function ScriptPackageWorkbench({
   /** 取消 clicked during the current generation / fix turn. */
   const cancelRequestedRef = useRef(false);
   const initialised = useRef(false);
-
-  const refresh = useCallback(
-    async (id = packageId) => {
-      if (!id) return null;
-      setVersionsLoading(true);
-      try {
-        const [nextSummary, nextVersions] = await Promise.all([api.get(id), api.versions(id)]);
-        setSummary(nextSummary);
-        setVersions(nextVersions);
-        return { summary: nextSummary, versions: nextVersions };
-      } finally {
-        setVersionsLoading(false);
-      }
-    },
-    [api, packageId]
-  );
 
   // First load: pick the version to show and restore the rule draft.
   useEffect(() => {
@@ -284,31 +281,6 @@ export function ScriptPackageWorkbench({
   }, [api, refresh, t, target.packageId, target.version]);
 
   useEffect(() => {
-    if (!packageId || viewVersion == null || summary?.missing) {
-      setDetail(null);
-      return;
-    }
-    let cancelled = false;
-    void api
-      .versionDetail(packageId, viewVersion)
-      .then((next) => {
-        if (cancelled) return;
-        setDetail(next);
-        setSelectedPath((current) =>
-          next.files.some((file) => file.path === current)
-            ? current
-            : (next.files.find((file) => file.path === next.entry)?.path ??
-              next.files[0]?.path ??
-              '')
-        );
-      })
-      .catch((err: unknown) => setError(formatIpcError(err, String(err))));
-    return () => {
-      cancelled = true;
-    };
-  }, [api, packageId, viewVersion, versions, summary?.missing]);
-
-  useEffect(() => {
     if (!packageId) return;
     if (tab === 'data') {
       void api
@@ -316,7 +288,7 @@ export function ScriptPackageWorkbench({
         .then((output) => setLastOutput(output ? toPreview(output) : null));
     }
     if (tab === 'automation') {
-      void window.electronAPI.automation
+      void automationClient
         .list({ status: 'all', limit: 500 })
         .then((result) =>
           setAutomations(
@@ -330,16 +302,6 @@ export function ScriptPackageWorkbench({
         .catch(() => setAutomations([]));
     }
   }, [api, packageId, tab]);
-
-  const flushLog = () => {
-    if (flushTimer.current != null) window.clearTimeout(flushTimer.current);
-    flushTimer.current = null;
-    const log = logRef.current;
-    if (log) setGenerationLog({ ...log, steps: log.steps.map((item) => ({ ...item })) });
-  };
-  const scheduleFlush = () => {
-    if (flushTimer.current == null) flushTimer.current = window.setTimeout(flushLog, 120);
-  };
 
   const published = summary?.published;
   const currentDraft = summary?.draft;
@@ -434,8 +396,7 @@ export function ScriptPackageWorkbench({
       steps: [],
       startedAt: Date.now(),
     };
-    logRef.current = log;
-    setGenerationLog({ ...log });
+    startLog(log);
     setGenerating(true);
     fixNotesRef.current = [];
     const progressId = createNormalizerGenerationProgressId();
@@ -658,8 +619,7 @@ export function ScriptPackageWorkbench({
       verifyKind: 'trial',
       t,
     });
-    logRef.current = log;
-    setGenerationLog({ ...log });
+    startLog(log);
     const progressId = createNormalizerGenerationProgressId();
     activeProgressRef.current = progressId;
     cancelRequestedRef.current = false;
@@ -1078,8 +1038,8 @@ export function ScriptPackageWorkbench({
     </button>
   );
 
-  let actionCols = '';
-  let actionCells: ReactNode = null;
+  let actionCols: string;
+  let actionCells: ReactNode;
   if (step === 'rules') {
     actionCols = 'minmax(0,1fr) 160px';
     actionCells = (

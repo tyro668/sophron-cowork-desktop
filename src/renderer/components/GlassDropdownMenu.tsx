@@ -81,9 +81,9 @@ export function GlassMenuItem({
       }}
       className={cn(
         menuItemClass({ danger }),
-        'min-h-8 w-full gap-2 px-3 py-2 text-left font-medium',
+        'min-h-8 w-full gap-2 px-2.5 py-1.5 text-left font-medium',
         description ? 'items-start' : 'items-center',
-        selected && 'bg-accent-muted text-text-primary',
+        selected && 'bg-accent-muted text-accent',
         className
       )}
     >
@@ -94,7 +94,7 @@ export function GlassMenuItem({
           <span className="truncate text-[12px] font-normal text-text-muted">{description}</span>
         )}
       </span>
-      {selected && <Check className="h-4 w-4 shrink-0 text-accent" />}
+      {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
     </DropdownMenu.Item>
   );
 }
@@ -120,7 +120,7 @@ export function GlassMenuSub({
         disabled={disabled}
         className={cn(
           menuItemClass(),
-          'min-h-8 w-full items-center gap-2 px-3 py-2 text-left font-medium'
+          'min-h-8 w-full items-center gap-2 px-2.5 py-1.5 text-left font-medium'
         )}
       >
         {icon}
@@ -144,5 +144,5 @@ export function GlassMenuSub({
 
 /** Thin divider between menu sections (e.g. before destructive actions). */
 export function GlassMenuSeparator({ className }: { className?: string }) {
-  return <DropdownMenu.Separator className={cn('h-px bg-border-subtle', className)} />;
+  return <DropdownMenu.Separator className={cn('my-1 h-px bg-border-subtle', className)} />;
 }

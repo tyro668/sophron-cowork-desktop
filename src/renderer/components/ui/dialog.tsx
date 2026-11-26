@@ -172,7 +172,7 @@ export function DialogDescription({
   ...rest
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn('text-[13px] leading-relaxed text-text-secondary', className)} {...rest} />
+    <p className={cn('text-ui-body leading-relaxed text-text-secondary', className)} {...rest} />
   );
 }
 

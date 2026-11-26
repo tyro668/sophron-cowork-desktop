@@ -230,6 +230,8 @@ export function createEncryptedStoreWithKeyRotation<T extends Record<string, unk
     options.warn?.(
       `${options.logPrefix} Failed to read encrypted store with all keys: ${aggregated}`
     );
-    throw new Error(`${options.logPrefix} All decryption keys failed: ${aggregated}`);
+    throw new Error(`${options.logPrefix} All decryption keys failed: ${aggregated}`, {
+      cause: error,
+    });
   }
 }

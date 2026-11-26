@@ -222,7 +222,7 @@ describe('independent table association conditions', () => {
     const f = fixture();
     const a = f.create([processNode()], []);
     f.raw.exec(
-      'ALTER TABLE automations DROP COLUMN table_bindings_json; ALTER TABLE automation_runs DROP COLUMN execution_summary_json; DROP TABLE automation_table_policies; DELETE FROM app_schema_migrations WHERE version >= 5'
+      'ALTER TABLE automations DROP COLUMN table_bindings_json; ALTER TABLE automation_runs DROP COLUMN execution_summary_json; ALTER TABLE automation_runs DROP COLUMN script_repairs_json; DROP TABLE automation_table_policies; DELETE FROM app_schema_migrations WHERE version >= 5'
     );
     migrateMainSchema(f.raw);
     migrateMainSchema(f.raw);
@@ -230,7 +230,7 @@ describe('independent table association conditions', () => {
     expect(f.store.get(a.id)?.tableBindings).toEqual([]);
     expect(
       f.raw.prepare('SELECT count(*) AS n FROM app_schema_migrations WHERE version >= 5').get()
-    ).toEqual({ n: 5 });
+    ).toEqual({ n: 6 });
   });
   it('validates canonical bindings before persisting a partial update', () => {
     const f = fixture();
@@ -356,5 +356,36 @@ describe('replacing a table automation association', () => {
     ).toThrow('already linked');
     expect(f.store.get(old.id)?.tableBindings).toHaveLength(1);
     expect(f.store.get(next.id)?.tableBindings).toHaveLength(1);
+  });
+});
+
+describe('script repair persistence', () => {
+  it('isolates concurrent repairs by run and node, retaining terminal results on restart', () => {
+    const f = fixture();
+    const automation = f.create([processNode('a'), processNode('b')], []);
+    const createRun = () =>
+      f.store.createRun({
+        automationId: automation.id,
+        triggerReason: 'manual',
+        status: 'running',
+      });
+    const first = createRun();
+    const second = createRun();
+    const pending = { status: 'pending', packageId: 'package' } as const;
+    const ready = { status: 'ready', version: 4, rows: 9, packageId: 'package' } as const;
+    f.store.setRunScriptRepair(first.id, 'a', pending);
+    f.store.setRunScriptRepair(first.id, 'b', pending);
+    f.store.setRunScriptRepair(second.id, 'a', pending);
+    f.store.updateRun(first.id, { status: 'failed', finishedAt: 10, error: 'original failure' });
+    f.store.setRunScriptRepair(first.id, 'a', ready);
+    f.store.recoverInterruptedRuns();
+    const runs = f.store.listRuns(automation.id);
+    expect(runs.find((run) => run.id === first.id)).toMatchObject({
+      error: 'original failure',
+      scriptRepairs: { a: ready, b: { ...pending, status: 'stopped' } },
+    });
+    expect(runs.find((run) => run.id === second.id)?.scriptRepairs).toEqual({
+      a: { ...pending, status: 'stopped' },
+    });
   });
 });
