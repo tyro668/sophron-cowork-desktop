@@ -75,6 +75,7 @@ import {
   bottomTabBarClass,
   bottomTabListClass,
   bottomTabTriggerClass,
+  configFlushBodyClass,
 } from './shared';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
@@ -2713,7 +2714,7 @@ export function RawTableEditorWorkbench({
             />
           </TabsContent>
           {rawTable ? (
-            <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+            <TabsContent value="automation" className={configFlushBodyClass}>
               <RawTableAutomations key={rawTable.id} rawTable={rawTable} embedded grid />
             </TabsContent>
           ) : null}

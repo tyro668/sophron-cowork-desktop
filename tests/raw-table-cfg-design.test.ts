@@ -27,6 +27,9 @@ describe('raw table editor matches config design c05–c08', () => {
     );
   });
   it('automation tab uses the 104 | 1fr | 40 | 40 | 104 grid', () => {
+    expect(workbench).toContain(
+      '<TabsContent value="automation" className={configFlushBodyClass}>'
+    );
     expect(automations).toContain('grid-cols-[104px_minmax(0,1fr)_40px_40px_104px]');
     expect(automations).toContain("t('data.resultTables.automation.addLinkShort')");
   });

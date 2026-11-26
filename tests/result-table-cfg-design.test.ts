@@ -23,5 +23,6 @@ describe('result table editor matches config design c09–c12', () => {
     // The data tab is just the grid: no filter / search / column count / export bar.
     expect(src).not.toMatch(/enableFilters|onExport=/);
     expect(src).toMatch(/<ResultTableAutomations[\s\S]*?grid\s*\/>/);
+    expect(src).toContain('<TabsContent value="automation" className={configFlushBodyClass}>');
   });
 });

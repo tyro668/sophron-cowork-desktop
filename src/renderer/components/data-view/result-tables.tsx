@@ -54,6 +54,7 @@ import {
   bottomTabBarClass,
   bottomTabListClass,
   bottomTabTriggerClass,
+  configFlushBodyClass,
 } from './shared';
 import {
   Button,
@@ -1046,7 +1047,7 @@ export function ResultTableEditor({
             headerHeight={34}
           />
         </TabsContent>
-        <TabsContent value="automation" className="min-h-0 flex-1 overflow-y-auto bg-surface">
+        <TabsContent value="automation" className={configFlushBodyClass}>
           <ResultTableAutomations key={resultTable.id} resultTable={resultTable} embedded grid />
         </TabsContent>
         <div className={`${bottomTabBarClass} justify-between`}>

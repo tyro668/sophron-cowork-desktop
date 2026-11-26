@@ -34,6 +34,15 @@ describe('config / detail views use the flush group variant', () => {
     expect(read('src/renderer/components/data-view/raw-source-detail.tsx')).not.toContain(
       'groupClass'
     );
+    const workbench = read('src/renderer/components/data-view/raw-table-editor-workbench.tsx');
+    const results = read('src/renderer/components/data-view/result-tables.tsx');
+    expect(workbench).toContain(
+      '<TabsContent value="automation" className={configFlushBodyClass}>'
+    );
+    expect(results).toContain('<TabsContent value="automation" className={configFlushBodyClass}>');
+    expect(read('src/renderer/components/data-view/raw-tables.tsx')).not.toContain(
+      'configFlushBodyClass'
+    );
   });
 
   it('leaves the wizard on the inset groupClass', () => {
