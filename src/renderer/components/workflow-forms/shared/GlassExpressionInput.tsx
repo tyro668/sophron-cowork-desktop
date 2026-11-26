@@ -1351,7 +1351,7 @@ function ExpressionEditorDialog({
         type="button"
         onClick={onClose}
         style={{ gridColumn: 'span 2' }}
-        className={`${footerButton} bg-error text-white hover:bg-error/90`}
+        className={`${footerButton} bg-error text-error-foreground hover:bg-error/90`}
       >
         {tr('expressionDiscardChanges')}
       </button>

@@ -150,7 +150,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
 
   return (
     <div
-      className={`flex min-h-0 flex-col ${
+      className={`flex min-h-0 min-w-0 max-w-full flex-1 flex-col overflow-hidden ${
         borderless
           ? ''
           : `rounded-lg border ${
@@ -159,7 +159,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
       } ${className}`}
     >
       <div
-        className={`flex min-h-8 items-center px-2.5 py-1 ${
+        className={`flex min-h-8 min-w-0 max-w-full items-center overflow-hidden px-2.5 py-1 ${
           searchBordered
             ? 'mb-2 rounded-md border border-border-muted bg-surface'
             : 'border-b border-border-subtle'
@@ -201,7 +201,7 @@ export const GlassFieldMultiSelect = memo(function GlassFieldMultiSelect({
 
       <div
         ref={listRef}
-        className={`scrollbar-hover overflow-y-auto ${isGlass ? '' : 'flex-1 min-h-0'}`}
+        className={`scrollbar-hover min-w-0 max-w-full overflow-x-hidden overflow-y-auto ${isGlass ? '' : 'flex-1 min-h-0'}`}
         style={{ maxHeight }}
       >
         {filteredMissing.map((col) => (

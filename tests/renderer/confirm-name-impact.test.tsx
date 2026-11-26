@@ -18,7 +18,7 @@ describe('delete impact helpers', () => {
   it('lists pipelines linked to a result table', () => {
     const text = resultTableDeleteImpact({ relatedPipelineNames: ['A', 'B'] } as never, t);
     expect(text).toContain('resultTablePipelines');
-    expect(text).toContain('A、B');
+    expect(text).toMatch(/A[、,] ?B/);
     expect(resultTableDeleteImpact({ relatedPipelineNames: [] } as never, t)).toContain(
       'resultTableNone'
     );
@@ -29,7 +29,8 @@ describe('delete impact helpers', () => {
       sourceRawTableId: 'r1',
     }));
     const text = rawTableDeleteImpact('r1', pipelines as never, t);
-    expect(text).toContain('p1、p2、p3 等 4 个');
+    expect(text).toContain('data.deleteImpact.moreItems');
+    expect(text).toMatch(/count.*4/);
     expect(rawTableDeleteImpact('other', pipelines as never, t)).toContain('rawTableNone');
   });
   it('mentions the pipeline result table', () => {

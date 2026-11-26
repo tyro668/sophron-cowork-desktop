@@ -214,7 +214,7 @@ export function LocalTableSelect({
       placeholder={placeholder}
       searchable
       searchPlaceholder={searchPlaceholder}
-      searchEmptyText={t('common.noResults', '暂无结果')}
+      searchEmptyText={t('common.noResults')}
       triggerClassName="h-9 w-full justify-between"
       contentClassName="w-[var(--radix-select-trigger-width)]"
     />
@@ -279,12 +279,12 @@ export function AutomationPromptPermissionFields({
   onModelSelect: (selection: { configSetId: string; model: string }) => void;
   placeholder: string;
   label?: string;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   return (
     <>
-      <FormRow label={label ?? tr('schedule.conversationPrompt', '指令内容')} alignTop>
+      <FormRow label={label ?? tr('schedule.conversationPrompt')} alignTop>
         <LlmPromptComposer
           value={value}
           onChange={onChange}
@@ -296,13 +296,13 @@ export function AutomationPromptPermissionFields({
           className="ui-composer-flush"
         />
       </FormRow>
-      <FormRow label={tr('schedule.modelLabel', '模型')}>
+      <FormRow label={tr('schedule.modelLabel')}>
         <AgentModelSelector
           open={modelMenuOpen}
           onOpenChange={setModelMenuOpen}
           appConfig={appConfig}
           selectedConfigSetId={selectedModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''}
-          fallbackLabel={tr('chat.noModel', '未配置模型')}
+          fallbackLabel={tr('chat.noModel')}
           disabled={!appConfig?.model?.trim()}
           align="start"
           triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"

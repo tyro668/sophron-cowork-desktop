@@ -128,7 +128,7 @@ export function RebuildConfirmDialog({
             disabled={!ack || busy}
             onClick={onConfirm}
             data-testid="raw-source-rebuild-confirm"
-            className="h-8 rounded-md bg-error px-3 text-[13px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-8 rounded-md bg-error px-3 text-[13px] font-medium text-error-foreground disabled:cursor-not-allowed disabled:opacity-50"
           >
             {tr('confirm')}
           </button>

@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -295,7 +296,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         setInstalledPluginsByKey(nextInstalledByKey);
         setError(null);
       } catch (err) {
-        setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
+        setError({ text: formatIpcError(err, t('skills.pluginInstallFailed')) });
       } finally {
         if (!reset) {
           setIsPluginLoadingMore(false);
@@ -343,7 +344,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
         setSuccess(null);
       }
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.failedToInstall') });
+      setError({ text: formatIpcError(err, t('skills.failedToInstall')) });
     } finally {
       setIsLoading(false);
     }
@@ -360,7 +361,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       await window.electronAPI.skills.delete(skillId);
       await loadSkills();
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.failedToDelete') });
+      setError({ text: formatIpcError(err, t('skills.failedToDelete')) });
     } finally {
       setIsLoading(false);
     }
@@ -373,7 +374,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       await loadSkills();
       setError(null);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.failedToToggle') });
+      setError({ text: formatIpcError(err, t('skills.failedToToggle')) });
     } finally {
       setIsLoading(false);
     }
@@ -389,7 +390,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       }
       setError(null);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.skillPathOpenFailed') });
+      setError({ text: formatIpcError(err, t('skills.skillPathOpenFailed')) });
     } finally {
       setIsLoading(false);
     }
@@ -415,7 +416,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       await loadPlugins();
       setSuccess({ text: t('skills.pluginInstallSuccess', { name: result.plugin.name }) });
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('skills.pluginInstallFailed') });
+      setError({ text: formatIpcError(err, t('skills.pluginInstallFailed')) });
     } finally {
       setPluginActionKey(null);
     }
@@ -485,7 +486,7 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
                 name: plugin.name,
                 description: plugin.description || t('skills.skillHubSkillPackage'),
                 type: 'plugin' as const,
-                typeLabel: t('skills.skillTypes.plugin', { defaultValue: '插件' }),
+                typeLabel: t('skills.skillTypes.plugin'),
                 enabled: installed,
                 updatedAt: installedPlugin?.updatedAt ?? installedSkill?.createdAt ?? 0,
                 raw: plugin,

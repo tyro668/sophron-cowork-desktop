@@ -6,7 +6,7 @@ import { useAppStore } from '../../src/renderer/store';
 
 vi.mock('../../src/renderer/utils/toast', () => ({ showToast: vi.fn() }));
 
-const tr = (_key: string, fallback: string) => fallback;
+const tr = (_key: string, fallback?: string) => fallback ?? _key;
 const nodes = [{ id: 'n1', type: 'script.run', config: { packageId: 'pkg-1' } }] as never;
 
 afterEach(() => cleanup());
@@ -34,7 +34,7 @@ describe('run log AI 修复 actions', () => {
     });
     fireEvent.click(screen.getByTestId('run-repair-publish'));
     await waitFor(() =>
-      expect(screen.getByTestId('run-repair-publish').textContent).toBe('使用中')
+      expect(screen.getByTestId('run-repair-publish').textContent).toBe('schedule.repair.inUse')
     );
     expect(publish).toHaveBeenCalledWith('pkg-1', 3);
   });

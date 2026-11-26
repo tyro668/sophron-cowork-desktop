@@ -168,7 +168,7 @@ export function GroupHeaderRow({
                   disabled={!canPrev}
                   onClick={() => onPageChange?.(page - 1)}
                   className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={t('data.groups.prevPage', '上一页')}
+                  aria-label={t('data.groups.prevPage')}
                 >
                   <ChevronLeft className="h-3 w-3" />
                 </button>
@@ -180,7 +180,7 @@ export function GroupHeaderRow({
                   disabled={!canNext}
                   onClick={() => onPageChange?.(page + 1)}
                   className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
-                  aria-label={t('data.groups.nextPage', '下一页')}
+                  aria-label={t('data.groups.nextPage')}
                 >
                   <ChevronRight className="h-3 w-3" />
                 </button>
@@ -192,7 +192,7 @@ export function GroupHeaderRow({
                   <button
                     type="button"
                     className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted hover:bg-accent-muted hover:text-accent"
-                    aria-label={t('data.groups.actions', '分组操作')}
+                    aria-label={t('data.groups.actions')}
                   >
                     <MoreVertical className="h-3 w-3" />
                   </button>
@@ -200,7 +200,7 @@ export function GroupHeaderRow({
                 <DropdownMenuContent align="end">
                   {onRename && (
                     <DropdownMenuItem onClick={() => onRename(group)}>
-                      {t('data.groups.rename', '重命名')}
+                      {t('data.groups.rename')}
                     </DropdownMenuItem>
                   )}
                   {onDelete && (
@@ -208,7 +208,7 @@ export function GroupHeaderRow({
                       onClick={() => onDelete(group)}
                       className="text-error focus:text-error"
                     >
-                      {t('data.groups.delete', '删除')}
+                      {t('data.groups.delete')}
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>

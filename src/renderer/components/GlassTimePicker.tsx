@@ -1,10 +1,7 @@
 import { useMemo } from 'react';
 import { ChevronDown, Clock } from 'lucide-react';
 import { GlassDropdownMenu, glassTriggerButtonClass } from './GlassDropdownMenu';
-
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
+import { pad2 } from '../utils/i18n-format';
 
 function normalizeTime(value: string): { hour: number; minute: number } {
   const [rawHour, rawMinute] = (value ?? '').split(':');

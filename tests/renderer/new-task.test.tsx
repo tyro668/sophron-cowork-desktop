@@ -59,7 +59,7 @@ describe('新建任务', () => {
 
   it('routes every entry point through the same 新建任务 handler', () => {
     const sidebar = read('src/renderer/components/Sidebar.tsx');
-    const ipc = read('src/renderer/hooks/useIPC.ts');
+    const ipc = read('src/renderer/hooks/ipc-event-bridge.ts');
     const app = read('src/renderer/App.tsx');
     // Button and Ctrl/Cmd+N call handleNewSession; tray / dock menu send NEW_TASK_EVENT to it.
     expect(sidebar).toContain('newSessionRef.current = handleNewSession');

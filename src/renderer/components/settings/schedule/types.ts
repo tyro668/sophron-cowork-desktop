@@ -113,14 +113,14 @@ export function getCloudConnectionPayload(
 
 export function getProjectOptionLabel(
   project: Project,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   const name = project.name?.trim();
   if (name) return name;
   return getWorkingDirDisplayName(
     project.cwd,
-    tr('welcome.defaultWorkingFolder', '默认工作目录'),
-    tr('schedule.projectPlaceholder', '不指定项目')
+    tr('welcome.defaultWorkingFolder'),
+    tr('schedule.projectPlaceholder')
   );
 }
 

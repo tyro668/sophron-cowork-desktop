@@ -33,7 +33,11 @@
     "irreversible": "删除后无法恢复",
     "confirm": "确定",
     "confirmNameLabel": "名称",
-    "confirmImpactLabel": "影响"
+    "confirmImpactLabel": "影响",
+    "viewRawDetails": "查看原始信息",
+    "durationMs": "{{value}} 毫秒",
+    "durationSec": "{{value}} 秒",
+    "durationMinSec": "{{minutes}} 分 {{seconds}} 秒"
   },
   "welcome": {
     "title": "欢迎使用九思助理",
@@ -454,7 +458,11 @@
         "deleteImpact": "删除所有版本、代码仓库和密钥",
         "deleted": "已删除「{{name}}」",
         "empty": "还没有处理脚本"
-      }
+      },
+      "filesCount": "{{count}} 个文件",
+      "refreshCheckFailed": "通过但结果异常：刷新检查未通过：{{reason}}",
+      "outputPreviewWithRows": "输出预览（共 {{count}} 行）：",
+      "outputPreview": "输出预览："
     },
     "resultTables": {
       "exportSelectHint": "请先在列表中选择一个结果表",
@@ -2090,7 +2098,8 @@
       "pipelineNone": "没有关联的结果表",
       "pipelineTitle": "删除数据加工",
       "rawTableTitle": "删除原始表",
-      "resultTableTitle": "删除结果表"
+      "resultTableTitle": "删除结果表",
+      "moreItems": "{{shown}} 等 {{count}} 个"
     },
     "rawSources": {
       "newTitle": "新建原始表",
@@ -2403,7 +2412,8 @@
         "allText": "全部按文本读取",
         "password": "工作簿密码",
         "passwordPlaceholder": "如文件已加密请填写"
-      }
+      },
+      "mergedNameSuffix": "（合并）"
     }
   },
   "settings": {
@@ -2983,7 +2993,10 @@
       }
     },
     "manageConfigSets": "管理其他方案",
-    "configSetLabel": "方案"
+    "configSetLabel": "方案",
+    "codexSubscriptionLabel": "OpenAI Codex（订阅）",
+    "builtinLlmLabel": "内置 LLM",
+    "configSetFallbackName": "配置方案 {{index}}"
   },
   "window": {
     "minimize": "最小化",
@@ -3329,7 +3342,8 @@
     "exportFailed": "导出日志失败",
     "clearFailed": "清除日志失败",
     "helpText1": "导出的诊断包会包含应用日志、脱敏后的运行环境信息，以及最近会话/错误的元数据摘要，不会默认附带消息正文。",
-    "helpText2": "把诊断包发给我们后，通常可以更快定位到是前端异常、工具调用失败，还是配置/环境问题。"
+    "helpText2": "把诊断包发给我们后，通常可以更快定位到是前端异常、工具调用失败，还是配置/环境问题。",
+    "clearLogs": "清空日志"
   },
   "sidebar": {
     "recents": "最近",
@@ -4059,7 +4073,18 @@
       "publish": "一键确认使用 v{{version}}",
       "published": "已确认使用 v{{version}}",
       "inUse": "使用中"
-    }
+    },
+    "endAtAfterStartRequired": "结束时间必须晚于开始时间",
+    "project": "项目",
+    "runFilterAllStatus": "全部状态",
+    "runFilterSucceeded": "成功",
+    "runFilterFailed": "失败",
+    "runFilterRunning": "运行中",
+    "runFilterAllTime": "全部时间",
+    "runFilter1d": "最近 24 小时",
+    "runFilter7d": "最近 7 天",
+    "runFilter30d": "最近 30 天",
+    "runSearch": "搜索执行记录…"
   },
   "remote": {
     "title": "远程控制",
@@ -4533,7 +4558,8 @@
     "skillsHint": "前往在线市场，选择适合当前工作的技能。",
     "automationHint": "设置触发时间和执行动作，让重复工作自动完成。",
     "rawTablesHint": "添加 CSV、Excel 文件或文件夹作为输入数据。",
-    "resultTablesHint": "新建一张结果表，供数据加工写入处理结果。"
+    "resultTablesHint": "新建一张结果表，供数据加工写入处理结果。",
+    "runsHint": "自动化按触发条件运行后，执行记录会显示在这里。"
   },
   "composer": {
     "shortcutSend": "发送",
@@ -4851,11 +4877,11 @@
         "1": "按字段名称合并"
       },
       "sortStrategy": {
-        "5": "无排序追加",
         "1": "按创建时间",
         "2": "按修改时间",
         "3": "按文件名（编码顺序）",
-        "4": "按文件名（自然顺序）"
+        "4": "按文件名（自然顺序）",
+        "5": "无排序追加"
       },
       "readStrategy": {
         "0": "仅读取当前目录",
@@ -4915,5 +4941,8 @@
       "confirmReportName": "确认",
       "confirmNameHint": "请修改上报表名后点击确认，确认前不会推送到服务端。"
     }
+  },
+  "datePicker": {
+    "today": "今天"
   }
 }

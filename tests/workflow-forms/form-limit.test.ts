@@ -1,6 +1,6 @@
 import {
   validateLimitCount,
-  validateLimitSeed,
+  isValidLimitSeed,
 } from '../../src/renderer/components/workflow-forms/FormLimit';
 import { describe, expect, it } from 'vitest';
 import { exportStep, parseStep } from '../helpers/jflow-step';
@@ -245,9 +245,9 @@ describe('limit count / seed validation', () => {
     expect(validateLimitCount('100', 'percent')).toBeNull();
   });
   it('accepts an empty seed but rejects non-integers', () => {
-    expect(validateLimitSeed('')).toBe(true);
-    expect(validateLimitSeed('42')).toBe(true);
-    expect(validateLimitSeed('4.2')).toBe(false);
-    expect(validateLimitSeed('abc')).toBe(false);
+    expect(isValidLimitSeed('')).toBe(true);
+    expect(isValidLimitSeed('42')).toBe(true);
+    expect(isValidLimitSeed('4.2')).toBe(false);
+    expect(isValidLimitSeed('abc')).toBe(false);
   });
 });

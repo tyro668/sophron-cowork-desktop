@@ -74,7 +74,7 @@ export function ActionChainSection({
   onDraftChange: (draft: AutomationDraft) => void;
   onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const nodes = draft.actionGraph.nodes;
   const updateNodes = (nextNodes: AutomationActionNode[]) =>
@@ -105,7 +105,7 @@ export function ActionChainSection({
           className="ui-accent-cell h-full w-[120px] flex-shrink-0 border-l border-border-subtle"
         >
           <Plus size={13} />
-          {tr('schedule.addAction', '添加动作')}
+          {tr('schedule.addAction')}
         </button>
       }
     >
@@ -128,16 +128,13 @@ export function ActionChainSection({
       >
         <div className="flex h-[30px] flex-shrink-0 items-stretch border-b border-border-subtle bg-surface-muted">
           <h2 className="flex min-w-0 flex-1 items-center px-3 text-[12px] font-semibold text-text-primary">
-            {tr('schedule.actionsCount', '执行动作 · {{count}}').replace(
-              '{{count}}',
-              String(nodes.length)
-            )}
+            {tr('schedule.actionsCount').replace('{{count}}', String(nodes.length))}
           </h2>
           {addActionButton}
         </div>
         {nodes.length === 0 ? (
           <div className="flex min-h-24 items-center justify-center px-4 text-xs text-text-muted">
-            {tr('schedule.noActions', '还没有动作，点击右上角「添加动作」。')}
+            {tr('schedule.noActions')}
           </div>
         ) : (
           nodes.map((node, index) => (
@@ -196,7 +193,7 @@ function ActionDependencyConnector({
 }: {
   previous: AutomationActionNode;
   onChange: (previous: AutomationActionNode) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const always = previous.failurePolicy?.onFailure === 'continue';
   const setAlways = (value: boolean) =>
@@ -212,18 +209,16 @@ function ActionDependencyConnector({
             type="button"
             className="inline-flex h-full items-center gap-1 px-3 text-[12px] text-text-muted transition-colors hover:text-text-secondary"
           >
-            {always
-              ? tr('schedule.dependencyAlways', '总是执行')
-              : tr('schedule.dependencyOnSuccess', '上一步成功后执行')}
+            {always ? tr('schedule.dependencyAlways') : tr('schedule.dependencyOnSuccess')}
             <ChevronDown size={12} />
           </button>
         }
       >
         <GlassMenuItem selected={!always} onSelect={() => setAlways(false)}>
-          {tr('schedule.dependencyOnSuccess', '上一步成功后执行')}
+          {tr('schedule.dependencyOnSuccess')}
         </GlassMenuItem>
         <GlassMenuItem selected={always} onSelect={() => setAlways(true)}>
-          {tr('schedule.dependencyAlways', '总是执行')}
+          {tr('schedule.dependencyAlways')}
         </GlassMenuItem>
       </GlassDropdownMenu>
     </div>
@@ -261,7 +256,7 @@ export function ActionStepCard({
   workingDirectory?: string;
   onRemove: () => void;
   onChange: (node: AutomationActionNode) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const Icon = getActionIcon(node.type, node);
   const cellButton =
@@ -279,7 +274,7 @@ export function ActionStepCard({
             <span className="truncate">{getNodeLabel(node, tr)}</span>
             {modified && (
               <span className="rounded-md bg-warning/10 px-1.5 py-0.5 text-[11px] font-medium text-warning">
-                {tr('schedule.actionModified', '已修改')}
+                {tr('schedule.actionModified')}
               </span>
             )}
           </div>
@@ -288,8 +283,8 @@ export function ActionStepCard({
               <button
                 type="button"
                 disabled={isFirst}
-                title={tr('schedule.moveUp', '上移')}
-                aria-label={tr('schedule.moveUp', '上移')}
+                title={tr('schedule.moveUp')}
+                aria-label={tr('schedule.moveUp')}
                 className={cellButton}
                 onClick={() => onMove(-1)}
               >
@@ -298,8 +293,8 @@ export function ActionStepCard({
               <button
                 type="button"
                 disabled={isLast}
-                title={tr('schedule.moveDown', '下移')}
-                aria-label={tr('schedule.moveDown', '下移')}
+                title={tr('schedule.moveDown')}
+                aria-label={tr('schedule.moveDown')}
                 className={cellButton}
                 onClick={() => onMove(1)}
               >
@@ -309,8 +304,8 @@ export function ActionStepCard({
           )}
           <button
             type="button"
-            title={tr('common.delete', '删除')}
-            aria-label={tr('common.delete', '删除')}
+            title={tr('common.delete')}
+            aria-label={tr('common.delete')}
             className={cellButton}
             onClick={onRemove}
           >
@@ -329,15 +324,15 @@ export function ActionStepCard({
           tr={tr}
         />
         <div className="border-t border-border-subtle">
-          <FormRow label={tr('schedule.onFailureLabel', '失败时')}>
+          <FormRow label={tr('schedule.onFailureLabel')}>
             <GlassSelect
               value={node.failurePolicy?.onFailure === 'continue' ? 'continue' : 'stop'}
-              ariaLabel={tr('schedule.onFailureLabel', '失败时')}
+              ariaLabel={tr('schedule.onFailureLabel')}
               options={[
-                { value: 'stop', label: tr('schedule.onFailureStop', '停止后续动作') },
+                { value: 'stop', label: tr('schedule.onFailureStop') },
                 {
                   value: 'continue',
-                  label: tr('schedule.onFailureContinue', '继续（总是执行）'),
+                  label: tr('schedule.onFailureContinue'),
                 },
               ]}
               onValueChange={(value: string) =>
@@ -383,7 +378,7 @@ export function DataProcessActionEditor({
   onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [processModeOverride, setProcessModeOverride] = useState<'pipeline' | 'ai' | null>(null);
@@ -467,13 +462,13 @@ export function DataProcessActionEditor({
   const processMode = processModeOverride ?? 'pipeline';
   return (
     <div>
-      <FormRow label={tr('schedule.dataProcessModeLabel', '处理方式')}>
+      <FormRow label={tr('schedule.dataProcessModeLabel')}>
         <GlassSelect
           value={processMode}
-          ariaLabel={tr('schedule.dataProcessModeLabel', '处理方式')}
+          ariaLabel={tr('schedule.dataProcessModeLabel')}
           options={[
-            { value: 'pipeline', label: tr('schedule.dataProcessModePipeline', '复用数据加工') },
-            { value: 'ai', label: tr('schedule.dataProcessModeAi', 'AI 生成加工') },
+            { value: 'pipeline', label: tr('schedule.dataProcessModePipeline') },
+            { value: 'ai', label: tr('schedule.dataProcessModeAi') },
           ]}
           onValueChange={(value: string) =>
             setProcessModeOverride(value === 'ai' ? 'ai' : 'pipeline')
@@ -483,7 +478,7 @@ export function DataProcessActionEditor({
         />
       </FormRow>
       {processMode === 'ai' ? (
-        <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
+        <FormRow label={tr('schedule.dataPipelineLabel')}>
           <button
             type="button"
             data-testid="automation-ai-generate"
@@ -491,27 +486,27 @@ export function DataProcessActionEditor({
             onClick={() => setGenerateOpen(true)}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            {tr('data.aiPipelineGenerate', 'AI 生成数据加工')}
+            {tr('data.aiPipelineGenerate')}
           </button>
         </FormRow>
       ) : (
-        <FormRow label={tr('schedule.dataPipelineLabel', '数据加工')}>
+        <FormRow label={tr('schedule.dataPipelineLabel')}>
           <LocalTableSelect
             value={selectedPipelineId}
             tables={pipelineOptions}
-            placeholder={tr('schedule.dataPipelinePlaceholder', '选择数据加工')}
-            searchPlaceholder={tr('schedule.dataPipelineSearchPlaceholder', '搜索数据加工')}
+            placeholder={tr('schedule.dataPipelinePlaceholder')}
+            searchPlaceholder={tr('schedule.dataPipelineSearchPlaceholder')}
             onChange={(value) => selectPipeline(value)}
           />
         </FormRow>
       )}
       {selectedPipelineId && processMode === 'pipeline' && (
-        <FormRow label={tr('schedule.executionMode', '执行方式')}>
+        <FormRow label={tr('schedule.executionMode')}>
           <GlassSelect
             value={String(node.config.outputMode ?? 'persisted')}
             options={[
-              { value: 'persisted', label: tr('schedule.executionFormal', '正式执行') },
-              { value: 'temporary', label: tr('schedule.executionTemporary', '临时执行') },
+              { value: 'persisted', label: tr('schedule.executionFormal') },
+              { value: 'temporary', label: tr('schedule.executionTemporary') },
             ]}
             onValueChange={(outputMode) =>
               onChange({ ...node, config: { ...node.config, outputMode } })
@@ -525,10 +520,7 @@ export function DataProcessActionEditor({
         (node.config.output as { location?: string } | undefined)?.location !== 'local' && (
           <div className="space-y-2">
             <p role="alert" className="text-xs text-warning">
-              {tr(
-                'schedule.cloudSync.useOutputAction',
-                '数据处理结果请保存到本地结果表，再添加写入网盘文件动作。'
-              )}
+              {tr('schedule.cloudSync.useOutputAction')}
             </p>
             <Button
               size="sm"
@@ -548,7 +540,7 @@ export function DataProcessActionEditor({
                 });
               }}
             >
-              {tr('schedule.cloudSync.useLocalOutput', '改为本地结果表')}
+              {tr('schedule.cloudSync.useLocalOutput')}
             </Button>
           </div>
         )}
@@ -583,7 +575,7 @@ export function GeneratedPipelineReviewCard({
   tr,
 }: {
   node: AutomationActionNode;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const pipelineId = String(node.config.pipelineId ?? '').trim();
   const [workflowOpen, setWorkflowOpen] = useState(false);
@@ -629,7 +621,7 @@ export function GeneratedPipelineReviewCard({
 
   return (
     <div className="border-t border-border-subtle">
-      <FormRow label={tr('schedule.dataPipelineLogic', '任务逻辑')}>
+      <FormRow label={tr('schedule.dataPipelineLogic')}>
         {pipelineId ? (
           <button
             type="button"
@@ -643,7 +635,7 @@ export function GeneratedPipelineReviewCard({
             <ChevronRight
               className={`h-3.5 w-3.5 transition-transform ${workflowOpen ? 'rotate-90' : ''}`}
             />
-            {tr('schedule.currentWorkflowDslPreview', '查看当前任务逻辑')}
+            {tr('schedule.currentWorkflowDslPreview')}
           </button>
         ) : (
           <span className="ui-flush-text">—</span>
@@ -658,10 +650,7 @@ export function GeneratedPipelineReviewCard({
       >
         {requiredColumns.length > 0 && (
           <div className="text-[12px] leading-5 text-text-muted">
-            {tr('schedule.requiredColumnsValue', '所需字段：{{columns}}').replace(
-              '{{columns}}',
-              requiredColumns.join(', ')
-            )}
+            {tr('schedule.requiredColumnsValue').replace('{{columns}}', requiredColumns.join(', '))}
           </div>
         )}
         {workflowOpen &&
@@ -673,18 +662,18 @@ export function GeneratedPipelineReviewCard({
               aria-live="polite"
             >
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {tr('schedule.loadingWorkflowDsl', '正在读取任务逻辑…')}
+              {tr('schedule.loadingWorkflowDsl')}
             </div>
           ) : workflowDslLoadFailed ? (
             <div
               className="rounded-md border border-warning/25 bg-warning/10 px-2.5 py-2 text-[12px] leading-5 text-warning"
               role="alert"
             >
-              {tr('schedule.workflowDslLoadFailed', '读取当前任务逻辑失败')}
+              {tr('schedule.workflowDslLoadFailed')}
             </div>
           ) : (
             <pre className="max-h-48 overflow-auto rounded-md border border-border-muted bg-surface p-2 text-[11px] leading-5 text-text-secondary">
-              {workflowDsl || tr('schedule.workflowDslEmpty', '当前数据加工没有可展示的处理逻辑')}
+              {workflowDsl || tr('schedule.workflowDslEmpty')}
             </pre>
           ))}
       </div>
@@ -711,7 +700,7 @@ export function ActionConfigEditor({
   onGeneratedPipelineSuccess: (workflowDslAvailable: boolean) => void;
   workingDirectory?: string;
   onChange: (node: AutomationActionNode) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const configRef = useRef(node.config);
   useEffect(() => {
@@ -768,21 +757,21 @@ export function ActionConfigEditor({
         <ScriptRunEditor node={node} rawTables={rawTables} onChange={onChange} />
       )}
       {node.type === 'data.raw.preview' && (
-        <ConfigRow label={tr('schedule.inputDataLabel', '输入数据')}>
+        <ConfigRow label={tr('schedule.inputDataLabel')}>
           <SelectLine
             value={String(node.config.rawTableId ?? '')}
             options={rawTables.map((table) => ({ value: table.id, label: table.name }))}
-            placeholder={tr('schedule.rawTablePlaceholder', '选择原始表')}
+            placeholder={tr('schedule.rawTablePlaceholder')}
             onChange={(value) => setConfig({ ...node.config, rawTableId: value, limit: 20 })}
           />
         </ConfigRow>
       )}
       {node.type === 'data.result.preview' && (
-        <ConfigRow label={tr('schedule.outputDataLabel', '结果表')}>
+        <ConfigRow label={tr('schedule.outputDataLabel')}>
           <SelectLine
             value={String(node.config.resultTableId ?? '')}
             options={resultTables.map((table) => ({ value: table.id, label: table.name }))}
-            placeholder={tr('schedule.resultTablePlaceholder', '选择结果表')}
+            placeholder={tr('schedule.resultTablePlaceholder')}
             onChange={(value) => setConfig({ ...node.config, resultTableId: value, limit: 20 })}
           />
         </ConfigRow>
@@ -807,7 +796,7 @@ export function ActionConfigEditor({
               model,
             })
           }
-          placeholder={tr('schedule.promptPlaceholder', '输入任务对话要执行的内容')}
+          placeholder={tr('schedule.promptPlaceholder')}
           tr={tr}
         />
       )}
@@ -818,18 +807,18 @@ export function ActionConfigEditor({
 export function getActionTitle(
   type: string,
   fallback: string,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
-  if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle', '云空间同步');
-  if (type === 'script.run') return tr('schedule.script.title', '执行脚本');
+  if (type === 'cloud.sync') return tr('schedule.cloudSync.menuTitle');
+  if (type === 'script.run') return tr('schedule.script.title');
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.pipeline.run') {
-    return tr('schedule.dataProcessActionTitle', '数据处理');
+    return tr('schedule.dataProcessActionTitle');
   }
   if (type === 'conversation.run') {
     return tr('schedule.actionTypes.conversationRun.title', fallback);
   }
   if (type === 'data.pipeline.run') {
-    return tr('schedule.dataProcessActionTitle', '数据处理');
+    return tr('schedule.dataProcessActionTitle');
   }
   if (isDataActionType(type)) {
     return tr('schedule.actionTypes.data.title', fallback);
@@ -839,25 +828,19 @@ export function getActionTitle(
 
 export function getActionMenuDescription(
   type: string,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string | undefined {
   if (type === CLOUD_TABLE_PROCESS_ACTION_TYPE || type === 'data.pipeline.run') {
-    return tr(
-      'schedule.dataProcessActionDescription',
-      '执行已有数据加工，或调用数据加工的 AI 生成功能创建任务'
-    );
+    return tr('schedule.dataProcessActionDescription');
   }
   if (type === 'cloud.sync') {
-    return tr('schedule.cloudSync.menuDescription', '在云空间与本地数据表之间同步数据');
+    return tr('schedule.cloudSync.menuDescription');
   }
   if (type === 'script.run') {
-    return tr('schedule.script.menuDescription', '运行已保存的脚本，不调用 AI');
+    return tr('schedule.script.menuDescription');
   }
   if (type === 'conversation.run') {
-    return tr(
-      'schedule.actionTypes.conversationRun.description',
-      '用自然语言下达开放式指令，由 AI 自主完成'
-    );
+    return tr('schedule.actionTypes.conversationRun.description');
   }
   return undefined;
 }
@@ -889,16 +872,14 @@ export function isDataProcessNode(node: AutomationActionNode): boolean {
 
 export function getNodeLabel(
   node: AutomationActionNode,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   if (isDataProcessNode(node)) {
-    return tr('schedule.dataProcessActionTitle', '数据处理');
+    return tr('schedule.dataProcessActionTitle');
   }
   if (node.type === 'cloud.sync' && (!node.label || node.label === node.type)) {
-    if (node.config.direction === 'input')
-      return tr('schedule.cloudInput.title', '云端表同步到原始表');
-    if (node.config.direction === 'output')
-      return tr('schedule.cloudSync.title', '结果表写入网盘文件');
+    if (node.config.direction === 'input') return tr('schedule.cloudInput.title');
+    if (node.config.direction === 'output') return tr('schedule.cloudSync.title');
   }
   const fallback = getActionTitle(node.type, node.type, tr);
   if (!node.label || node.label === node.type) return fallback;

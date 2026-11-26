@@ -14,11 +14,11 @@ describe('automation editor follows config design c01–c04', () => {
   it('uses full-width dropdowns for 触发方式 / 执行频率 / 处理方式 / 失败时 (no segments)', () => {
     expect(panels).not.toContain('SegmentedControl');
     expect(actions).not.toContain('SegmentedControl');
-    for (const label of ['触发方式', '执行频率']) {
-      expect(panels).toMatch(new RegExp(`ariaLabel=\\{tr\\('schedule\\.\\w+', '${label}'\\)\\}`));
+    for (const key of ['schedule.triggerMethod', 'schedule.frequency']) {
+      expect(panels).toContain(`ariaLabel={tr('${key}')}`);
     }
-    expect(actions).toContain("ariaLabel={tr('schedule.dataProcessModeLabel', '处理方式')}");
-    expect(actions).toContain("ariaLabel={tr('schedule.onFailureLabel', '失败时')}");
+    expect(actions).toContain("ariaLabel={tr('schedule.dataProcessModeLabel')}");
+    expect(actions).toContain("ariaLabel={tr('schedule.onFailureLabel')}");
   });
 
   it('puts all groups in flush form cells and adds the 下次执行 row', () => {

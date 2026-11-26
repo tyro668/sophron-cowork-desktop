@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SandboxSyncStatus, SandboxSyncPhase } from '../types';
 import { getSandboxSyncDisplayText } from '../utils/sandbox-i18n';
+import { formatByteSize } from '../utils/i18n-format';
 
 interface Props {
   status: SandboxSyncStatus | null;
@@ -22,11 +23,7 @@ const phaseConfig: Record<SandboxSyncPhase, { icon: string }> = {
   error: { icon: '❌' },
 };
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+const formatSize = (bytes: number) => formatByteSize(bytes);
 
 export function SandboxSyncToast({ status }: Props) {
   const { t } = useTranslation();

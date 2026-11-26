@@ -13,9 +13,15 @@ import {
 } from '../store/selectors';
 import { useAppStore } from '../store';
 import { useIPC } from '../hooks/useIPC';
+import {
+  buildComposerContentBlocks,
+  useComposerAttachments,
+} from '../hooks/useComposerAttachments';
+import { useComposerModelSwitcher } from '../hooks/useComposerModelSwitcher';
 import { useSkillMentions } from '../hooks/useSkillMentions';
-import { BUILTIN_LLM_PROVIDER, parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
+import { BUILTIN_LLM_PROVIDER } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
+import { ComposerAttachmentBar } from './ComposerAttachmentBar';
 import { MessageCard } from './MessageCard';
 import type { ChatScriptMessageInfo } from './message/ChatScriptCards';
 import { chatScriptAnchors, detectScheduleTime } from '../../shared/chat-to-script';
@@ -24,16 +30,8 @@ import { TaskActivity } from './message/TaskActivity';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import { Button } from './ui';
-import type { CloudTableChatAttachment, Message, ContentBlock } from '../types';
-import { Square, Plus, Plug, X, Clock, ArrowUp, ArrowDown, Table2, AtSign } from 'lucide-react';
-
-type AttachedFile = {
-  name: string;
-  path: string;
-  size: number;
-  type: string;
-  inlineDataBase64?: string;
-};
+import type { CloudTableChatAttachment, ContentBlock, Message } from '../types';
+import { Square, Plus, Plug, Clock, ArrowUp, ArrowDown, AtSign } from 'lucide-react';
 
 const EMPTY_CLOUD_TABLE_ATTACHMENTS: CloudTableChatAttachment[] = [];
 
@@ -54,8 +52,6 @@ export function ChatView() {
   const openChatScriptDialog = useAppStore((s) => s.openChatScriptDialog);
   const [originPackages, setOriginPackages] = useState<ScriptPackageSummary[]>([]);
   const isConfigured = useAppStore((s) => s.isConfigured);
-  const setAppConfig = useAppStore((s) => s.setAppConfig);
-  const setIsConfigured = useAppStore((s) => s.setIsConfigured);
   const setShowSettings = useAppStore((s) => s.setShowSettings);
   const setSettingsTab = useAppStore((s) => s.setSettingsTab);
   const attachedCloudTables = useAppStore((s) =>
@@ -75,13 +71,37 @@ export function ChatView() {
   const headerRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const connectorMeasureRef = useRef<HTMLDivElement>(null);
-  const [pastedImages, setPastedImages] = useState<
-    Array<{ url: string; base64: string; mediaType: string }>
-  >([]);
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  const notifyImageProcessError = useCallback(() => {
+    setGlobalNotice({
+      id: `image-process-failed-${Date.now()}`,
+      type: 'warning',
+      message: t('chat.imageProcessFailed'),
+    });
+  }, [setGlobalNotice, t]);
+  const {
+    pastedImages,
+    setPastedImages,
+    attachedFiles,
+    setAttachedFiles,
+    isDragging,
+    handlePaste,
+    handleFileSelect,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+    removeImage,
+    removeFile,
+  } = useComposerAttachments({
+    isElectron,
+    onImageProcessError: notifyImageProcessError,
+  });
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
+  const closeModelMenu = useCallback(() => setShowModelMenu(false), []);
+  const { handleModelOptionClick } = useComposerModelSwitcher({
+    isElectron,
+    onCloseMenu: closeModelMenu,
+  });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -401,258 +421,11 @@ export function ChatView() {
     textareaRef.current?.focus();
   }, [activeSessionId]);
 
-  // Handle paste event for images
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
-    if (imageItems.length === 0) return;
-
-    e.preventDefault();
-
-    const newImages: Array<{ url: string; base64: string; mediaType: string }> = [];
-
-    for (const item of imageItems) {
-      const blob = item.getAsFile();
-      if (!blob) continue;
-
-      try {
-        // Resize if needed to stay under API limit
-        const resizedBlob = await resizeImageIfNeeded(blob);
-        const base64 = await blobToBase64(resizedBlob);
-        const url = URL.createObjectURL(resizedBlob);
-        newImages.push({
-          url,
-          base64,
-          mediaType: resizedBlob.type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-        });
-      } catch (err) {
-        // Notify the user instead of silently dropping the error
-        setGlobalNotice({
-          id: `image-paste-failed-${Date.now()}`,
-          type: 'warning',
-          message: t('chat.imageProcessFailed'),
-        });
-      }
-    }
-
-    setPastedImages((prev) => [...prev, ...newImages]);
-  };
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result;
-        if (typeof result !== 'string') {
-          reject(new Error('FileReader result is not a string'));
-          return;
-        }
-        // Remove data URL prefix (e.g., "data:image/png;base64,")
-        const parts = result.split(',');
-        resolve(parts[1] || '');
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
-
-  // Resize and compress image if needed to stay under 5MB base64 limit
-  const resizeImageIfNeeded = async (blob: Blob): Promise<Blob> => {
-    // Model API limit is 5MB for base64 encoded images
-    // Base64 encoding increases size by ~33%, so we target 3.75MB for the blob
-    const MAX_BLOB_SIZE = 3.75 * 1024 * 1024; // 3.75MB
-
-    if (blob.size <= MAX_BLOB_SIZE) {
-      return blob; // No need to resize
-    }
-
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(blob);
-
-      img.onload = () => {
-        URL.revokeObjectURL(url);
-
-        // Calculate scaling factor to reduce file size
-        // We use a more aggressive approach: scale down until size is acceptable
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'));
-          return;
-        }
-
-        // Start with a scale factor based on size ratio
-        const scale = Math.sqrt(MAX_BLOB_SIZE / blob.size);
-        const quality = 0.9;
-
-        const attemptCompress = (currentScale: number, currentQuality: number): Promise<Blob> => {
-          canvas.width = Math.floor(img.width * currentScale);
-          canvas.height = Math.floor(img.height * currentScale);
-
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-          return new Promise((resolveBlob) => {
-            canvas.toBlob(
-              (compressedBlob) => {
-                if (!compressedBlob) {
-                  reject(new Error('Failed to compress image'));
-                  return;
-                }
-
-                // If still too large, try again with lower quality or scale
-                if (
-                  compressedBlob.size > MAX_BLOB_SIZE &&
-                  (currentQuality > 0.5 || currentScale > 0.3)
-                ) {
-                  const newQuality = Math.max(0.5, currentQuality - 0.1);
-                  const newScale = currentQuality <= 0.5 ? currentScale * 0.9 : currentScale;
-                  attemptCompress(newScale, newQuality).then(resolveBlob);
-                } else {
-                  resolveBlob(compressedBlob);
-                }
-              },
-              blob.type || 'image/jpeg',
-              currentQuality
-            );
-          });
-        };
-
-        attemptCompress(scale, quality).then(resolve).catch(reject);
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error('Failed to load image'));
-      };
-
-      img.src = url;
-    });
-  };
-
-  const removeImage = (index: number) => {
-    setPastedImages((prev) => {
-      const updated = [...prev];
-      URL.revokeObjectURL(updated[index].url);
-      updated.splice(index, 1);
-      return updated;
-    });
-  };
-
-  const removeFile = (index: number) => {
-    setAttachedFiles((prev) => {
-      const updated = [...prev];
-      updated.splice(index, 1);
-      return updated;
-    });
-  };
-
   const removeCloudTable = (index: number) => {
     if (!activeSessionId) return;
     const table = attachedCloudTables[index];
     if (!table) return;
     removeCloudTableFromChat(activeSessionId, table.id);
-  };
-
-  const handleFileSelect = async () => {
-    if (!isElectron || !window.electronAPI) {
-      console.log('[ChatView] Not in Electron, file selection not available');
-      return;
-    }
-
-    try {
-      const filePaths = await window.electronAPI.selectFiles();
-      if (filePaths.length === 0) return;
-
-      // Get file info for each selected file
-      const newFiles = filePaths.map((filePath) => {
-        const fileName = filePath.split(/[/\\]/).pop() || 'unknown';
-        return {
-          name: fileName,
-          path: filePath,
-          size: 0, // Will be set by backend when copying
-          type: 'application/octet-stream',
-        };
-      });
-
-      setAttachedFiles((prev) => [...prev, ...newFiles]);
-    } catch (error) {
-      console.error('[ChatView] Error selecting files:', error);
-    }
-  };
-
-  // Handle drag and drop for images
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    const imageFiles = files.filter((file) => file.type.startsWith('image/'));
-    const otherFiles = files.filter((file) => !file.type.startsWith('image/'));
-
-    // Process images
-    if (imageFiles.length > 0) {
-      const newImages: Array<{ url: string; base64: string; mediaType: string }> = [];
-
-      for (const file of imageFiles) {
-        try {
-          // Resize if needed to stay under API limit
-          const resizedBlob = await resizeImageIfNeeded(file);
-          const base64 = await blobToBase64(resizedBlob);
-          const url = URL.createObjectURL(resizedBlob);
-          newImages.push({
-            url,
-            base64,
-            mediaType: resizedBlob.type,
-          });
-        } catch (err) {
-          // Notify the user instead of silently dropping the error
-          setGlobalNotice({
-            id: `image-drop-failed-${Date.now()}`,
-            type: 'warning',
-            message: t('chat.imageProcessFailed'),
-          });
-        }
-      }
-
-      setPastedImages((prev) => [...prev, ...newImages]);
-    }
-
-    // Process other files
-    if (otherFiles.length > 0) {
-      const newFiles = await Promise.all(
-        otherFiles.map(async (file) => {
-          const droppedPath = 'path' in file && typeof file.path === 'string' ? file.path : '';
-          const inlineDataBase64 = droppedPath ? undefined : await blobToBase64(file);
-
-          return {
-            name: file.name,
-            path: droppedPath,
-            size: file.size,
-            type: file.type || 'application/octet-stream',
-            inlineDataBase64,
-          };
-        })
-      );
-
-      setAttachedFiles((prev) => [...prev, ...newFiles]);
-    }
   };
 
   // Load active MCP connectors
@@ -724,47 +497,12 @@ export function ChatView() {
 
     setIsSubmitting(true);
     try {
-      // Build content blocks
-      const contentBlocks: ContentBlock[] = [];
-
-      // Add images first
-      pastedImages.forEach((img) => {
-        contentBlocks.push({
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-            data: img.base64,
-          },
-        });
+      const contentBlocks = buildComposerContentBlocks({
+        prompt: currentPrompt,
+        pastedImages,
+        attachedFiles,
+        attachedCloudTables,
       });
-
-      // Add file attachments
-      attachedFiles.forEach((file) => {
-        contentBlocks.push({
-          type: 'file_attachment',
-          filename: file.name,
-          relativePath: file.path, // Will be processed by backend to copy to .tmp
-          size: file.size,
-          mimeType: file.type,
-          inlineDataBase64: file.inlineDataBase64,
-        });
-      });
-
-      if (attachedCloudTables.length > 0) {
-        contentBlocks.push({
-          type: 'cloud_table_attachment',
-          tables: attachedCloudTables,
-        });
-      }
-
-      // Add text if present
-      if (currentPrompt.trim()) {
-        contentBlocks.push({
-          type: 'text',
-          text: currentPrompt.trim(),
-        });
-      }
 
       // Send message with content blocks
       await continueSession(activeSessionId, contentBlocks, {
@@ -811,45 +549,6 @@ export function ChatView() {
     setShowPermissionMenu(open);
     if (open) {
       setShowModelMenu(false);
-    }
-  };
-
-  const handleModelOptionClick = async (configSetId: string) => {
-    setShowModelMenu(false);
-    if (!appConfig) {
-      return;
-    }
-
-    if (!isElectron || !window.electronAPI) {
-      return;
-    }
-
-    try {
-      const builtinModel = parseBuiltinLlmConfigSetId(configSetId);
-      if (!builtinModel && configSetId === appConfig.activeConfigSetId) {
-        return;
-      }
-      if (
-        builtinModel &&
-        appConfig.provider === 'sophron' &&
-        (appConfig.builtinLlmModel?.trim() || appConfig.model?.trim()) === builtinModel
-      ) {
-        return;
-      }
-
-      const result = builtinModel
-        ? await window.electronAPI.config.selectBuiltinModel({ model: builtinModel })
-        : await window.electronAPI.config.switchSet({ id: configSetId });
-      if (result.success) {
-        setAppConfig(result.config);
-        setIsConfigured(Boolean(result.config.isConfigured));
-      }
-    } catch (error) {
-      setGlobalNotice({
-        id: `notice-model-switch-${Date.now()}`,
-        type: 'error',
-        message: error instanceof Error ? error.message : t('api.saveFailed'),
-      });
     }
   };
 
@@ -1167,79 +866,14 @@ export function ChatView() {
             onDrop={handleDrop}
             className="relative w-full"
           >
-            {/* Image previews */}
-            {pastedImages.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mb-3">
-                {pastedImages.map((img, index) => (
-                  <div key={img.url || `pasted-image-${index}`} className="relative group">
-                    <img
-                      src={img.url}
-                      alt={t('common.pastedImageAlt', { index: index + 1 })}
-                      className="w-full aspect-square object-cover rounded-lg border border-border block"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      aria-label={t('common.removeImage', { index: index + 1 })}
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-error text-error-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3 h-3" aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* File attachments */}
-            {attachedFiles.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {attachedFiles.map((file, index) => (
-                  <div
-                    key={file.path || `attached-file-${index}`}
-                    className="group flex items-center gap-2 rounded-lg bg-surface-muted px-3 py-2"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[13px] text-text-primary truncate">{file.name}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeFile(index)}
-                      aria-label={t('common.removeAttachment', { name: file.name })}
-                      className="w-6 h-6 rounded-full hover:bg-error/10 text-text-muted hover:text-error flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
-                    >
-                      <X className="w-3.5 h-3.5" aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {attachedCloudTables.length > 0 && (
-              <div className="mb-3 flex flex-wrap gap-2">
-                {attachedCloudTables.map((table, index) => (
-                  <div
-                    key={table.id}
-                    className="group inline-flex max-w-full items-center gap-2 rounded-lg bg-accent-muted px-3 py-1.5 text-[13px] text-accent-text"
-                  >
-                    <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span className="min-w-0 truncate font-medium">{table.tableName}</span>
-                    {table.projectName && (
-                      <span className="hidden flex-shrink-0 text-[11px] text-text-muted sm:inline">
-                        {table.projectName}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeCloudTable(index)}
-                      aria-label={t('common.removeCloudTable', { name: table.tableName })}
-                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-error/10 hover:text-error"
-                    >
-                      <X className="h-3 w-3" aria-hidden />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <ComposerAttachmentBar
+              pastedImages={pastedImages}
+              attachedFiles={attachedFiles}
+              attachedCloudTables={attachedCloudTables}
+              onRemoveImage={removeImage}
+              onRemoveFile={removeFile}
+              onRemoveCloudTable={removeCloudTable}
+            />
 
             <div
               className={`chat-composer-panel flex min-h-[120px] flex-col px-4 py-3 transition-colors sm:min-h-[132px] sm:py-3.5 ${

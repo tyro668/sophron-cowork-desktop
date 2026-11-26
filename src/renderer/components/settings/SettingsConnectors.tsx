@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -172,7 +173,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       setEditingServer(null);
       setShowAddForm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('mcp.saveServerFailed'));
+      setError(formatIpcError(err, t('mcp.saveServerFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -188,7 +189,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       await window.electronAPI.mcp.deleteServer(serverId);
       await loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('mcp.deleteServerFailed'));
+      setError(formatIpcError(err, t('mcp.deleteServerFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -211,7 +212,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       }
       await loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('mcp.authorizationFailed'));
+      setError(formatIpcError(err, t('mcp.authorizationFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -224,7 +225,7 @@ export function SettingsConnectors({ isActive }: { isActive: boolean }) {
       showToast('success', t('mcp.authorizationCancelled'));
       await loadAll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('mcp.authorizationFailed'));
+      setError(formatIpcError(err, t('mcp.authorizationFailed')));
     } finally {
       setIsLoading(false);
     }

@@ -21,7 +21,7 @@ function isBoundaryChar(ch?: string): boolean {
   return boundaryPattern.test(ch);
 }
 
-function tokenHasUrlPrefix(text: string, index: number): boolean {
+function hasUrlPrefix(text: string, index: number): boolean {
   const tokenStart = text.lastIndexOf(' ', index) + 1;
   const token = text.slice(tokenStart, index);
   return /(?:https?:\/\/|file:\/\/|mailto:)/i.test(token);
@@ -31,7 +31,7 @@ function trimTrailingPunctuation(value: string): string {
   return value.replace(/[\][(){}.<>”’””’’。,，、:;!?：；]+$/g, '');
 }
 
-function extensionHasLetter(value: string): boolean {
+function hasExtensionLetter(value: string): boolean {
   const lastDot = value.lastIndexOf('.');
   if (lastDot === -1 || lastDot === value.length - 1) {
     return false;
@@ -82,11 +82,11 @@ export function splitTextByFileMentions(text: string): FileTextPart[] {
       continue;
     }
 
-    if (tokenHasUrlPrefix(text, index)) {
+    if (hasUrlPrefix(text, index)) {
       continue;
     }
 
-    if (!extensionHasLetter(value)) {
+    if (!hasExtensionLetter(value)) {
       continue;
     }
 

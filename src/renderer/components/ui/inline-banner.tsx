@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, Info, X } from 'lucide-react';
 import { cn } from './cn';
 
@@ -36,12 +37,14 @@ export function InlineBanner({
   title,
   description,
   detail,
-  detailLabel = '查看原始信息',
+  detailLabel,
   actions,
   onDismiss,
   className,
 }: InlineBannerProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const resolvedDetailLabel = detailLabel ?? t('common.viewRawDetails');
   const Icon = toneIcons[tone];
   return (
     <div
@@ -64,7 +67,7 @@ export function InlineBanner({
               onClick={() => setOpen((v) => !v)}
             >
               <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
-              {detailLabel}
+              {resolvedDetailLabel}
             </button>
             {open && (
               <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-surface-muted p-2 font-mono text-xs text-text-secondary">
@@ -78,7 +81,7 @@ export function InlineBanner({
       {onDismiss && (
         <button
           type="button"
-          aria-label="关闭"
+          aria-label={t('common.close')}
           className="h-5 w-5 shrink-0 rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
           onClick={onDismiss}
         >

@@ -163,7 +163,7 @@ function ProposalCard({
             ...(time ? { scheduleTime: time } : {}),
           })
         }
-        className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded-lg bg-accent px-2.5 text-xs text-white hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50"
+        className="inline-flex h-7 flex-shrink-0 items-center gap-1 rounded-lg bg-accent px-2.5 text-xs text-accent-foreground hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-50"
       >
         <Wand2 className="h-3 w-3" />
         {t('chatScript.convert')}

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { AppConfig, ApiTestResult } from '../types';
 import { useApiConfigState } from '../hooks/useApiConfigState';
 import { ApiConfigSetManager } from './ApiConfigSetManager';
-import { GlassSelect } from './GlassSelect';
+import { ApiModelSelectorField } from './settings/ApiModelSelectorField';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
 import { Input } from './ui/input';
@@ -35,15 +35,23 @@ const PROVIDER_LABELS: Record<
 > = {
   anthropic: 'Anthropic',
   openai: 'OpenAI',
-  'openai-codex': 'OpenAI Codex（订阅）',
+  'openai-codex': 'api.codexSubscriptionLabel',
   openrouter: 'OpenRouter',
   deepseek: 'DeepSeek',
   moonshot: 'Moonshot',
   aliyun: 'Aliyun',
   zai: 'Z.AI',
-  sophron: '内置 LLM',
+  sophron: 'api.builtinLlmLabel',
   ollama: 'Ollama',
 };
+
+function getProviderDisplayLabel(
+  provider: keyof typeof PROVIDER_LABELS,
+  t: (key: string) => string
+): string {
+  const value = PROVIDER_LABELS[provider];
+  return value.startsWith('api.') ? t(value) : value;
+}
 
 export function ConfigModal({
   isOpen,
@@ -249,7 +257,7 @@ export function ConfigModal({
                         : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
                     }`}
                   >
-                    {presets?.[p]?.name || PROVIDER_LABELS[p] || p}
+                    {presets?.[p]?.name || getProviderDisplayLabel(p, t) || p}
                   </button>
                 ))}
               </div>
@@ -358,35 +366,17 @@ export function ConfigModal({
             <div className="ui-form-value">
               <div className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  {useCustomModel ? (
-                    <Input
-                      type="text"
-                      value={customModel}
-                      onChange={(e) => setCustomModel(e.target.value)}
-                      placeholder={modelInputPlaceholder}
-                      className="h-8 px-2.5"
-                    />
-                  ) : (
-                    <GlassSelect
-                      value={modelOptions.length ? model : ''}
-                      onValueChange={setModel}
-                      options={
-                        modelOptions.length
-                          ? modelOptions.map((m) => ({ value: m.id, label: m.name }))
-                          : [
-                              {
-                                value: 'no-models',
-                                label: t('api.noModelsAvailable'),
-                                disabled: true,
-                              },
-                            ]
-                      }
-                      placeholder={t('api.noModelsAvailable')}
-                      disabled={!modelOptions.length}
-                      triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-3 text-text-primary"
-                      contentClassName="w-[var(--radix-select-trigger-width)]"
-                    />
-                  )}
+                  <ApiModelSelectorField
+                    useCustomModel={useCustomModel}
+                    model={model}
+                    customModel={customModel}
+                    modelOptions={modelOptions}
+                    modelInputPlaceholder={modelInputPlaceholder}
+                    onModelChange={setModel}
+                    onCustomModelChange={setCustomModel}
+                    inputClassName="h-8 px-2.5"
+                    triggerClassName="h-8 w-full justify-between rounded-lg bg-surface px-3 text-text-primary"
+                  />
                 </div>
                 <div className="flex items-center gap-2">
                   {(isOllamaMode || isSophronMode || isCodexMode) && (

@@ -1,11 +1,10 @@
 import { getAutomationTableBindings } from '../../../../shared/automation/table-bindings';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ChevronDown,
   ArrowUpDown,
   CalendarClock,
   FolderInput,
-  MoreHorizontal,
   PencilLine,
   Play,
   Plus,
@@ -15,7 +14,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { Automation, AutomationRun } from '../../../types';
-import { formatAppDateTime } from '../../../utils/i18n-format';
+import { formatAppDateTime, formatDurationMs } from '../../../utils/i18n-format';
 import { Switch } from '../../ui/switch';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import type { AutomationRunLogEntry } from './types';
@@ -32,9 +31,11 @@ const RUN_RANGE_MS: Record<Exclude<RunRangeFilter, 'all'>, number> = {
 import {
   TabBarAction,
   tabBarNewCellClass,
+  DataMoreMenu,
   DataTableSearch,
   DataToolbarButton,
   EmptyState,
+  LoadingState,
   flatToolbarRowClass,
 } from '../../data-view/shared';
 import {
@@ -96,7 +97,7 @@ export function AutomationListPanel({
   onRenameGroup: (group: DataListGroup, name: string) => void;
   onDeleteGroup: (group: DataListGroup) => void;
   onSelect: (automation: Automation) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [assignDialogOpen, setAssignDialogOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<DataListGroup | null>(null);
@@ -108,14 +109,14 @@ export function AutomationListPanel({
             <TabBarAction>
               <button onClick={onCreate} className={tabBarNewCellClass}>
                 <Plus className="h-3.5 w-3.5" />
-                {tr('schedule.newAutomation', '新建自动化')}
+                {tr('schedule.newAutomation')}
               </button>
             </TabBarAction>
           )}
           <DataTableSearch
             value={searchQuery}
             onChange={onSearchChange}
-            placeholder={tr('schedule.searchPlaceholder', '搜索自动化')}
+            placeholder={tr('schedule.searchPlaceholder')}
           />
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -123,19 +124,19 @@ export function AutomationListPanel({
             <>
               <DataToolbarButton
                 icon={<Play className="h-3.5 w-3.5" />}
-                label={tr('schedule.runNow', '立即运行')}
+                label={tr('schedule.runNow')}
                 disabled={!selectedAutomation || selectedAutomation.status === 'running'}
                 onClick={onRun}
               />
               <DataToolbarButton
                 icon={<PencilLine className="h-3.5 w-3.5" />}
-                label={tr('schedule.configure', '配置')}
+                label={tr('schedule.configure')}
                 disabled={!selectedAutomation}
                 onClick={onEdit}
               />
               <DataToolbarButton
                 icon={<FolderInput className="h-3.5 w-3.5" />}
-                label={tr('data.groups.moveToGroup', '移动到分组')}
+                label={tr('data.groups.moveToGroup')}
                 disabled={!selectedAutomation}
                 onClick={() => {
                   if (selectedAutomation) {
@@ -149,20 +150,19 @@ export function AutomationListPanel({
             items={[
               {
                 key: 'refresh',
-                label: tr('schedule.refresh', '刷新'),
+                label: tr('schedule.refresh'),
                 icon: <RefreshCw className="h-3.5 w-3.5" />,
                 onClick: onRefresh,
               },
               {
                 key: 'delete',
-                label: tr('schedule.deleteEllipsis', '删除…'),
+                label: tr('schedule.deleteEllipsis'),
                 icon: <Trash2 className="h-3.5 w-3.5" />,
                 danger: true,
                 disabled: !selectedAutomation,
                 onClick: onDelete,
               },
             ]}
-            tr={tr}
           />
         </div>
       </div>
@@ -170,25 +170,22 @@ export function AutomationListPanel({
         <div className="min-h-0 flex-1 overflow-auto">
           {!isLoading && automations.length === 0 ? (
             <EmptyState
-              label={tr('schedule.empty', '暂无自动化')}
+              label={tr('schedule.empty')}
               icon={<CalendarClock className="h-6 w-6" />}
               description={
                 searchQuery.trim()
-                  ? tr('workspaceEmpty.searchHint', '试试其他关键词，或清除搜索。')
-                  : tr(
-                      'workspaceEmpty.automationHint',
-                      '设置触发时间和执行动作，让重复工作自动完成。'
-                    )
+                  ? tr('workspaceEmpty.searchHint')
+                  : tr('workspaceEmpty.automationHint')
               }
               action={
                 searchQuery.trim() ? (
                   <Button variant="secondary" onClick={() => onSearchChange('')}>
-                    {tr('workspaceEmpty.clearSearch', '清除搜索')}
+                    {tr('workspaceEmpty.clearSearch')}
                   </Button>
                 ) : (
                   <Button variant="primary" onClick={onCreate} className="shadow-soft">
                     <Plus className="h-4 w-4" />
-                    {tr('schedule.newAutomation', '新建自动化')}
+                    {tr('schedule.newAutomation')}
                   </Button>
                 )
               }
@@ -252,7 +249,7 @@ export function AutomationRunLogPanel({
   entries: AutomationRunLogEntry[];
   isLoading: boolean;
   onRefresh: () => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   // A background AI 修复 rewrites its run's error when done; keep polling until it does.
   const hasRunning = entries.some(
@@ -283,16 +280,16 @@ export function AutomationRunLogPanel({
     return true;
   });
   const statusOptions: Array<[RunStatusFilter, string]> = [
-    ['all', tr('schedule.runFilterAllStatus', '全部状态')],
-    ['succeeded', tr('schedule.runFilterSucceeded', '成功')],
-    ['failed', tr('schedule.runFilterFailed', '失败')],
-    ['running', tr('schedule.runFilterRunning', '运行中')],
+    ['all', tr('schedule.runFilterAllStatus')],
+    ['succeeded', tr('schedule.runFilterSucceeded')],
+    ['failed', tr('schedule.runFilterFailed')],
+    ['running', tr('schedule.runFilterRunning')],
   ];
   const rangeOptions: Array<[RunRangeFilter, string]> = [
-    ['all', tr('schedule.runFilterAllTime', '全部时间')],
-    ['1d', tr('schedule.runFilter1d', '最近 24 小时')],
-    ['7d', tr('schedule.runFilter7d', '最近 7 天')],
-    ['30d', tr('schedule.runFilter30d', '最近 30 天')],
+    ['all', tr('schedule.runFilterAllTime')],
+    ['1d', tr('schedule.runFilter1d')],
+    ['7d', tr('schedule.runFilter7d')],
+    ['30d', tr('schedule.runFilter30d')],
   ];
   const filterCell = (
     label: string,
@@ -332,7 +329,7 @@ export function AutomationRunLogPanel({
           <DataTableSearch
             value={runQuery}
             onChange={setRunQuery}
-            placeholder={tr('schedule.runSearch', '搜索执行记录…')}
+            placeholder={tr('schedule.runSearch')}
           />
         </div>
         {filterCell(
@@ -349,7 +346,7 @@ export function AutomationRunLogPanel({
         )}
         <DataToolbarButton
           icon={<RefreshCw className="h-3.5 w-3.5" />}
-          label={tr('schedule.refresh', '刷新')}
+          label={tr('schedule.refresh')}
           disabled={automations.length === 0 || isLoading}
           onClick={onRefresh}
         />
@@ -380,32 +377,20 @@ function AutomationRunTable({
   entries: AutomationRunLogEntry[];
   isLoading: boolean;
   hasAutomations: boolean;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
   if (!hasAutomations) {
     return (
-      <EmptyState
-        label={tr('schedule.empty', '还没有自动化')}
-        description={tr(
-          'workspaceEmpty.automationHint',
-          '设置触发时间和执行动作，让重复工作自动完成。'
-        )}
-      />
+      <EmptyState label={tr('schedule.empty')} description={tr('workspaceEmpty.automationHint')} />
     );
   }
   if (isLoading) {
-    return <LoadingState label={tr('schedule.runsLoading', '正在加载执行日志...')} />;
+    return <LoadingState label={tr('schedule.runsLoading')} />;
   }
   if (entries.length === 0) {
     return (
-      <EmptyState
-        label={tr('schedule.runsEmpty', '暂无执行记录')}
-        description={tr(
-          'workspaceEmpty.runsHint',
-          '自动化按触发条件运行后，执行记录会显示在这里。'
-        )}
-      />
+      <EmptyState label={tr('schedule.runsEmpty')} description={tr('workspaceEmpty.runsHint')} />
     );
   }
   return (
@@ -414,29 +399,17 @@ function AutomationRunTable({
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
             <th className="w-[22%] whitespace-nowrap px-3 pl-8">
-              {tr('schedule.runColumns.automation', '自动化')}
+              {tr('schedule.runColumns.automation')}
             </th>
-            <th className="w-[12%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.status', '状态')}
-            </th>
-            <th className="w-[10%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.reason', '触发')}
-            </th>
+            <th className="w-[12%] whitespace-nowrap px-2">{tr('schedule.runColumns.status')}</th>
+            <th className="w-[10%] whitespace-nowrap px-2">{tr('schedule.runColumns.reason')}</th>
             <th className="w-[18%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.startedAt', '开始时间')}
+              {tr('schedule.runColumns.startedAt')}
             </th>
-            <th className="w-[10%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.duration', '耗时')}
-            </th>
-            <th className="w-[8%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.artifacts', '产物')}
-            </th>
-            <th className="w-[10%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.delivery', '交付')}
-            </th>
-            <th className="w-[20%] whitespace-nowrap px-2">
-              {tr('schedule.runColumns.error', '错误信息')}
-            </th>
+            <th className="w-[10%] whitespace-nowrap px-2">{tr('schedule.runColumns.duration')}</th>
+            <th className="w-[8%] whitespace-nowrap px-2">{tr('schedule.runColumns.artifacts')}</th>
+            <th className="w-[10%] whitespace-nowrap px-2">{tr('schedule.runColumns.delivery')}</th>
+            <th className="w-[20%] whitespace-nowrap px-2">{tr('schedule.runColumns.error')}</th>
           </tr>
         </thead>
         <tbody>
@@ -484,7 +457,7 @@ function AutomationTable({
   onGroupPageChange: (groupKey: string, page: number) => void;
   onRenameGroup: (group: DataListGroup) => void;
   onDeleteGroup: (group: DataListGroup) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const sections = buildGroupSections(automations, groups, (automation) => automation.groupId);
@@ -532,7 +505,7 @@ function AutomationTable({
                 <Switch
                   size="sm"
                   checked={automation.enabled}
-                  aria-label={tr('schedule.toggleEnabled', '启用 / 停用')}
+                  aria-label={tr('schedule.toggleEnabled')}
                   onCheckedChange={(checked) => onToggleEnabled(automation, checked)}
                 />
               </span>
@@ -546,8 +519,8 @@ function AutomationTable({
         >
           {automation.description ||
             (automation.trigger.kind === 'manual'
-              ? tr('schedule.runReason.manual', '手动')
-              : tr('schedule.runReason.timer', '定时'))}
+              ? tr('schedule.runReason.manual')
+              : tr('schedule.runReason.timer'))}
         </td>
         <td className="px-2 text-[13px] font-medium text-text-secondary">
           {automation.actionGraph.nodes.length}
@@ -564,10 +537,10 @@ function AutomationTable({
     );
   };
   if (isLoading) {
-    return <LoadingState label={tr('schedule.loadingTasks', '正在加载自动化...')} />;
+    return <LoadingState label={tr('schedule.loadingTasks')} />;
   }
   if (automations.length === 0) {
-    return <EmptyState label={tr('schedule.empty', '还没有自动化')} />;
+    return <EmptyState label={tr('schedule.empty')} />;
   }
   return (
     <div className="min-w-0 overflow-x-auto">
@@ -582,16 +555,14 @@ function AutomationTable({
         </colgroup>
         <thead>
           <tr className="h-10 border-b border-border-muted bg-[var(--data-grid-header-surface)] text-xs font-medium text-text-muted">
-            <th className="whitespace-nowrap px-2">{tr('schedule.columns.name', '名称')}</th>
-            <th className="whitespace-nowrap px-2">{tr('schedule.columns.status', '状态')}</th>
-            <th className="whitespace-nowrap px-2">
-              {tr('schedule.columns.trigger', '触发 / 说明')}
-            </th>
-            <th className="whitespace-nowrap px-2">{tr('schedule.columns.actions', '动作')}</th>
-            <th className="whitespace-nowrap px-2">{tr('schedule.columns.nextRun', '下次执行')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.name')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.status')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.trigger')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.actions')}</th>
+            <th className="whitespace-nowrap px-2">{tr('schedule.columns.nextRun')}</th>
             <th className="whitespace-nowrap px-2">
               <span className="inline-flex items-center gap-1">
-                {tr('schedule.columns.updatedAt', '更新时间')}
+                {tr('schedule.columns.updatedAt')}
                 <ArrowUpDown className="h-3 w-3" />
               </span>
             </th>
@@ -646,7 +617,7 @@ function StatusBadge({
   status: string;
   labelKeyPrefix: string;
   tone: string;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   return (
     <span
@@ -663,7 +634,7 @@ function AutomationStatusBadge({
   tr,
 }: {
   automation: Automation;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const tone =
     AUTOMATION_STATUS_TONES[automation.status] ??
@@ -675,12 +646,12 @@ function AutomationStatusBadge({
 
 function formatAutomationNextRun(
   automation: Automation,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   if (!automation.enabled) return '—';
   if (automation.trigger.kind === 'manual') {
     if (getAutomationTableBindings(automation).some((binding) => binding.runOnChange))
-      return tr('schedule.outputChangeTrigger', '结果表更新后执行');
+      return tr('schedule.outputChangeTrigger');
     return '—';
   }
   return automation.nextRunAt ? formatAppDateTime(automation.nextRunAt) : '—';
@@ -691,7 +662,7 @@ function AutomationRunStatusBadge({
   tr,
 }: {
   status: AutomationRun['status'];
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   return (
     <StatusBadge
@@ -705,14 +676,14 @@ function AutomationRunStatusBadge({
 
 function formatRunReason(
   reason: AutomationRun['triggerReason'],
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   return tr(`schedule.runReason.${reason}`, reason);
 }
 
 function formatDeliveryStatus(
   status: AutomationRun['deliveryStatus'],
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   if (!status) return '-';
   return tr(`schedule.deliveryStatus.${status}`, status);
@@ -720,13 +691,13 @@ function formatDeliveryStatus(
 
 function runNodeLabel(
   node: { type: string; label?: string; config?: Record<string, unknown> },
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   if (node.label) return node.label;
   if (node.type === 'cloud.sync') {
     return node.config?.direction === 'input'
-      ? tr('schedule.cloudInput.title', '云端表同步到原始表')
-      : tr('schedule.cloudSync.title', '结果表写入网盘文件');
+      ? tr('schedule.cloudInput.title')
+      : tr('schedule.cloudSync.title');
   }
   return tr(`schedule.actionTypeName.${node.type.replace(/\./g, '_')}`, node.type);
 }
@@ -744,7 +715,7 @@ function RunLogRow({
   run: AutomationRun;
   expanded: boolean;
   onToggle: () => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const executed = new Set(run.executionSummary?.executedNodeIds ?? []);
   const skipped = new Set(run.executionSummary?.skippedNodeIds ?? []);
@@ -782,16 +753,13 @@ function RunLogRow({
         </td>
         <td className="px-2 text-[13px] text-text-secondary">
           {run.artifactCount > 0
-            ? tr('schedule.artifactCount', '{{count}} 个产物').replace(
-                '{{count}}',
-                String(run.artifactCount)
-              )
+            ? tr('schedule.artifactCount').replace('{{count}}', String(run.artifactCount))
             : '—'}
         </td>
         <td className="truncate px-2 text-[13px] text-text-secondary">
           {run.deliveryStatus
             ? formatDeliveryStatus(run.deliveryStatus, tr)
-            : tr('schedule.deliveryNotConfigured', '未配置')}
+            : tr('schedule.deliveryNotConfigured')}
         </td>
         <td
           className={`truncate px-2 text-[12px] ${failed ? 'text-error' : 'text-text-muted'}`}
@@ -803,7 +771,7 @@ function RunLogRow({
       {expanded && nodes.length === 0 && (
         <tr className="h-9 border-b border-border-muted/85 bg-surface-muted">
           <td colSpan={8} className="px-8 text-xs text-text-muted">
-            {tr('schedule.runNoActions', '没有可显示的动作明细')}
+            {tr('schedule.runNoActions')}
           </td>
         </tr>
       )}
@@ -886,7 +854,7 @@ export function ScriptRepairActions({
 }: {
   error: string;
   nodes: Automation['actionGraph']['nodes'];
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const openScriptEditor = useAppStore((state) => state.openScriptEditor);
   const [state, setState] = useState<'idle' | 'busy' | 'done'>('idle');
@@ -900,13 +868,7 @@ export function ScriptRepairActions({
     try {
       await window.electronAPI.automation.scripts.publish(packageId, version);
       setState('done');
-      showToast(
-        'success',
-        tr('schedule.repair.published', '已确认使用 v{{version}}').replace(
-          '{{version}}',
-          String(version)
-        )
-      );
+      showToast('success', tr('schedule.repair.published').replace('{{version}}', String(version)));
     } catch (err) {
       setState('idle');
       showToast('error', ipcErrorMessage(err));
@@ -920,7 +882,7 @@ export function ScriptRepairActions({
         onClick={() => openScriptEditor({ packageId, version, step: 'review' })}
         className="inline-flex h-7 items-center gap-1 rounded border border-border-subtle bg-surface px-2.5 text-[12px] font-medium text-text-secondary hover:bg-accent-muted hover:text-accent"
       >
-        {tr('schedule.repair.view', '查看修复结果')}
+        {tr('schedule.repair.view')}
       </button>
       {passed && (
         <button
@@ -931,108 +893,31 @@ export function ScriptRepairActions({
           className="inline-flex h-7 items-center gap-1 rounded border border-accent/30 bg-surface px-2.5 text-[12px] font-medium text-accent hover:bg-accent-muted disabled:opacity-50"
         >
           {state === 'done'
-            ? tr('schedule.repair.inUse', '使用中')
-            : tr('schedule.repair.publish', '一键确认使用 v{{version}}').replace(
-                '{{version}}',
-                String(version)
-              )}
+            ? tr('schedule.repair.inUse')
+            : tr('schedule.repair.publish').replace('{{version}}', String(version))}
         </button>
       )}
     </span>
   );
 }
 
-function formatDurationMs(durationMs: number | null): string {
-  if (durationMs === null) return '—';
-  if (durationMs < 1000) return `${durationMs} 毫秒`;
-  const totalSeconds = Math.round(durationMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes === 0) return `${seconds} 秒`;
-  return `${minutes} 分 ${seconds} 秒`;
-}
-
 export function getRunSortTime(run: AutomationRun): number {
   return run.startedAt ?? run.queuedAt ?? run.createdAt;
 }
 
-interface DataMoreMenuItem {
-  key: string;
-  label: string;
-  icon?: ReactNode;
-  danger?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}
-
-function DataMoreMenu({
-  items,
-  tr,
-}: {
-  items: DataMoreMenuItem[];
-  tr: (key: string, fallback: string) => string;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <GlassDropdownMenu
-      open={open}
-      onOpenChange={setOpen}
-      align="end"
-      contentClassName="w-40"
-      trigger={
-        <button
-          type="button"
-          className="inline-flex h-full w-10 items-center justify-center rounded-none border-0 border-l border-border-subtle bg-transparent text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent"
-          title={tr('data.actions.more', '更多')}
-          aria-label={tr('data.actions.more', '更多')}
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </button>
-      }
-    >
-      {items.map((item) => (
-        <GlassMenuItem
-          key={item.key}
-          disabled={item.disabled}
-          danger={item.danger}
-          icon={item.icon}
-          onSelect={item.onClick}
-        >
-          {item.label}
-        </GlassMenuItem>
-      ))}
-    </GlassDropdownMenu>
-  );
-}
-
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div className="flex min-h-[16rem] items-center justify-center px-4 py-10 text-center text-xs font-medium text-text-muted">
-      <div className="inline-flex items-center gap-2 rounded-lg border border-border-muted bg-surface px-3 py-2 shadow-soft">
-        <RefreshCw className="h-3.5 w-3.5 animate-spin text-accent" />
-        {label}
-      </div>
-    </div>
-  );
-}
-
 function formatExecutionSummary(
   run: AutomationRun,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string {
   if (run.error) return run.error;
   if (!run.executionSummary) return '—';
   if (run.executionSummary.skippedNodeIds.length === 0) {
-    return tr('schedule.executionSummaryAll', '已执行 {{executed}} 个动作').replace(
+    return tr('schedule.executionSummaryAll').replace(
       '{{executed}}',
       String(run.executionSummary.executedNodeIds.length)
     );
   }
-  return tr(
-    'schedule.executionSummary',
-    '已执行 {{executed}}，跳过 {{skipped}}（触发条件或前置依赖不满足）'
-  )
+  return tr('schedule.executionSummary')
     .replace('{{executed}}', String(run.executionSummary.executedNodeIds.length))
     .replace('{{skipped}}', String(run.executionSummary.skippedNodeIds.length));
 }

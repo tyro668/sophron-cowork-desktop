@@ -94,7 +94,7 @@ const rawTables = [{ id: 'input', name: 'Sales' }] as DataDashboard['rawTables']
 const pipelines = [
   { id: 'existing', name: 'Existing pipeline', sourceRawTableId: 'input' },
 ] as DataPipeline[];
-const tr = (key: string, fallback: string) => i18n.t(key, { defaultValue: fallback });
+const tr = (key: string, fallback?: string) => i18n.t(key, { defaultValue: fallback });
 beforeEach(async () => {
   vi.resetAllMocks();
   await i18n.changeLanguage('zh');

@@ -19,6 +19,26 @@ interface OperatorFormWrapperProps {
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }
 
+// Module-level cache for lazy-loaded form components
+const formComponentCache = new Map<string, React.ComponentType<OperatorFormProps>>();
+
+function getLazyOperatorForm(
+  operatorType: string,
+  loader: (() => Promise<{ default: React.ComponentType<OperatorFormProps> }>) | null | undefined
+): React.ComponentType<OperatorFormProps> | null {
+  if (!loader) return null;
+  const cached = formComponentCache.get(operatorType);
+  if (cached) return cached;
+  const Lazy = React.lazy(() =>
+    loader().then((mod) => {
+      formComponentCache.set(operatorType, mod.default);
+      return mod;
+    })
+  );
+  formComponentCache.set(operatorType, Lazy);
+  return Lazy;
+}
+
 function LazyOperatorForm({
   node,
   pipelineId,
@@ -34,19 +54,7 @@ function LazyOperatorForm({
   const { t } = useTranslation();
   const loader = getOperatorFormLoader(node.type);
 
-  const LazyComponent = useMemo(() => {
-    if (!loader) return null;
-    const cached = formComponentCache.get(node.type);
-    if (cached) return cached;
-    const Lazy = React.lazy(() =>
-      loader().then((mod) => {
-        formComponentCache.set(node.type, mod.default);
-        return mod;
-      })
-    );
-    formComponentCache.set(node.type, Lazy);
-    return Lazy;
-  }, [node.type, loader]);
+  const LazyComponent = useMemo(() => getLazyOperatorForm(node.type, loader), [node.type, loader]);
 
   if (!loader || !LazyComponent) {
     return (
@@ -98,6 +106,3 @@ export function OperatorFormWrapper(props: OperatorFormWrapperProps) {
 
   return <LazyOperatorForm {...props} />;
 }
-
-// Module-level cache for lazy-loaded form components
-const formComponentCache = new Map<string, React.ComponentType<OperatorFormProps>>();

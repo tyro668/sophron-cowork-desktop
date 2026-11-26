@@ -1,3 +1,16 @@
+import { createMetricId, type MetricEntry } from '../../../../shared/operator-schemas';
+
+const EMPTY_METRIC_TEMPLATE: Readonly<Omit<MetricEntry, 'id'>> = {
+  function: 'count',
+  expression: '',
+  alias: '',
+};
+
+/** Create a new blank aggregate/pivot metric row with a stable generated ID. */
+export function createEmptyMetric<T extends { id?: string } = MetricEntry>(): T {
+  return { ...EMPTY_METRIC_TEMPLATE, id: createMetricId() } as unknown as T;
+}
+
 /**
  * Inline validation for metric rows (aggregate / pivot): empty expression,
  * duplicate output name, output name colliding with a group-by field.

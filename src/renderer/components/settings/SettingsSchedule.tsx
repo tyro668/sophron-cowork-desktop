@@ -1,4 +1,6 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { loadDataPipelineResources } from '../../features/data/api/data-pipeline-resources';
+import { automationClient } from '../../features/automation/api/automation-client';
 import {
   startTransition,
   useCallback,
@@ -74,7 +76,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     (state) => state.clearCloudAutomationTemplateNavigation
   );
   const tr = useCallback(
-    (key: string, fallback: string) => t(key, { defaultValue: fallback }),
+    (key: string, fallback?: string) =>
+      fallback !== undefined ? t(key, { defaultValue: fallback }) : t(key),
     [t]
   );
   const [automations, setAutomations] = useState<Automation[]>([]);
@@ -92,7 +95,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const tabBarAction = useTabBarActionSlot();
   const [automationRunLogs, setAutomationRunLogs] = useState<AutomationRunLogEntry[]>([]);
   const [draft, setDraft] = useState<AutomationDraft>(() =>
-    createEmptyDraft(tr('schedule.newAutomation', '新建自动化'))
+    createEmptyDraft(tr('schedule.newAutomation'))
   );
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -129,7 +132,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     }
     if (!selectedId) {
       return JSON.stringify(
-        draftToPayload(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')), appConfig)
+        draftToPayload(createEmptyDraft(tr('schedule.newAutomation')), appConfig)
       );
     }
     return null;
@@ -142,17 +145,17 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     const current = draftToPayload(draft, appConfig);
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
     const parts: string[] = [];
-    if (saved.name !== current.name) parts.push(tr('schedule.partName', '名称'));
-    if (!same(saved.trigger, current.trigger)) parts.push(tr('schedule.partTrigger', '触发条件'));
-    if (saved.projectId !== current.projectId) parts.push(tr('schedule.partProject', '执行项目'));
-    if (saved.enabled !== current.enabled) parts.push(tr('schedule.partEnabled', '启用状态'));
+    if (saved.name !== current.name) parts.push(tr('schedule.partName'));
+    if (!same(saved.trigger, current.trigger)) parts.push(tr('schedule.partTrigger'));
+    if (saved.projectId !== current.projectId) parts.push(tr('schedule.partProject'));
+    if (saved.enabled !== current.enabled) parts.push(tr('schedule.partEnabled'));
     if (!same(saved.actionGraph, current.actionGraph)) {
       const savedNodes = saved.actionGraph?.nodes ?? [];
       const changed = (current.actionGraph?.nodes ?? []).filter(
         (node, index) => !same(savedNodes[index] ?? null, node)
       ).length;
       parts.push(
-        `${tr('schedule.partActions', '动作')} ${Math.max(changed, 1)} ${tr('schedule.partActionsUnit', '项')}`
+        `${tr('schedule.partActions')} ${Math.max(changed, 1)} ${tr('schedule.partActionsUnit')}`
       );
     }
     return parts;
@@ -216,9 +219,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       try {
         const [{ automations: automationRows, groupCounts }, groups, actions, dashboard] =
           await Promise.all([
-            window.electronAPI.automation.list({ perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE }),
-            window.electronAPI.automation.groups.list(),
-            window.electronAPI.automation.listActionDefinitions(),
+            automationClient.list({ perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE }),
+            automationClient.groups.list(),
+            automationClient.listActionDefinitions(),
             loadDataPipelineResources(),
           ]);
         if (!isMountedRef.current || requestId !== loadRequestSeq.current) return;
@@ -243,8 +246,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         if (!silent) {
           setBanner({
             tone: 'error',
-            text:
-              error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+            text: formatIpcError(error, tr('schedule.loadFailed')),
           });
         }
       } finally {
@@ -263,11 +265,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         setIsLoading(true);
       }
       try {
-        const { automations: automationRows, groupCounts } =
-          await window.electronAPI.automation.list({
-            query: search,
-            perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE,
-          });
+        const { automations: automationRows, groupCounts } = await automationClient.list({
+          query: search,
+          perGroupLimit: AUTOMATION_TABLE_PAGE_SIZE,
+        });
         if (!isMountedRef.current) return;
         automationsRef.current = automationRows;
         setAutomations(automationRows);
@@ -277,8 +278,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         if (!silent) {
           setBanner({
             tone: 'error',
-            text:
-              error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+            text: formatIpcError(error, tr('schedule.loadFailed')),
           });
         }
       } finally {
@@ -297,7 +297,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         groupKey === 'ungrouped' ? null : groupKey.startsWith('g:') ? groupKey.slice(2) : groupKey;
       setAutomationGroupPages((current) => ({ ...current, [groupKey]: page }));
       try {
-        const { automations: loadedRows, groupCounts } = await window.electronAPI.automation.list({
+        const { automations: loadedRows, groupCounts } = await automationClient.list({
           query: search,
           groupId,
           offset: (page - 1) * AUTOMATION_TABLE_PAGE_SIZE,
@@ -313,8 +313,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       } catch (error) {
         setBanner({
           tone: 'error',
-          text:
-            error instanceof Error ? error.message : tr('schedule.loadFailed', '加载自动化失败'),
+          text: formatIpcError(error, tr('schedule.loadFailed')),
         });
       }
     },
@@ -345,7 +344,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         const entries = (
           await Promise.all(
             sourceAutomations.map(async (automation) => {
-              const rows = await window.electronAPI.automation.listRuns(automation.id, {
+              const rows = await automationClient.listRuns(automation.id, {
                 limit: 20,
                 status: 'all',
               });
@@ -365,10 +364,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         if (!isMountedRef.current || requestId !== loadRunsRequestSeq.current) return;
         setBanner({
           tone: 'error',
-          text:
-            error instanceof Error
-              ? error.message
-              : tr('schedule.runsLoadFailed', '加载执行日志失败'),
+          text: formatIpcError(error, tr('schedule.runsLoadFailed')),
         });
       } finally {
         if (isMountedRef.current && requestId === loadRunsRequestSeq.current) {
@@ -398,10 +394,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       setActiveListTab('automations');
       setBanner({
         tone: 'success',
-        text: tr(
-          'schedule.cloudTemplateLoaded',
-          '已从云表创建自动处理草稿，请补充处理方式和执行频率。'
-        ),
+        text: tr('schedule.cloudTemplateLoaded'),
       });
     },
     [clearCloudAutomationTemplateNavigation, tr]
@@ -452,10 +445,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     if (outputNavigation.automationId) {
       const id = outputNavigation.automationId;
       setSelectedId(id);
-      void window.electronAPI.automation
+      void automationClient
         .get(id)
         .then((automation) => {
-          if (!automation) throw new Error(tr('schedule.taskMissing', '自动化不存在'));
+          if (!automation) throw new Error(tr('schedule.taskMissing'));
           setAutomations((rows) => [...rows.filter((row) => row.id !== id), automation]);
           const next = automationToDraft(automation);
           if (
@@ -548,9 +541,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       const table = outputNavigation.rawTable;
       const cloudSource = outputNavigation.cloudSource;
       const name =
-        table?.name ||
-        outputNavigation.newRawTableName ||
-        tr('schedule.cloudInput.title', '云端表同步到原始表');
+        table?.name || outputNavigation.newRawTableName || tr('schedule.cloudInput.title');
       setSelectedId(null);
       if (table && !cloudSource) {
         setDraft({
@@ -609,7 +600,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const createNew = () => {
     suppressSelectedAutomationSyncRef.current = false;
     setSelectedId(null);
-    setDraft(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')));
+    setDraft(createEmptyDraft(tr('schedule.newAutomation')));
     setViewMode('detail');
     setBanner(null);
   };
@@ -624,16 +615,16 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   const save = async () => {
     if (!draft.name.trim()) {
-      setBanner({ tone: 'error', text: tr('schedule.titleRequired', '请输入自动化名称') });
+      setBanner({ tone: 'error', text: tr('schedule.titleRequired') });
       return;
     }
     if (draft.actionGraph.nodes.length === 0) {
-      setBanner({ tone: 'error', text: tr('schedule.actionRequired', '至少添加一个动作') });
+      setBanner({ tone: 'error', text: tr('schedule.actionRequired') });
       return;
     }
     const normalizedTrigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
     if (normalizedTrigger.kind === 'weekly' && normalizedTrigger.weekdays.length === 0) {
-      setBanner({ tone: 'error', text: tr('schedule.weekdayRequired', '请至少选择一个执行星期') });
+      setBanner({ tone: 'error', text: tr('schedule.weekdayRequired') });
       return;
     }
     if (
@@ -641,7 +632,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       normalizedTrigger.daysOfMonth.length === 0 &&
       !normalizedTrigger.includeLastDay
     ) {
-      setBanner({ tone: 'error', text: tr('schedule.monthDayRequired', '请至少选择一个执行日期') });
+      setBanner({ tone: 'error', text: tr('schedule.monthDayRequired') });
       return;
     }
     if (
@@ -651,7 +642,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     ) {
       setBanner({
         tone: 'error',
-        text: tr('schedule.endAtAfterStartRequired', '结束时间必须晚于开始时间'),
+        text: tr('schedule.endAtAfterStartRequired'),
       });
       return;
     }
@@ -670,8 +661,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         tone: 'error',
         text:
           getSourceLocation(missingSource) === 'local'
-            ? tr('schedule.localSourceRequired', '请选择输入数据表')
-            : tr('schedule.cloudSourceRequired', '请选择输入云表'),
+            ? tr('schedule.localSourceRequired')
+            : tr('schedule.cloudSourceRequired'),
       });
       return;
     }
@@ -685,8 +676,8 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         tone: 'error',
         text:
           getOutputLocation(missingTarget) === 'local'
-            ? tr('schedule.localTargetRequired', '请选择目标结果表')
-            : tr('schedule.cloudTargetRequired', '请选择目标云表'),
+            ? tr('schedule.localTargetRequired')
+            : tr('schedule.cloudTargetRequired'),
       });
       return;
     }
@@ -695,13 +686,13 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     try {
       const payload = draftToPayload(draft, appConfig);
       let saved = selectedId
-        ? await window.electronAPI.automation.update(selectedId, payload)
-        : await window.electronAPI.automation.create(payload as AutomationCreateInput);
+        ? await automationClient.update(selectedId, payload)
+        : await automationClient.create(payload as AutomationCreateInput);
       if (saved?.status === 'paused' && payload.enabled) {
-        saved = await window.electronAPI.automation.resume(saved.id);
+        saved = await automationClient.resume(saved.id);
       }
       if (!saved) {
-        throw new Error(tr('schedule.taskMissing', '自动化不存在'));
+        throw new Error(tr('schedule.taskMissing'));
       }
       await load();
       setSelectedId(saved.id);
@@ -710,7 +701,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     } catch (error) {
       setBanner({
         tone: 'error',
-        text: error instanceof Error ? error.message : tr('schedule.saveFailed', '保存自动化失败'),
+        text: formatIpcError(error, tr('schedule.saveFailed')),
       });
     } finally {
       setIsSaving(false);
@@ -722,25 +713,22 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       rows.map((row) => (row.id === automation.id ? { ...row, enabled } : row))
     );
     try {
-      let saved = await window.electronAPI.automation.update(automation.id, { enabled });
+      let saved = await automationClient.update(automation.id, { enabled });
       if (saved?.status === 'paused' && enabled) {
-        saved = await window.electronAPI.automation.resume(saved.id);
+        saved = await automationClient.resume(saved.id);
       }
       await load();
       setBanner({
         tone: 'success',
         text: enabled
-          ? tr('schedule.enabledNotice', '已启用「{{name}}」').replace('{{name}}', automation.name)
-          : tr('schedule.disabledNotice', '已停用「{{name}}」').replace(
-              '{{name}}',
-              automation.name
-            ),
+          ? tr('schedule.enabledNotice').replace('{{name}}', automation.name)
+          : tr('schedule.disabledNotice').replace('{{name}}', automation.name),
       });
     } catch (error) {
       await load();
       setBanner({
         tone: 'error',
-        text: error instanceof Error ? error.message : tr('schedule.saveFailed', '保存自动化失败'),
+        text: formatIpcError(error, tr('schedule.saveFailed')),
       });
     }
   };
@@ -748,16 +736,16 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const runNow = async () => {
     if (!selectedAutomation) return;
     try {
-      await window.electronAPI.automation.runNow(selectedAutomation.id);
+      await automationClient.runNow(selectedAutomation.id);
       await load();
       if (activeListTab === 'runs') {
         await loadRuns();
       }
-      setBanner({ tone: 'success', text: tr('schedule.runNowSuccess', '自动化已开始运行') });
+      setBanner({ tone: 'success', text: tr('schedule.runNowSuccess') });
     } catch (error) {
       setBanner({
         tone: 'error',
-        text: error instanceof Error ? error.message : tr('schedule.runNowFailed', '运行失败'),
+        text: formatIpcError(error, tr('schedule.runNowFailed')),
       });
     }
   };
@@ -771,10 +759,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
       }),
     });
     if (!confirmed) return;
-    await window.electronAPI.automation.delete(selectedAutomation.id);
+    await automationClient.delete(selectedAutomation.id);
     setSelectedId(null);
     setAutomationRunLogs([]);
-    setDraft(createEmptyDraft(tr('schedule.newAutomation', '新建自动化')));
+    setDraft(createEmptyDraft(tr('schedule.newAutomation')));
     setViewMode('list');
     await load();
   };
@@ -784,18 +772,18 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     try {
       let groupId = target.groupId;
       if (target.newGroupName) {
-        const group = await window.electronAPI.automation.groups.create({
+        const group = await automationClient.groups.create({
           name: target.newGroupName,
         });
         groupId = group.id;
       }
-      await window.electronAPI.automation.groups.assign({
+      await automationClient.groups.assign({
         ids: [selectedAutomation.id],
         groupId,
       });
       await load({ silent: true });
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', formatIpcError(error, String(error)));
       await load({ silent: true });
     }
   };
@@ -804,10 +792,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     const trimmed = name.trim();
     if (!trimmed || trimmed === group.name) return;
     try {
-      await window.electronAPI.automation.groups.rename({ id: group.id, name: trimmed });
+      await automationClient.groups.rename({ id: group.id, name: trimmed });
       await load({ silent: true });
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', formatIpcError(error, String(error)));
       await load({ silent: true });
     }
   };
@@ -818,10 +806,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     });
     if (!confirmed) return;
     try {
-      await window.electronAPI.automation.groups.delete(group.id);
+      await automationClient.groups.delete(group.id);
       await load({ silent: true });
     } catch (error) {
-      showToast('error', error instanceof Error ? error.message : String(error));
+      showToast('error', formatIpcError(error, String(error)));
       await load({ silent: true });
     }
   };
@@ -855,7 +843,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
             <span className="flex min-w-0 items-center gap-2">
               <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" />
               <span className="truncate">
-                {tr('schedule.unsavedChanges', '有未保存的修改')}
+                {tr('schedule.unsavedChanges')}
                 {unsavedParts.length > 0 && `：${unsavedParts.join('、')}`}
               </span>
             </span>
@@ -864,7 +852,7 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
               className="flex-shrink-0 text-xs text-text-secondary hover:text-text-primary"
               onClick={() => setDraft(automationToDraft(selectedAutomation))}
             >
-              {tr('schedule.discardChanges', '放弃修改')}
+              {tr('schedule.discardChanges')}
             </button>
           </div>
         )}
@@ -922,17 +910,14 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 .catch((error) => {
                   showTransientBanner({
                     tone: 'error',
-                    text: error instanceof Error ? error.message : String(error),
+                    text: formatIpcError(error, String(error)),
                   });
                 });
               showTransientBanner({
                 tone: workflowDslAvailable ? 'success' : 'warning',
                 text: workflowDslAvailable
-                  ? tr('schedule.generatedPipelineReady', '数据加工已生成，后续将复用该任务执行。')
-                  : tr(
-                      'schedule.generatedPipelineReadyWithoutDsl',
-                      '数据加工已生成，但任务逻辑预览暂时不可用。'
-                    ),
+                  ? tr('schedule.generatedPipelineReady')
+                  : tr('schedule.generatedPipelineReadyWithoutDsl'),
               });
             }}
             tr={tr}
@@ -956,18 +941,18 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
                 <TabsTrigger
                   value="automations"
                   className={fixedUnderlineTabTriggerClass}
-                  title={tr('schedule.tabs.automations', '自动化')}
+                  title={tr('schedule.tabs.automations')}
                   data-fixed-tab
                 >
-                  <span className="truncate">{tr('schedule.tabs.automations', '自动化')}</span>
+                  <span className="truncate">{tr('schedule.tabs.automations')}</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="runs"
                   className={fixedUnderlineTabTriggerClass}
-                  title={tr('schedule.tabs.runs', '执行日志')}
+                  title={tr('schedule.tabs.runs')}
                   data-fixed-tab
                 >
-                  <span className="truncate">{tr('schedule.tabs.runs', '执行日志')}</span>
+                  <span className="truncate">{tr('schedule.tabs.runs')}</span>
                 </TabsTrigger>
               </TabsList>
               <TabBarActionSlot slotRef={tabBarAction.slotRef} />

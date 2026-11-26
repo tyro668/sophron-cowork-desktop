@@ -28,7 +28,7 @@ export function validateLimitCount(raw: string, unit: string): 'count' | 'percen
 }
 
 /** Seed is optional; when present it must be a non-negative integer. */
-export function validateLimitSeed(raw: string): boolean {
+export function isValidLimitSeed(raw: string): boolean {
   const v = raw.trim();
   return v === '' || (/^\d+$/.test(v) && parseNonNegativeInteger(v) !== undefined);
 }
@@ -82,7 +82,7 @@ export default function FormLimit({
   // Deferred validation: only after the user committed a value (blur/Enter).
   const countError =
     limitTouched || localLimit.trim() !== '' ? validateLimitCount(localLimit, unit) : null;
-  const seedInvalid = !validateLimitSeed(localSeed);
+  const seedInvalid = !isValidLimitSeed(localSeed);
 
   function commitLimit(raw: string) {
     setLimitTouched(true);

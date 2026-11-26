@@ -250,7 +250,7 @@ export const WorkflowOperatorNode = memo(function WorkflowOperatorNode({
         </button>
       )}
       {invalid && (
-        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-error text-[10px] font-bold text-white">
+        <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-error text-[10px] font-bold text-error-foreground">
           !
         </span>
       )}

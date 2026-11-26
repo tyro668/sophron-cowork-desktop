@@ -21,6 +21,7 @@ import { useApiConfigState } from '../../hooks/useApiConfigState';
 import type { ProviderType } from '../../types';
 import ApiDiagnosticsPanel from '../ApiDiagnosticsPanel';
 import { ApiConfigSetManager } from '../ApiConfigSetManager';
+import { ApiModelSelectorField } from './ApiModelSelectorField';
 import { GlassSelect } from '../GlassSelect';
 import { Button, Input } from '../ui';
 import { CommonProviderSetupsCard } from '../ProviderGuidance';
@@ -293,39 +294,16 @@ export function SettingsAPI() {
               <FieldRow label={t('api.model')}>
                 <div className="flex min-w-0 gap-2">
                   <div className="min-w-0 flex-1">
-                    {useCustomModel ? (
-                      <Input
-                        id="api-model-input"
-                        type="text"
-                        value={customModel}
-                        onChange={(event) => setCustomModel(event.target.value)}
-                        placeholder={modelInputPlaceholder}
-                        className="h-8"
-                      />
-                    ) : (
-                      <GlassSelect
-                        value={modelOptions.length ? model : ''}
-                        onValueChange={setModel}
-                        options={
-                          modelOptions.length
-                            ? (modelOptions as ModelOptionItem[]).map((item) => ({
-                                value: item.id,
-                                label: item.name,
-                              }))
-                            : [
-                                {
-                                  value: 'no-models',
-                                  label: t('api.noModelsAvailable'),
-                                  disabled: true,
-                                },
-                              ]
-                        }
-                        placeholder={t('api.noModelsAvailable')}
-                        disabled={!modelOptions.length}
-                        triggerClassName="h-8 w-full justify-between bg-surface px-3 text-[13px] text-text-primary"
-                        contentClassName="w-[var(--radix-select-trigger-width)]"
-                      />
-                    )}
+                    <ApiModelSelectorField
+                      inputId="api-model-input"
+                      useCustomModel={useCustomModel}
+                      model={model}
+                      customModel={customModel}
+                      modelOptions={modelOptions as ModelOptionItem[]}
+                      modelInputPlaceholder={modelInputPlaceholder}
+                      onModelChange={setModel}
+                      onCustomModelChange={setCustomModel}
+                    />
                   </div>
                   {!isSophronMode && !isCodexMode && (
                     <Button

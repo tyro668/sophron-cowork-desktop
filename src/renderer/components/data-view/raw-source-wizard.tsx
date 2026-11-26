@@ -33,6 +33,7 @@ import type {
 } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
+import { Switch } from '../ui';
 import { RebuildConfirmDialog } from './raw-source-rebuild-dialog';
 import {
   bottomTabBarClass,
@@ -74,7 +75,7 @@ export function stemOf(name: string): string {
   return dot > 0 ? name.slice(0, dot) : name;
 }
 
-function sameColumns(a: string[], b: string[]): boolean {
+function hasSameColumns(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((column, index) => column === b[index]);
 }
 
@@ -171,7 +172,7 @@ export function RawSourceWizard({
           const dataSheets = next.sheets.filter((sheet) => !sheet.empty);
           setSingleSheet(dataSheets[0]?.name ?? next.sheets[0]?.name ?? null);
           setChecked(dataSheets.map((sheet) => sheet.name));
-          setMergedName(`${stemOf(next.name)}（合并）`);
+          setMergedName(`${stemOf(next.name)}${t('data.rawSources.mergedNameSuffix')}`);
           setNames({});
           setUnchecked([]);
           if (next.kind === 'csv') {
@@ -226,8 +227,10 @@ export function RawSourceWizard({
 
   useEffect(() => {
     if (!rebuild || !scan || scan.kind !== 'folder') return;
-    setMergedName((current) => current || `${stemOf(scan.name)}（合并）`);
-  }, [rebuild, scan]);
+    setMergedName(
+      (current) => current || `${stemOf(scan.name)}${t('data.rawSources.mergedNameSuffix')}`
+    );
+  }, [rebuild, scan, t]);
 
   useEffect(() => {
     if (!rebuild || !scan || scan.kind !== 'excel') return;
@@ -235,8 +238,10 @@ export function RawSourceWizard({
       current.length ? current : scan.sheets.filter((s) => !s.empty).map((s) => s.name)
     );
     setSingleSheet((current) => current ?? scan.sheets.find((s) => !s.empty)?.name ?? null);
-    setMergedName((current) => current || `${stemOf(scan.name)}（合并）`);
-  }, [rebuild, scan]);
+    setMergedName(
+      (current) => current || `${stemOf(scan.name)}${t('data.rawSources.mergedNameSuffix')}`
+    );
+  }, [rebuild, scan, t]);
 
   // Folder: re-scan when the sheet strategy, overrides or file range change.
   const folderKey = JSON.stringify([selector, overrides, fileRange]);
@@ -263,7 +268,7 @@ export function RawSourceWizard({
   const mergeable =
     checkedSheets.length > 1 &&
     checkedSheets.every((name) =>
-      sameColumns(sheetByName.get(name)!.columns, sheetByName.get(checkedSheets[0])!.columns)
+      hasSameColumns(sheetByName.get(name)!.columns, sheetByName.get(checkedSheets[0])!.columns)
     );
   const effectiveMode: DataRawSourceBuildMode | null =
     mode === 'excel_per_sheet' || mode === 'excel_merge_sheets'
@@ -891,9 +896,10 @@ function SourceCard(props: {
 /** Config page (design raw_sheetcfg_v1): full-width groups in an 8px-padded content area. */
 export const groupClass = 'ui-group ui-form-flush !mx-0 !mb-2 !mt-0 bg-surface';
 /** Borderless control filling its table / form cell; focus draws an inner outline. */
-const cellInputClass =
-  'h-full min-h-[35px] w-full border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)] disabled:text-text-muted';
-export const cellSelectClass = `${'h-full min-h-[35px] border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)]'} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7 hover:bg-surface-hover`;
+const cellBaseClass =
+  'h-full min-h-[35px] border-0 bg-transparent px-2.5 text-[12.5px] text-text-primary outline-none focus:shadow-[inset_0_0_0_1.5px_var(--color-accent)] disabled:text-text-muted';
+const cellInputClass = `${cellBaseClass} w-full`;
+export const cellSelectClass = `${cellBaseClass} cursor-pointer appearance-none bg-[length:12px] bg-[right_10px_center] bg-no-repeat pr-7 hover:bg-surface-hover`;
 export const titleCellClass =
   'inline-flex h-full items-center justify-center gap-1.5 whitespace-nowrap border-l border-border-subtle px-4 text-xs font-medium transition-colors hover:bg-accent-muted disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -1386,24 +1392,17 @@ export function Toggle({
   testId?: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={on}
-      disabled={disabled}
-      onClick={() => onChange(!on)}
-      data-testid={testId}
-      className="inline-flex items-center gap-2 text-[12.5px] text-text-secondary disabled:opacity-50"
-    >
-      <span
-        className={`relative h-4 w-7 rounded-full transition-colors ${on ? 'bg-accent' : 'border border-border bg-surface-active'}`}
-      >
-        <span
-          className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow-soft transition-all ${on ? 'left-3.5' : 'left-0.5'}`}
-        />
-      </span>
-      {label}
-    </button>
+    <label className="inline-flex cursor-pointer items-center gap-2 text-[12.5px] text-text-secondary has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50">
+      <Switch
+        size="sm"
+        checked={on}
+        onCheckedChange={onChange}
+        disabled={disabled}
+        data-testid={testId}
+        aria-label={label}
+      />
+      <span>{label}</span>
+    </label>
   );
 }
 
@@ -1757,7 +1756,7 @@ function DoneStep({
     <div className={panelClass} data-testid="raw-source-done">
       <div className="mx-auto w-full max-w-2xl px-6 py-10">
         <div className="flex items-center gap-2 text-[16px] font-medium text-text-primary">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-white">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success text-success-foreground">
             <Check className="h-3.5 w-3.5" />
           </span>
           {title}

@@ -42,6 +42,7 @@ import { CodeBlock } from './CodeBlock';
 import { ThinkingBlock } from './ThinkingBlock';
 import { ToolUseBlock } from './ToolUseBlock';
 import { ToolResultBlock } from './ToolResultBlock';
+import { formatByteSize } from '../../utils/i18n-format';
 import type { ContentBlockViewProps } from './types';
 
 const MessageMarkdown = lazy(() =>
@@ -67,11 +68,7 @@ const attachmentIconMap: Record<ArtifactIconKey, typeof FileText> = {
   file: File,
 };
 
-function formatAttachmentSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${bytes} B`;
-}
+const formatAttachmentSize = (bytes: number) => formatByteSize(bytes);
 
 export const ContentBlockView = memo(function ContentBlockView({
   block,

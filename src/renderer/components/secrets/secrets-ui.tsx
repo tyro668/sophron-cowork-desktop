@@ -264,7 +264,7 @@ export function useSecretReview(): {
                 secretsReviewed: true,
               });
             }}
-            className="h-8 rounded bg-accent px-3 text-[12.5px] font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="h-8 rounded bg-accent px-3 text-[12.5px] font-medium text-accent-foreground hover:opacity-90 disabled:opacity-50"
           >
             {rows.some((row) => row.keep) ? t('secrets.reviewConfirm') : t('secrets.reviewKeep')}
           </button>

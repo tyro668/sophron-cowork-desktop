@@ -14,10 +14,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { GlassDropdownMenu, glassTriggerButtonClass } from './GlassDropdownMenu';
 import { GlassTimePickerColumns } from './GlassTimePicker';
-
-function pad2(value: number): string {
-  return String(value).padStart(2, '0');
-}
+import { pad2 } from '../utils/i18n-format';
 
 function getTimeValue(date: Date): string {
   return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
@@ -300,7 +297,7 @@ export function GlassDateTimePicker({
             onClick={handleToday}
             className="inline-flex h-8 items-center justify-center rounded-lg border border-border-muted bg-surface px-2.5 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
-            {t('datePicker.today', { defaultValue: isChinese ? '今天' : 'Today' })}
+            {t('datePicker.today')}
           </button>
           <button
             type="button"
@@ -308,7 +305,7 @@ export function GlassDateTimePicker({
             className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-accent/40 bg-accent-muted px-2.5 text-xs font-semibold text-accent transition-colors hover:bg-accent/15"
           >
             <Check className="h-3.5 w-3.5" />
-            {t('common.confirm', { defaultValue: isChinese ? '确定' : 'OK' })}
+            {t('common.confirm')}
           </button>
         </div>
       </div>

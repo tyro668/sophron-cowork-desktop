@@ -47,7 +47,7 @@ export function createEmptyDraft(name: string): AutomationDraft {
 
 export function createCloudTableAutomationDraft(
   template: PendingCloudAutomationTemplate,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): AutomationDraft {
   const trigger: EditableAutomationTrigger = {
     kind: 'daily',
@@ -71,13 +71,10 @@ export function createCloudTableAutomationDraft(
     accessModeLabel: template.accessModeLabel,
     connectionLabel: template.connectionLabel,
   };
-  const tableName = template.source.tableName || tr('schedule.cloudTableFallbackName', '云表');
+  const tableName = template.source.tableName || tr('schedule.cloudTableFallbackName');
   return {
-    name: tr('schedule.cloudAutomationDefaultName', '{{name}}自动处理').replace(
-      '{{name}}',
-      tableName
-    ),
-    description: tr('schedule.cloudAutomationDescription', '自动导入云空间表并保存数据处理结果'),
+    name: tr('schedule.cloudAutomationDefaultName').replace('{{name}}', tableName),
+    description: tr('schedule.cloudAutomationDescription'),
     projectId: '',
     enabled: true,
     permissionPolicy: 'full_access',
@@ -89,7 +86,7 @@ export function createCloudTableAutomationDraft(
         {
           id: crypto.randomUUID(),
           type: 'conversation.run',
-          label: tr('schedule.cloudAutoProcessTitle', '云表自动处理'),
+          label: tr('schedule.cloudAutoProcessTitle'),
           enabled: true,
           config: {
             prompt: buildCloudAutomationPrompt(config),
@@ -283,50 +280,45 @@ export function getCloudAutomationConfigsFromDraft(
 
 export function validateEnabledActionNodes(
   draft: AutomationDraft,
-  tr: (key: string, fallback: string) => string
+  tr: (key: string, fallback?: string) => string
 ): string | null {
   const enabledNodes = draft.actionGraph.nodes.filter((node) => node.enabled !== false);
   if (enabledNodes.length === 0) {
-    return tr('schedule.enabledActionRequired', '请至少启用一个动作');
+    return tr('schedule.enabledActionRequired');
   }
   for (const node of enabledNodes) {
     if (
       node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
       (node.config.output as { location?: string } | undefined)?.location !== 'local'
     )
-      return tr(
-        'schedule.cloudSync.useOutputAction',
-        '数据处理结果请保存到本地结果表，再添加写入网盘文件动作。'
-      );
+      return tr('schedule.cloudSync.useOutputAction');
     if (node.type === 'cloud.sync' && !cloudSyncSchema.safeParse(node.config).success) {
-      if (node.config.direction === 'input')
-        return tr('schedule.cloudInput.invalid', '请选择分析空间、项目、来源表和目标原始表');
-      if (node.config.direction === 'output')
-        return tr('schedule.cloudSync.invalid', '请选择结果表、云空间、项目和同步目标');
-      return tr('schedule.cloudSync.selectDirection', '选择同步方向');
+      if (node.config.direction === 'input') return tr('schedule.cloudInput.invalid');
+      if (node.config.direction === 'output') return tr('schedule.cloudSync.invalid');
+      return tr('schedule.cloudSync.selectDirection');
     }
     const cloudAutomation = parseCloudAutomationConfig(node.config.cloudAutomation);
     if (cloudAutomation) {
-      return tr('schedule.generatedPipelineRequired', '请先生成并确认数据加工');
+      return tr('schedule.generatedPipelineRequired');
     }
     if (
       node.type === 'conversation.run' &&
       !cloudAutomation &&
       !String(node.config.prompt ?? '').trim()
     ) {
-      return tr('schedule.promptRequired', '请输入要执行的 Prompt');
+      return tr('schedule.promptRequired');
     }
     if (node.type === 'script.run' && !String(node.config.packageId ?? '').trim()) {
-      return tr('schedule.script.required', '请选择脚本包');
+      return tr('schedule.script.required');
     }
     if (node.type === 'data.pipeline.run' && !String(node.config.pipelineId ?? '').trim()) {
-      return tr('schedule.dataPipelineRequired', '请选择要执行的数据加工');
+      return tr('schedule.dataPipelineRequired');
     }
     if (
       node.type === CLOUD_TABLE_PROCESS_ACTION_TYPE &&
       !String(node.config.pipelineId ?? '').trim()
     ) {
-      return tr('schedule.generatedPipelineRequired', '请先生成并确认数据加工');
+      return tr('schedule.generatedPipelineRequired');
     }
   }
   return null;

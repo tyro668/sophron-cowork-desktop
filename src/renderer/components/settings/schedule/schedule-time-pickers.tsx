@@ -5,15 +5,6 @@ import { GlassTimePicker } from '../../GlassTimePicker';
 import { GlassDropdownMenu } from '../../GlassDropdownMenu';
 
 export const WEEKDAY_ORDER: Array<0 | 1 | 2 | 3 | 4 | 5 | 6> = [1, 2, 3, 4, 5, 6, 0];
-export const WEEKDAY_SHORT_FALLBACK: Record<number, string> = {
-  0: '日',
-  1: '一',
-  2: '二',
-  3: '三',
-  4: '四',
-  5: '五',
-  6: '六',
-};
 export const MONTH_DAYS = Array.from({ length: 31 }, (_, index) => index + 1);
 
 /** Trigger classes for a picker that fills a flush form cell (no own frame). */
@@ -30,7 +21,7 @@ export function WeekdayPicker({
   /** Seven flush cells filling the value cell (shared 1px grid lines). */
   flush?: boolean;
   onChange: (value: Array<0 | 1 | 2 | 3 | 4 | 5 | 6>) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const selected = new Set(value ?? []);
   const toggle = (day: 0 | 1 | 2 | 3 | 4 | 5 | 6) => {
@@ -63,7 +54,7 @@ export function WeekdayPicker({
                   : 'text-text-secondary hover:bg-surface-hover'
               }`}
             >
-              {tr(`schedule.weekdayShort${day}`, WEEKDAY_SHORT_FALLBACK[day])}
+              {tr(`schedule.weekdayShort${day}`)}
             </button>
           );
         })}
@@ -86,7 +77,7 @@ export function WeekdayPicker({
                 : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >
-            {tr(`schedule.weekdayShort${day}`, WEEKDAY_SHORT_FALLBACK[day])}
+            {tr(`schedule.weekdayShort${day}`)}
           </button>
         );
       })}
@@ -103,7 +94,7 @@ export function MonthlyDayPicker({
   daysOfMonth: number[];
   includeLastDay?: boolean;
   onChange: (next: { daysOfMonth: number[]; includeLastDay: boolean }) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const [open, setOpen] = useState(false);
   const selected = new Set(daysOfMonth ?? []);
@@ -137,7 +128,7 @@ export function MonthlyDayPicker({
       ? [
           {
             key: 'last-day',
-            label: tr('schedule.monthLastDayShort', '最后一天'),
+            label: tr('schedule.monthLastDayShort'),
             onRemove: toggleLastDay,
           },
         ]
@@ -167,7 +158,7 @@ export function MonthlyDayPicker({
                     <span
                       role="button"
                       tabIndex={0}
-                      aria-label={tr('schedule.removeMonthDay', '移除执行日期')}
+                      aria-label={tr('schedule.removeMonthDay')}
                       onPointerDown={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
@@ -190,9 +181,7 @@ export function MonthlyDayPicker({
                   </span>
                 ))
               ) : (
-                <span className="text-text-muted">
-                  {tr('schedule.monthDayPlaceholder', '请选择执行日期')}
-                </span>
+                <span className="text-text-muted">{tr('schedule.monthDayPlaceholder')}</span>
               )}
               {selectedTags.length > 4 && (
                 <span className="inline-flex h-5 items-center rounded-md bg-surface px-1.5 text-[11px] text-text-muted">
@@ -233,7 +222,7 @@ export function MonthlyDayPicker({
                 : 'border-border-muted bg-surface text-text-secondary hover:border-accent/25 hover:bg-accent-muted hover:text-accent'
             }`}
           >
-            {tr('schedule.monthLastDay', '每月最后一天')}
+            {tr('schedule.monthLastDay')}
           </button>
         </div>
       </GlassDropdownMenu>
@@ -251,7 +240,7 @@ export function TimesEditor({
   /** Fill the value cell: time picker fills, 删除 / 添加时间 are flush side cells. */
   flush?: boolean;
   onChange: (times: string[]) => void;
-  tr: (key: string, fallback: string) => string;
+  tr: (key: string, fallback?: string) => string;
 }) {
   const safeTimes = times && times.length > 0 ? times : [DEFAULT_TIME];
   const updateAt = (index: number, time: string) => {
@@ -281,8 +270,8 @@ export function TimesEditor({
               <button
                 type="button"
                 onClick={() => removeAt(index)}
-                title={tr('schedule.removeTime', '删除')}
-                aria-label={tr('schedule.removeTime', '删除')}
+                title={tr('schedule.removeTime')}
+                aria-label={tr('schedule.removeTime')}
                 className="flex w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-error"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -295,7 +284,7 @@ export function TimesEditor({
                 className="ui-accent-cell w-[28.5714%] flex-shrink-0 border-l border-border-subtle"
               >
                 <Plus className="h-3.5 w-3.5" />
-                {tr('schedule.addTime', '添加时间')}
+                {tr('schedule.addTime')}
               </button>
             ) : (
               <span className="w-[28.5714%] flex-shrink-0 border-l border-border-subtle" />
@@ -316,11 +305,11 @@ export function TimesEditor({
             <button
               type="button"
               onClick={() => removeAt(index)}
-              title={tr('schedule.removeTime', '删除')}
+              title={tr('schedule.removeTime')}
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-muted text-text-muted transition-colors hover:border-error/30 hover:bg-error/10 hover:text-error"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              <span className="sr-only">{tr('schedule.removeTime', '删除')}</span>
+              <span className="sr-only">{tr('schedule.removeTime')}</span>
             </button>
           )}
           {index === safeTimes.length - 1 && (
@@ -330,7 +319,7 @@ export function TimesEditor({
               className="inline-flex h-9 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[12px] font-medium text-accent transition-colors hover:bg-accent-muted"
             >
               <Plus className="h-3.5 w-3.5" />
-              {tr('schedule.addTime', '添加时间')}
+              {tr('schedule.addTime')}
             </button>
           )}
         </div>

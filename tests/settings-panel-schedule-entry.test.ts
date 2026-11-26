@@ -32,10 +32,10 @@ describe('Automation workspace', () => {
   });
 
   it('loads automations, action definitions, data resources, and run history', () => {
-    expect(automationSource).toContain('window.electronAPI.automation.list(');
-    expect(automationSource).toContain('window.electronAPI.automation.listActionDefinitions()');
+    expect(automationSource).toContain('automationClient.list(');
+    expect(automationSource).toContain('automationClient.listActionDefinitions()');
     expect(automationSource).toContain('loadDataPipelineResources()');
-    expect(automationSource).toContain('window.electronAPI.automation.listRuns(automation.id');
+    expect(automationSource).toContain('automationClient.listRuns(automation.id');
   });
 
   it('ignores stale asynchronous list and run-history responses', () => {
@@ -87,15 +87,9 @@ describe('Automation workspace', () => {
   });
 
   it('creates, updates, runs, and deletes through the automation API', () => {
-    expect(automationSource).toContain('window.electronAPI.automation.update(selectedId, payload)');
-    expect(automationSource).toContain(
-      'window.electronAPI.automation.create(payload as AutomationCreateInput)'
-    );
-    expect(automationSource).toContain(
-      'window.electronAPI.automation.runNow(selectedAutomation.id)'
-    );
-    expect(automationSource).toContain(
-      'window.electronAPI.automation.delete(selectedAutomation.id)'
-    );
+    expect(automationSource).toContain('automationClient.update(selectedId, payload)');
+    expect(automationSource).toContain('automationClient.create(payload as AutomationCreateInput)');
+    expect(automationSource).toContain('automationClient.runNow(selectedAutomation.id)');
+    expect(automationSource).toContain('automationClient.delete(selectedAutomation.id)');
   });
 });

@@ -10,6 +10,7 @@ import type {
   ThinkingLevel,
 } from '../types';
 import { useTranslation } from 'react-i18next';
+import i18n from '../i18n/config';
 import { isLoopbackBaseUrl } from '../../shared/network/loopback';
 import { normalizeOllamaBaseUrl } from '../../shared/ollama-base-url';
 import { API_PROVIDER_PRESETS } from '../../shared/api-model-presets';
@@ -503,7 +504,10 @@ export function buildApiConfigSets(
       return {
         ...set,
         id: typeof set.id === 'string' && set.id.trim() ? set.id : `set-${index + 1}`,
-        name: typeof set.name === 'string' && set.name.trim() ? set.name : `配置方案 ${index + 1}`,
+        name:
+          typeof set.name === 'string' && set.name.trim()
+            ? set.name
+            : i18n.t('api.configSetFallbackName', { index: index + 1 }),
         provider,
         customProtocol,
         activeProfileKey,

@@ -4,7 +4,8 @@ import path from 'node:path';
 
 const appPath = path.resolve(process.cwd(), 'src/renderer/App.tsx');
 const sidebarPath = path.resolve(process.cwd(), 'src/renderer/components/Sidebar.tsx');
-const storePath = path.resolve(process.cwd(), 'src/renderer/store/index.ts');
+const storeTypesPath = path.resolve(process.cwd(), 'src/renderer/store/types.ts');
+const storeNavBridgePath = path.resolve(process.cwd(), 'src/renderer/store/nav-bridge.ts');
 const dataViewPagePath = path.resolve(
   process.cwd(),
   'src/renderer/features/data/pages/DataViewPage.tsx'
@@ -68,12 +69,13 @@ describe('main workspace navigation', () => {
     // Behavioral coverage lives in tests/renderer/data-navigation-store.test.ts
     // (setMainView, __navigate aliases, nonce-guarded clearing). Keep only a
     // smoke check that the MainView union and nav-server bridge still exist.
-    const source = fs.readFileSync(storePath, 'utf8');
+    const typesSource = fs.readFileSync(storeTypesPath, 'utf8');
+    const navBridgeSource = fs.readFileSync(storeNavBridgePath, 'utf8');
 
-    expect(source).toContain(
+    expect(typesSource).toContain(
       "export type MainView = 'chat' | 'data' | 'cloud-data' | 'skills' | 'automation';"
     );
-    expect(source).toContain('__navigate');
+    expect(navBridgeSource).toContain('__navigate');
   });
 
   it('defines localized main nav labels', () => {

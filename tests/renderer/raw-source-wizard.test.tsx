@@ -370,6 +370,6 @@ describe('RawSourceWizard embedded (inline 组织方式 change)', () => {
     expect(screen.queryByTestId('raw-source-config-tabs')).toBeNull();
     expect(screen.queryByTestId('raw-source-source-group')).toBeNull();
     expect(screen.getByTestId('raw-source-selector-by')).toBeTruthy();
-    expect(screen.getByDisplayValue('门店（合并）')).toBeTruthy();
+    expect(screen.getByDisplayValue(/^门店(?:（合并）| \(Merged\))$/)).toBeTruthy();
   });
 });

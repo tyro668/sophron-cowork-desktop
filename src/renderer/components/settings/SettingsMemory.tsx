@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -21,7 +22,7 @@ import type {
 import { useAppStore } from '../../store';
 import type { GlobalNoticeType } from '../../store';
 import { showToast } from '../../utils/toast';
-import { GlassSwitch } from '../GlassSwitch';
+import { Switch } from '../ui';
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { underlineTabTriggerClass } from '../data-view/shared';
@@ -119,7 +120,7 @@ export function SettingsMemory() {
       } catch (error) {
         if (!cancelled) {
           setStatus({
-            text: error instanceof Error ? error.message : String(error),
+            text: formatIpcError(error, String(error)),
             tone: 'error',
           });
         }
@@ -186,7 +187,7 @@ export function SettingsMemory() {
     try {
       await action();
     } catch (error) {
-      setStatus({ text: error instanceof Error ? error.message : String(error), tone: 'error' });
+      setStatus({ text: formatIpcError(error, String(error)), tone: 'error' });
     } finally {
       setIsBusy(false);
     }
@@ -213,17 +214,17 @@ export function SettingsMemory() {
               updates
             );
       if (!updated) {
-        throw new Error(t('memory.deleteEntryNotFound', '记忆不存在，可能已经被删除'));
+        throw new Error(t('memory.deleteEntryNotFound'));
       }
       await refreshAll();
-      setStatus({ text: t('memory.confirmSuccess', '该记忆已确认'), tone: 'success' });
+      setStatus({ text: t('memory.confirmSuccess'), tone: 'success' });
     });
   };
 
   const handleDelete = (record: MemoryRecord) => {
     void (async () => {
       const confirmed = await confirmDelete({
-        message: t('memory.deleteEntryConfirm', '删除后该记忆不会再参与检索，是否继续？'),
+        message: t('memory.deleteEntryConfirm'),
       });
       if (!confirmed) return;
       await runBusyAction(async () => {
@@ -232,7 +233,7 @@ export function SettingsMemory() {
             (record.raw as CoreMemoryEntry).combinedKey
           );
           if (!result.success) {
-            throw new Error(t('memory.deleteEntryNotFound', '记忆不存在，可能已经被删除'));
+            throw new Error(t('memory.deleteEntryNotFound'));
           }
           setCoreEntries((current) =>
             current.filter(
@@ -244,7 +245,7 @@ export function SettingsMemory() {
             (record.raw as ProjectMemoryEntry).id
           );
           if (!result.success) {
-            throw new Error(t('memory.deleteEntryNotFound', '记忆不存在，可能已经被删除'));
+            throw new Error(t('memory.deleteEntryNotFound'));
           }
           setProjectEntries((current) =>
             current.filter((entry) => entry.id !== (record.raw as ProjectMemoryEntry).id)
@@ -257,7 +258,7 @@ export function SettingsMemory() {
 
   const handleRebuildWorkspace = () => {
     if (!currentWorkspace) {
-      setStatus({ text: t('memory.noWorkspace', '暂无工作区'), tone: 'warning' });
+      setStatus({ text: t('memory.noWorkspace'), tone: 'warning' });
       return;
     }
     void (async () => {
@@ -300,14 +301,12 @@ export function SettingsMemory() {
   return (
     <div className="flex h-full min-h-[34rem] flex-col gap-2.5">
       <section className="flex items-center justify-between gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2.5">
-        <h3 className="text-[13px] font-semibold text-text-primary">
-          {t('memory.policyTitle', '启用记忆')}
-        </h3>
-        <GlassSwitch
+        <h3 className="text-[13px] font-semibold text-text-primary">{t('memory.policyTitle')}</h3>
+        <Switch
           checked={enabled}
           onCheckedChange={() => handleToggle()}
           disabled={isBusy}
-          ariaLabel={t('memory.policyToggleLabel', '启用记忆机制')}
+          aria-label={t('memory.policyToggleLabel')}
         />
       </section>
 
@@ -315,45 +314,41 @@ export function SettingsMemory() {
         <div className="flex min-h-0 flex-1 flex-col gap-2.5">
           <section className="grid grid-cols-2 overflow-hidden rounded-md border border-border-subtle bg-surface xl:grid-cols-4">
             <MemoryStat
-              label={t('memory.longTermMemory', '长期记忆')}
+              label={t('memory.longTermMemory')}
               value={overview?.coreCount ?? 0}
-              unit={t('memory.itemUnit', '条')}
+              unit={t('memory.itemUnit')}
             />
             <MemoryStat
-              label={t('memory.projectMemoryMetric', '项目记忆')}
+              label={t('memory.projectMemoryMetric')}
               value={overview?.projectCount ?? 0}
-              unit={t('memory.itemUnitShort', '个')}
+              unit={t('memory.itemUnitShort')}
             />
             <MemoryStat
-              label={t('memory.recentActive', '最近活跃')}
+              label={t('memory.recentActive')}
               value={activeRecentCount}
-              unit={t('memory.itemUnit', '条')}
+              unit={t('memory.itemUnit')}
             />
             <MemoryStat
               label={t('memory.health')}
               value={
                 overview?.failedSessionCount
-                  ? `${t('memory.risky', '异常')} · ${overview.failedSessionCount}`
-                  : t('memory.good', '良好')
+                  ? `${t('memory.risky')} · ${overview.failedSessionCount}`
+                  : t('memory.good')
               }
               tone={overview?.failedSessionCount ? 'error' : 'default'}
             />
             {injections[0] ? (
               <div className="col-span-2 border-t border-border-subtle px-4 py-2 text-[11px] font-medium text-text-muted xl:col-span-4">
-                {t(
-                  'memory.lastInjection',
-                  '上次注入 {{time}} · 核心 {{core}} · 项目 {{project}} · 经验 {{experience}} · {{chars}} 字符',
-                  {
-                    time: formatDate(injections[0].timestamp),
-                    core: injections[0].coreKeys.length,
-                    project: injections[0].projectKeys.length,
-                    experience:
-                      injections[0].experienceChunkIds.length +
-                      injections[0].experienceSessionIds.length,
-                    chars: injections[0].totalChars.toLocaleString(),
-                  }
-                )}
-                {injections[0].truncated ? ` · ${t('memory.injectionTruncated', '已截断')}` : ''}
+                {t('memory.lastInjection', {
+                  time: formatDate(injections[0].timestamp),
+                  core: injections[0].coreKeys.length,
+                  project: injections[0].projectKeys.length,
+                  experience:
+                    injections[0].experienceChunkIds.length +
+                    injections[0].experienceSessionIds.length,
+                  chars: injections[0].totalChars.toLocaleString(),
+                })}
+                {injections[0].truncated ? ` · ${t('memory.injectionTruncated')}` : ''}
               </div>
             ) : null}
           </section>
@@ -368,13 +363,13 @@ export function SettingsMemory() {
                 <div className="flex flex-wrap items-end justify-between gap-2 border-b border-border-subtle px-3 pt-1.5">
                   <TabsList className="inline-flex items-end gap-3 rounded-none border-0 bg-transparent p-0">
                     <TabsTrigger value="all" className={underlineTabTriggerClass}>
-                      {t('memory.allTab', '全部')}
+                      {t('memory.allTab')}
                     </TabsTrigger>
                     <TabsTrigger value="core" className={underlineTabTriggerClass}>
-                      {t('memory.coreCapabilityTab', '核心能力')}
+                      {t('memory.coreCapabilityTab')}
                     </TabsTrigger>
                     <TabsTrigger value="project" className={underlineTabTriggerClass}>
-                      {t('memory.projectContextTab', '项目上下文')}
+                      {t('memory.projectContextTab')}
                     </TabsTrigger>
                   </TabsList>
                   <button
@@ -384,7 +379,7 @@ export function SettingsMemory() {
                     className="mb-1.5 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 text-xs font-medium text-text-secondary shadow-soft transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
-                    {t('memory.organizeAction', '整理')}
+                    {t('memory.organizeAction')}
                   </button>
                 </div>
 
@@ -394,7 +389,7 @@ export function SettingsMemory() {
                     <input
                       value={query}
                       onChange={(event) => setQuery(event.target.value)}
-                      placeholder={t('memory.searchListPlaceholder', '搜索记忆标题或标签')}
+                      placeholder={t('memory.searchListPlaceholder')}
                       className="h-8 w-full rounded-lg border border-border-muted bg-surface pl-8 pr-3 text-xs font-medium text-text-secondary shadow-soft outline-none transition-colors placeholder:text-text-muted focus:border-accent focus:ring-2 focus:ring-accent/15"
                     />
                   </label>
@@ -421,7 +416,7 @@ export function SettingsMemory() {
 
                   <div className="flex min-h-9 items-center justify-between gap-2 border-t border-border-subtle px-3 text-xs font-medium text-text-secondary">
                     <span>
-                      {t('memory.totalMemories', '共 {{count}} 条记忆', {
+                      {t('memory.totalMemories', {
                         count: filteredRecords.length,
                       })}
                     </span>
@@ -463,7 +458,7 @@ export function SettingsMemory() {
             <section className="flex flex-shrink-0 flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-border-subtle bg-surface px-3 py-2">
               {duplicateCount > 0 ? (
                 <span className="flex items-center gap-2 text-xs text-text-secondary">
-                  {t('memory.duplicateMemoryDesc', '检测到 {{count}} 条可能重复的记忆', {
+                  {t('memory.duplicateMemoryDesc', {
                     count: duplicateCount,
                   })}
                   <button
@@ -472,13 +467,13 @@ export function SettingsMemory() {
                     disabled={isBusy}
                     className="inline-flex h-6 items-center rounded-md border border-border-muted bg-surface px-2 text-[11px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    {t('memory.organizeDuplicateAction', '去整理')}
+                    {t('memory.organizeDuplicateAction')}
                   </button>
                 </span>
               ) : null}
               {pendingConfidenceCount > 0 ? (
                 <span className="flex items-center gap-2 text-xs text-text-secondary">
-                  {t('memory.lowConfidenceDesc', '{{count}} 条记忆需要继续验证', {
+                  {t('memory.lowConfidenceDesc', {
                     count: pendingConfidenceCount,
                   })}
                   <button
@@ -496,7 +491,7 @@ export function SettingsMemory() {
                       }
                     }}
                   >
-                    {t('memory.optimizeAction', '去查看')}
+                    {t('memory.optimizeAction')}
                   </button>
                 </span>
               ) : null}
@@ -597,7 +592,7 @@ function MemoryListItem({
                 onConfirm();
               }}
               disabled={isBusy}
-              aria-label={t('memory.confirmAction', '确认')}
+              aria-label={t('memory.confirmAction')}
               className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-accent/10 hover:text-accent focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
             >
               <Check className="h-3.5 w-3.5" />
@@ -610,7 +605,7 @@ function MemoryListItem({
               onDelete();
             }}
             disabled={isBusy}
-            aria-label={t('memory.deleteEntryConfirm', '删除该记忆')}
+            aria-label={t('memory.deleteEntryConfirm')}
             className="inline-flex h-6 w-6 items-center justify-center rounded-md text-text-muted opacity-0 transition-opacity hover:bg-error/10 hover:text-error focus-visible:opacity-100 group-hover:opacity-100 disabled:cursor-not-allowed"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -649,9 +644,7 @@ function MemoryDetailPanel({
     <aside className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-md border border-border-subtle bg-surface p-3">
       <div className="flex items-start justify-between gap-3">
         <span className="inline-flex h-6 items-center rounded-lg bg-accent-muted px-2.5 text-xs font-medium text-accent">
-          {record.kind === 'core'
-            ? t('memory.coreCapabilityTab', '核心能力')
-            : t('memory.projectContextTab', '项目上下文')}
+          {record.kind === 'core' ? t('memory.coreCapabilityTab') : t('memory.projectContextTab')}
         </span>
       </div>
 
@@ -664,7 +657,7 @@ function MemoryDetailPanel({
 
       <div className="mt-4">
         <div className="flex items-center justify-between text-[12px] font-semibold text-text-primary">
-          <span>{t('memory.confidenceLabel', '可信等级')}</span>
+          <span>{t('memory.confidenceLabel')}</span>
           <span className="text-accent">{getConfidenceLevelLabel(confidenceLevel, t)}</span>
         </div>
         <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-surface-muted">
@@ -675,7 +668,7 @@ function MemoryDetailPanel({
         </div>
         <p className="mt-1.5 text-[11px] leading-4 text-text-muted">{confidenceReason}</p>
         <p className="mt-0.5 text-[11px] leading-4 text-text-muted">
-          {t('memory.confidenceEvidenceMeta', '证据 {{evidence}} 条 · 复验 {{corroboration}} 次', {
+          {t('memory.confidenceEvidenceMeta', {
             evidence: record.confidenceSignals.evidenceCount,
             corroboration: record.confidenceSignals.corroborationCount,
           })}
@@ -683,9 +676,7 @@ function MemoryDetailPanel({
       </div>
 
       <div className="mt-4 border-t border-border-subtle pt-3">
-        <h4 className="text-[12px] font-semibold text-text-primary">
-          {t('memory.source', '来源')}
-        </h4>
+        <h4 className="text-[12px] font-semibold text-text-primary">{t('memory.source')}</h4>
         <div className="mt-1.5 flex items-center gap-2 text-[12px] font-medium text-text-secondary">
           <FileText className="h-4 w-4 text-text-muted" />
           <span className="truncate">
@@ -695,9 +686,7 @@ function MemoryDetailPanel({
       </div>
 
       <div className="mt-4 border-t border-border-subtle pt-3">
-        <h4 className="text-[12px] font-semibold text-text-primary">
-          {t('memory.recentUsage', '最近使用')}
-        </h4>
+        <h4 className="text-[12px] font-semibold text-text-primary">{t('memory.recentUsage')}</h4>
         <div className="mt-2 max-h-24 space-y-1.5 overflow-y-auto pr-1">
           {recentEvidence.length ? (
             recentEvidence.map((evidence, index) => (
@@ -715,9 +704,7 @@ function MemoryDetailPanel({
               </div>
             ))
           ) : (
-            <div className="text-[12px] text-text-muted">
-              {t('memory.noEvidence', '暂无来源记录')}
-            </div>
+            <div className="text-[12px] text-text-muted">{t('memory.noEvidence')}</div>
           )}
         </div>
       </div>
@@ -731,7 +718,7 @@ function MemoryDetailPanel({
             className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-medium text-accent-foreground shadow-soft transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-45"
           >
             <Check className="h-3.5 w-3.5" />
-            {t('memory.confirmAction', '确认')}
+            {t('memory.confirmAction')}
           </button>
         </div>
       ) : null}
@@ -793,7 +780,7 @@ function formatProjectTitle(
   entry: ProjectMemoryEntry,
   t: ReturnType<typeof useTranslation>['t']
 ): string {
-  return `${t('memory.projectPrefix', '项目')}: ${entry.key}`;
+  return `${t('memory.projectPrefix')}: ${entry.key}`;
 }
 
 function buildMemoryTags(
@@ -802,11 +789,7 @@ function buildMemoryTags(
   t: ReturnType<typeof useTranslation>['t']
 ): string[] {
   const tags = new Set<string>();
-  tags.add(
-    kind === 'core'
-      ? t('memory.coreCapabilityTab', '核心能力')
-      : t('memory.projectContextTab', '项目上下文')
-  );
+  tags.add(kind === 'core' ? t('memory.coreCapabilityTab') : t('memory.projectContextTab'));
   if ('category' in entry && entry.category) {
     tags.add(categoryLabel(entry.category, t));
   }
@@ -823,11 +806,11 @@ function categoryLabel(
   category: CoreMemoryEntry['category'],
   t: ReturnType<typeof useTranslation>['t']
 ): string {
-  if (category === 'skills') return t('memory.categorySkills', '技能');
-  if (category === 'preferences') return t('memory.categoryPreferences', '偏好');
-  if (category === 'interests') return t('memory.categoryInterests', '兴趣');
-  if (category === 'identity') return t('memory.categoryIdentity', '身份');
-  return t('memory.coreCapabilityTab', '核心能力');
+  if (category === 'skills') return t('memory.categorySkills');
+  if (category === 'preferences') return t('memory.categoryPreferences');
+  if (category === 'interests') return t('memory.categoryInterests');
+  if (category === 'identity') return t('memory.categoryIdentity');
+  return t('memory.coreCapabilityTab');
 }
 
 function normalizeConfidence(value: number): number {
@@ -848,9 +831,9 @@ function getConfidenceLevelLabel(
   level: ConfidenceLevel,
   t: ReturnType<typeof useTranslation>['t']
 ): string {
-  if (level === 'high') return t('memory.confidenceHigh', '高可信');
-  if (level === 'medium') return t('memory.confidenceMedium', '中可信');
-  return t('memory.confidencePending', '待确认');
+  if (level === 'high') return t('memory.confidenceHigh');
+  if (level === 'medium') return t('memory.confidenceMedium');
+  return t('memory.confidencePending');
 }
 
 function getConfidenceReason(
@@ -861,21 +844,18 @@ function getConfidenceReason(
     return signals.reason;
   }
   if (signals.userVerified) {
-    return t('memory.confidenceReasonManual', '用户确认或手动调整过这条记忆。');
+    return t('memory.confidenceReasonManual');
   }
   if (signals.sourceType === 'explicit_user_statement') {
-    return t('memory.confidenceReasonExplicit', '来自用户明确表达，并保存了对应对话证据。');
+    return t('memory.confidenceReasonExplicit');
   }
   if (signals.sourceType === 'conversation_summary') {
-    return t(
-      'memory.confidenceReasonSummary',
-      '来自会话总结，可信度取决于证据轮次和重复支持次数。'
-    );
+    return t('memory.confidenceReasonSummary');
   }
   if (signals.sourceType === 'llm_inference') {
-    return t('memory.confidenceReasonInference', '来自模型推断，建议在后续使用中继续验证。');
+    return t('memory.confidenceReasonInference');
   }
-  return t('memory.confidenceReasonSummary', '来自会话总结，可信度取决于证据轮次和重复支持次数。');
+  return t('memory.confidenceReasonSummary');
 }
 
 function getEntryTime(entry: ManagedMemoryEntry): number {

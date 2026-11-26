@@ -1,10 +1,11 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Shield, AlertCircle, CheckCircle, Settings, Loader2 } from 'lucide-react';
 import { renderLocalizedBannerMessage } from './shared';
 import type { LocalizedBanner } from './shared';
 import { showToast } from '../../utils/toast';
-import { GlassSwitch } from '../GlassSwitch';
+import { Switch } from '../ui';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 
@@ -140,7 +141,7 @@ export function SettingsSandbox() {
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setSandboxEnabled(previousEnabled);
-      setError({ text: err instanceof Error ? err.message : t('sandbox.failedToSave') });
+      setError({ text: formatIpcError(err, t('sandbox.failedToSave')) });
     } finally {
       setIsSavingSandbox(false);
     }
@@ -168,7 +169,7 @@ export function SettingsSandbox() {
       setSuccess({ text: t('sandbox.statusRefreshed') });
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.checkFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.checkFailed')) });
     } finally {
       setIsChecking(false);
     }
@@ -199,7 +200,7 @@ export function SettingsSandbox() {
       }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.nodeInstallFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.nodeInstallFailed')) });
     } finally {
       setIsInstalling(null);
     }
@@ -229,7 +230,7 @@ export function SettingsSandbox() {
       }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.pythonInstallFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.pythonInstallFailed')) });
     } finally {
       setIsInstalling(null);
     }
@@ -253,7 +254,7 @@ export function SettingsSandbox() {
       }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.setupFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.setupFailed')) });
     } finally {
       setIsInstalling(null);
     }
@@ -277,7 +278,7 @@ export function SettingsSandbox() {
       }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.limaStartFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.limaStartFailed')) });
     } finally {
       setIsInstalling(null);
     }
@@ -301,7 +302,7 @@ export function SettingsSandbox() {
       }
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError({ text: err instanceof Error ? err.message : t('sandbox.limaStopFailed') });
+      setError({ text: formatIpcError(err, t('sandbox.limaStopFailed')) });
     } finally {
       setIsInstalling(null);
     }
@@ -356,11 +357,11 @@ export function SettingsSandbox() {
               </p>
             </div>
           </div>
-          <GlassSwitch
+          <Switch
             checked={sandboxEnabled}
             onCheckedChange={handleToggleSandbox}
             disabled={isSavingSandbox || isInstalling !== null}
-            ariaLabel={t('sandbox.enableSandbox')}
+            aria-label={t('sandbox.enableSandbox')}
           />
         </div>
         <div className="ui-form-row">

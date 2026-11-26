@@ -20,6 +20,7 @@ import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
 import { CHANNEL_STATE_DOT_CLASS, getChannelState } from './remote/channel-state';
 import { GatewayControlCard } from './remote/GatewayControlCard';
 import { showToast } from '../utils/toast';
+import { remoteClient } from '../features/remote/api/remote-client';
 import { PairingGuideCard } from './remote/PairingGuideCard';
 import { PairingRequestsSection } from './remote/PairingRequestsSection';
 import { RemoteSectionNav } from './remote/RemoteSectionNav';
@@ -36,7 +37,7 @@ import type {
 } from './remote/types';
 import type { RemoteChannelToggleResult } from '../../shared/ipc-types';
 
-const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
+const isElectron = remoteClient.isAvailable();
 
 interface LoadDataOptions {
   showLoading?: boolean;
@@ -164,12 +165,12 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
           tunnelStatusResult,
           webhookUrlResult,
         ] = await Promise.all([
-          window.electronAPI.remote.getConfig(),
-          window.electronAPI.remote.getStatus(),
-          window.electronAPI.remote.getPairedUsers(),
-          window.electronAPI.remote.getPendingPairings(),
-          window.electronAPI.remote.getTunnelStatus(),
-          window.electronAPI.remote.getWebhookUrl(),
+          remoteClient.getConfig(),
+          remoteClient.getStatus(),
+          remoteClient.getPairedUsers(),
+          remoteClient.getPendingPairings(),
+          remoteClient.getTunnelStatus(),
+          remoteClient.getWebhookUrl(),
         ]);
 
         setStatus(statusResult);
@@ -204,10 +205,10 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     try {
       const [statusResult, pairingsResult, tunnelStatusResult, webhookUrlResult] =
         await Promise.all([
-          window.electronAPI.remote.getStatus(),
-          window.electronAPI.remote.getPendingPairings(),
-          window.electronAPI.remote.getTunnelStatus(),
-          window.electronAPI.remote.getWebhookUrl(),
+          remoteClient.getStatus(),
+          remoteClient.getPendingPairings(),
+          remoteClient.getTunnelStatus(),
+          remoteClient.getWebhookUrl(),
         ]);
       setStatus(statusResult);
       setPendingPairings(pairingsResult);
@@ -231,7 +232,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setError(null);
     try {
       const newEnabled = !status?.running;
-      const result = await window.electronAPI.remote.setEnabled(newEnabled);
+      const result = await remoteClient.setEnabled(newEnabled);
       if (!result.success) {
         setError({ key: 'remote.actionFailed' });
         return;
@@ -267,7 +268,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setIsSaving(true);
     setError(null);
     try {
-      await window.electronAPI.remote.updateGatewayConfig(gatewayConfigPatch());
+      await remoteClient.updateGatewayConfig(gatewayConfigPatch());
       showSuccess({ key: 'remote.configSaved' });
       await loadData();
     } catch (saveError) {
@@ -288,7 +289,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setIsSaving(true);
     setError(null);
     try {
-      const result = await window.electronAPI.remote.updateFeishuConfig({
+      const result = await remoteClient.updateFeishuConfig({
         type: 'feishu',
         enabled: feishuEnabled,
         appId: feishuAppId,
@@ -321,7 +322,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setIsSaving(true);
     setError(null);
     try {
-      const result = await window.electronAPI.remote.updateDingtalkConfig(
+      const result = await remoteClient.updateDingtalkConfig(
         {
           type: 'dingtalk',
           enabled: dingtalkEnabled,
@@ -362,7 +363,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setIsSaving(true);
     setError(null);
     try {
-      const result = await window.electronAPI.remote.updateWecomConfig(
+      const result = await remoteClient.updateWecomConfig(
         {
           type: 'wecom',
           enabled: wecomEnabled,
@@ -393,10 +394,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function approvePairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
-      const result = await window.electronAPI.remote.approvePairing(
-        request.channelType,
-        request.userId
-      );
+      const result = await remoteClient.approvePairing(request.channelType, request.userId);
       if (!result.success) {
         setError(result.error ? { text: result.error } : { key: 'remote.approveFailed' });
         return;
@@ -412,10 +410,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function rejectPairing(request: PairingRequest) {
     if (!isElectron) return;
     try {
-      const result = await window.electronAPI.remote.rejectPairing(
-        request.channelType,
-        request.userId
-      );
+      const result = await remoteClient.rejectPairing(request.channelType, request.userId);
       if (!result.success) {
         setError(result.error ? { text: result.error } : { key: 'remote.rejectFailed' });
         return;
@@ -431,7 +426,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
   async function revokePairing(user: PairedUser) {
     if (!isElectron) return;
     try {
-      await window.electronAPI.remote.revokePairing(user.channelType, user.userId);
+      await remoteClient.revokePairing(user.channelType, user.userId);
       showSuccess({ key: 'remote.userRemoved' });
       await loadData();
     } catch (revokeError) {
@@ -490,7 +485,7 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setTogglingChannel(type);
     setError(null);
     try {
-      const result = await window.electronAPI.remote.setChannelEnabled(type, nextEnabled);
+      const result = await remoteClient.setChannelEnabled(type, nextEnabled);
       applyChannelToggleResult(type, result);
       if (!result.success) {
         setError(result.error ? { text: result.error } : { key: 'remote.channelToggleFailed' });

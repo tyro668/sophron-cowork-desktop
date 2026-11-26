@@ -1,3 +1,4 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, KeyRound, LogIn, LogOut, RefreshCw } from 'lucide-react';
@@ -54,7 +55,7 @@ export function CodexAuthCard() {
         setError(result.error || t('api.codexLoginFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setBusy(null);
       setPrompt(null);
@@ -71,7 +72,7 @@ export function CodexAuthCard() {
         setError(result.error || t('api.codexCliNotFound'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setBusy(null);
     }
@@ -87,7 +88,7 @@ export function CodexAuthCard() {
         setError(result.error || t('api.codexLoginFailed'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatIpcError(err, String(err)));
     } finally {
       setBusy(null);
     }

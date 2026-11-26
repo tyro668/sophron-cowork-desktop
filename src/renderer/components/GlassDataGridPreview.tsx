@@ -15,6 +15,7 @@ import DataEditor, {
 import '@glideapps/glide-data-grid/dist/index.css';
 import { ChevronLeft, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { getVisiblePageNumbers } from '../utils/pagination';
 import type { DataRawTablePreview } from '../types';
 import {
   isNumericDataFieldType,
@@ -575,13 +576,6 @@ function formatPreviewCell(value: PreviewCellValue): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   return String(value);
-}
-
-function getVisiblePageNumbers(currentPage: number, pageCount: number): number[] {
-  if (pageCount <= 1) return [1];
-  if (pageCount <= 5) return Array.from({ length: pageCount }, (_, index) => index + 1);
-  const start = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
-  return Array.from({ length: 5 }, (_, index) => start + index);
 }
 
 function useGlassDataGridTheme(): Partial<Theme> {

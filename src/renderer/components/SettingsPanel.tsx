@@ -134,7 +134,7 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
     {
       id: 'remote' as TabId,
       group: 'collab',
-      label: t('settings.remote', '远程控制'),
+      label: t('settings.remote'),
       icon: Wifi,
     },
     {

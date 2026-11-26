@@ -7,8 +7,8 @@ const mainThemePaths = [
   'src/main/app/bootstrap.ts',
   'src/main/features/session/ipc.ts',
 ];
-const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/useIPC.ts');
-const storePath = path.resolve(process.cwd(), 'src/renderer/store/index.ts');
+const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/ipc-event-bridge.ts');
+const storePath = path.resolve(process.cwd(), 'src/renderer/store/slices/config-slice.ts');
 
 describe('theme settings persistence', () => {
   it('persists theme updates in the main process and applies them to native window state', () => {

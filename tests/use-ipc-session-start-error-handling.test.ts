@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/useIPC.ts');
+const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/ipc-commands.ts');
 
 describe('useIPC session start error handling', () => {
   it('contains the session start failure inside the hook after showing a global notice', () => {

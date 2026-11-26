@@ -18,7 +18,7 @@ import {
   type RowActionLabels,
 } from './shared/FormGrid';
 import { useGridRowDrag } from './shared/useGridRowDrag';
-import { validateAggregateMetrics } from './shared/metricValidation';
+import { createEmptyMetric, validateAggregateMetrics } from './shared/metricValidation';
 import { PIVOT_GRID_COLUMNS } from './shared/gridColumns';
 import {
   canAppendRow,
@@ -51,16 +51,6 @@ import {
 import type { PivotAxisEntry, PivotLiteral, PivotMetric } from '../../../shared/operator-schemas';
 import { PIVOT_AGGREGATE_FUNCTIONS, createMetricId } from '../../../shared/operator-schemas';
 
-const EMPTY_METRIC: Readonly<Omit<PivotMetric, 'id'>> = {
-  function: 'count',
-  expression: '',
-  alias: '',
-};
-
-function createEmptyMetric(): PivotMetric {
-  return { ...EMPTY_METRIC, id: createMetricId() };
-}
-
 export default function FormPivot({
   node,
   pipelineId,
@@ -77,7 +67,9 @@ export default function FormPivot({
   const rawUsing = useMemo(() => (node.config.using as PivotMetric[]) ?? [], [node.config?.using]);
   const using = useMemo(
     () =>
-      rawUsing.length > 0 ? ensureStableRowIds(rawUsing, createMetricId) : [createEmptyMetric()],
+      rawUsing.length > 0
+        ? ensureStableRowIds(rawUsing, createMetricId)
+        : [createEmptyMetric<PivotMetric>()],
     [rawUsing]
   );
   const groupBy = useMemo(() => (node.config.groupBy as string[]) ?? [], [node.config?.groupBy]);

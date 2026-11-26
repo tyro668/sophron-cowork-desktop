@@ -1,10 +1,9 @@
 import { isCancelledError } from '../../../shared/cancel';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
-  ChevronRight,
   Copy,
   Eye,
   FileCode2,
@@ -17,8 +16,6 @@ import {
   Play,
   Plus,
   RefreshCw,
-  RotateCcw,
-  Send,
   Sparkles,
   Upload,
   Wand2,
@@ -43,6 +40,11 @@ import type { Automation, DataRawTablePreview } from '../../types';
 import { useAppStore, type ScriptEditorTarget } from '../../store';
 import { GlassSelect } from '../GlassSelect';
 import { AgentModelSelector, getAgentModelLabel } from '../AgentModelSelector';
+import {
+  FixContinueActionCells,
+  GenerateActionCells,
+  WorkbenchStepBreadcrumb,
+} from '../data-view/WorkbenchActionBarCells';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { Dialog } from '../ui/dialog';
 import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
@@ -392,7 +394,7 @@ export function ScriptPackageWorkbench({
         : 'Python';
   const modelLabel = getAgentModelLabel(
     appConfig,
-    t('chat.noModel', { defaultValue: '未配置模型' }),
+    t('chat.noModel'),
     modelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
   );
 
@@ -594,7 +596,7 @@ export function ScriptPackageWorkbench({
         if (!verdict.ok)
           setTrialSuspicious({
             reason: verdict.reason ?? '',
-            sample: `输出预览：\n${result.preview ?? ''}`,
+            sample: `${t('data.rawTables.outputPreview')}\n${result.preview ?? ''}`,
           });
       }
       void refresh();
@@ -740,7 +742,7 @@ export function ScriptPackageWorkbench({
           if (run.ok)
             setTrialSuspicious({
               reason: verdict.reason ?? '',
-              sample: `输出预览：\n${run.preview ?? ''}`,
+              sample: `${t('data.rawTables.outputPreview')}\n${run.preview ?? ''}`,
             });
           return {
             passed: false,
@@ -749,7 +751,7 @@ export function ScriptPackageWorkbench({
             failure: run.ok
               ? {
                   message: verdict.reason ?? '',
-                  error: `${verdict.reason ?? ''}\n输出预览：\n${run.preview ?? ''}`,
+                  error: `${verdict.reason ?? ''}\n${t('data.rawTables.outputPreview')}\n${run.preview ?? ''}`,
                 }
               : {
                   message: verdict.reason ?? run.error ?? '',
@@ -1029,7 +1031,7 @@ export function ScriptPackageWorkbench({
     if (!trial?.ok) return;
     setTrialSuspicious({
       reason: t('fixError.userRejected'),
-      sample: `输出预览：\n${trial.preview ?? ''}`,
+      sample: `${t('data.rawTables.outputPreview')}\n${trial.preview ?? ''}`,
     });
     setTrialOpen(true);
   };
@@ -1061,7 +1063,6 @@ export function ScriptPackageWorkbench({
       reachable: viewVersion != null,
     },
   ];
-  const stepIndex = steps.findIndex((item) => item.value === step);
   const toolCell =
     'inline-flex items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -1141,50 +1142,26 @@ export function ScriptPackageWorkbench({
     // After a fix turn: keep editing the same draft with a follow-up request.
     actionCols = '104px minmax(0,1fr) 92px 120px';
     actionCells = (
-      <>
-        {backCell}
-        <input
-          value={continueText}
-          onChange={(event) => setContinueText(event.target.value.slice(0, 2000))}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !event.nativeEvent.isComposing) sendContinue();
-          }}
-          placeholder={t('fixError.continuePlaceholder')}
-          data-testid="fix-continue-input"
-          className="min-w-0 border-0 border-l border-border-subtle bg-transparent px-2.5 text-xs text-text-primary outline-none placeholder:text-text-muted"
-        />
-        <button
-          type="button"
-          disabled={!continueText.trim()}
-          onClick={sendContinue}
-          data-testid="fix-continue-send"
-          className={toolCell}
-        >
-          <Send className="h-3.5 w-3.5" />
-          {t('fixError.send')}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setReviewView('code');
-            setStep('review');
-          }}
-          data-testid="fix-view-changes"
-          className="ui-accent-cell border-l border-border-subtle"
-        >
-          <FileCode2 className="h-3.5 w-3.5" />
-          {t('fixError.viewChanges')}
-        </button>
-      </>
+      <FixContinueActionCells
+        backCell={backCell}
+        continueText={continueText}
+        onContinueTextChange={(value) => setContinueText(value.slice(0, 2000))}
+        onSendContinue={sendContinue}
+        onViewChanges={() => {
+          setReviewView('code');
+          setStep('review');
+        }}
+        toolCellClassName={toolCell}
+      />
     );
   } else if (step === 'generate') {
     const cancelled = !generating && generationLog?.outcome?.status === 'cancelled';
     const failed = cancelled || (!generating && generationLog?.outcome?.status === 'error');
     actionCols = '104px minmax(0,1fr) 120px';
     actionCells = (
-      <>
-        {backCell}
-        {noteCell(
+      <GenerateActionCells
+        backCell={backCell}
+        note={noteCell(
           generating
             ? t('data.rawTables.editor.customizeGeneratingHint')
             : cancelled
@@ -1193,40 +1170,17 @@ export function ScriptPackageWorkbench({
                 ? t('data.rawTables.editor.customizeErrorHint')
                 : t('data.rawTables.editor.customizeDoneHint')
         )}
-        {generating ? (
-          <button
-            type="button"
-            onClick={cancelAgent}
-            data-testid="script-agent-cancel"
-            className="ui-accent-cell border-l border-border-subtle"
-          >
-            <XCircle className="h-3.5 w-3.5" />
-            {t('scripts.editor.cancelAgent')}
-          </button>
-        ) : failed && viewVersion == null ? (
-          <button
-            type="button"
-            onClick={() => void generate()}
-            className="ui-accent-cell border-l border-border-subtle"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            {t('data.rawTables.editor.regenerateProjectDraft')}
-          </button>
-        ) : (
-          <button
-            type="button"
-            disabled={generating || viewVersion == null}
-            onClick={() => {
-              setReviewView('result');
-              setStep('review');
-            }}
-            className="ui-accent-cell border-l border-border-subtle"
-          >
-            <FileCode2 className="h-3.5 w-3.5" />
-            {t('data.rawTables.editor.generationViewCode')}
-          </button>
-        )}
-      </>
+        generating={generating}
+        showRegenerate={failed && viewVersion == null}
+        canViewCode={!generating && viewVersion != null}
+        cancelTestId="script-agent-cancel"
+        onCancel={cancelAgent}
+        onRegenerate={() => void generate()}
+        onViewCode={() => {
+          setReviewView('result');
+          setStep('review');
+        }}
+      />
     );
   } else {
     const isPublished = detail?.status === 'published';
@@ -1539,44 +1493,12 @@ export function ScriptPackageWorkbench({
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <section className="ui-group ui-form-flush flex-shrink-0 bg-surface">
               <RawTableConfigRow label={t('data.rawTables.editor.customizeFlowLabel')}>
-                <div className="flex min-h-[35px] items-center px-2.5" data-testid="script-steps">
-                  {steps.map((item, index) => {
-                    const active = item.value === step;
-                    const done = index < stepIndex;
-                    const clickable = item.reachable || active;
-                    return (
-                      <Fragment key={item.value}>
-                        {index > 0 ? (
-                          <ChevronRight
-                            aria-hidden
-                            className="mx-2.5 h-3.5 w-3.5 flex-shrink-0 text-text-muted"
-                          />
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={!clickable}
-                          aria-current={active ? 'step' : undefined}
-                          data-step={item.value}
-                          onClick={() => setStep(item.value)}
-                          className={`inline-flex h-7 items-center gap-1.5 text-[12.5px] transition-colors ${
-                            active
-                              ? 'font-semibold text-accent'
-                              : clickable
-                                ? 'font-normal text-text-primary hover:text-accent'
-                                : 'cursor-not-allowed font-normal text-text-muted'
-                          }`}
-                        >
-                          {done ? (
-                            <Check className="h-3 w-3" />
-                          ) : (
-                            <span className="font-semibold tabular-nums">{index + 1}</span>
-                          )}
-                          {item.label}
-                        </button>
-                      </Fragment>
-                    );
-                  })}
-                </div>
+                <WorkbenchStepBreadcrumb
+                  steps={steps}
+                  activeStep={step}
+                  onSelectStep={setStep}
+                  testId="script-steps"
+                />
               </RawTableConfigRow>
             </section>
 
@@ -1641,7 +1563,7 @@ export function ScriptPackageWorkbench({
                       onOpenChange={setModelMenuOpen}
                       appConfig={appConfig}
                       selectedConfigSetId={modelConfigSetId ?? appConfig?.activeConfigSetId ?? ''}
-                      fallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
+                      fallbackLabel={t('chat.noModel')}
                       disabled={generating}
                       align="start"
                       triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"

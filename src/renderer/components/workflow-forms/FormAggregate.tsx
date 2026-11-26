@@ -17,7 +17,7 @@ import {
 } from './shared/FormGrid';
 import { useGridRowDrag } from './shared/useGridRowDrag';
 import { AGGREGATE_GRID_COLUMNS } from './shared/gridColumns';
-import { validateAggregateMetrics } from './shared/metricValidation';
+import { createEmptyMetric, validateAggregateMetrics } from './shared/metricValidation';
 import {
   canAppendRow,
   ensureStableRowIds,
@@ -43,16 +43,6 @@ import {
   type AggregateFunction,
   type MetricEntry,
 } from '../../../shared/operator-schemas';
-
-const EMPTY_METRIC: Readonly<Omit<MetricEntry, 'id'>> = {
-  function: 'count',
-  expression: '',
-  alias: '',
-};
-
-function createEmptyMetric(): MetricEntry {
-  return { ...EMPTY_METRIC, id: createMetricId() };
-}
 
 const GRANULARITY_OPTIONS = [
   { value: '', labelKey: 'granularityNone' },

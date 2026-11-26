@@ -61,7 +61,7 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   const confirmDelete = useCallback(
     (options: ConfirmDialogOptions) =>
       confirm({
-        title: t('common.confirmDeleteTitle', '确认删除？'),
+        title: t('common.confirmDeleteTitle'),
         confirmLabel: t('common.delete'),
         cancelLabel: t('common.cancel'),
         ...options,
@@ -126,7 +126,7 @@ function ConfirmDialogOverlay({
           <div className="flex h-11 items-center justify-between gap-2 border-b border-border-subtle px-3">
             <DialogTitle id={titleId} className="flex items-center gap-2 text-[14px] leading-6">
               <Icon className={`h-4 w-4 ${isDanger ? 'text-error' : 'text-accent'}`} />
-              {dialog.title ?? t('common.confirmTitle', '确认操作？')}
+              {dialog.title ?? t('common.confirmTitle')}
             </DialogTitle>
             <button
               type="button"
@@ -146,7 +146,7 @@ function ConfirmDialogOverlay({
                   </DialogDescription>
                   <div className="ui-form-row">
                     <span className="ui-form-label items-center">
-                      {t('common.confirmNameLabel', '名称')}
+                      {t('common.confirmNameLabel')}
                     </span>
                     <div className="ui-form-value break-all text-[13px] text-text-primary">
                       {dialog.name}
@@ -155,7 +155,7 @@ function ConfirmDialogOverlay({
                   {dialog.impact != null && (
                     <div className="ui-form-row">
                       <span className="ui-form-label items-center">
-                        {t('common.confirmImpactLabel', '影响')}
+                        {t('common.confirmImpactLabel')}
                       </span>
                       <div className="ui-form-value text-[12.5px] text-text-muted">
                         {dialog.impact}
@@ -175,7 +175,7 @@ function ConfirmDialogOverlay({
               {isDanger && (
                 <div className="flex items-center gap-1.5 border-t border-border-subtle bg-error/5 px-3 py-1.5 text-xs text-error">
                   <AlertTriangle className="h-3.5 w-3.5" />
-                  {t('common.irreversible', '删除后无法恢复')}
+                  {t('common.irreversible')}
                 </div>
               )}
             </section>

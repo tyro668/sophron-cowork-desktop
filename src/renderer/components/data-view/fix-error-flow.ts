@@ -1,3 +1,4 @@
+import i18n from '../../i18n/config';
 import { cancelledError, isCancelledError } from '../../../shared/cancel';
 import { formatLocation, runAutoFixLoop, type FixErrorReport } from '../../../shared/fix-error';
 import {
@@ -268,7 +269,12 @@ export function historyFromLog(
     ...own,
     {
       title: log.turnTitle ?? fallbackTitle,
-      detail: [elapsed, files.length ? `${files.length} 个文件` : ''].filter(Boolean).join(' · '),
+      detail: [
+        elapsed,
+        files.length ? i18n.t('data.rawTables.filesCount', { count: files.length }) : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
       status:
         log.outcome?.status === 'error'
           ? 'error'

@@ -4,15 +4,19 @@ import { useInlineModeChange } from './raw-source-mode-change';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
 import { RawTableCloudSourceDialog } from './raw-table-cloud-source-dialog';
 import { RawTableAutomations } from './table-automations';
+import {
+  FixContinueActionCells,
+  GenerateActionCells,
+  WorkbenchStepBreadcrumb,
+} from './WorkbenchActionBarCells';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { SecretsEditor, useSecretReview } from '../secrets/secrets-ui';
-import { useCallback, useEffect, useMemo, useRef, useState, Fragment, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Check,
-  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -22,8 +26,6 @@ import {
   PencilLine,
   Plus,
   RefreshCw,
-  RotateCcw,
-  Send,
   Sparkles,
   Trash2,
   TriangleAlert,
@@ -723,7 +725,7 @@ export function RawTableEditorWorkbench({
     setPreviewRun({
       versionId: dataProcessing.artifactVersionId,
       durationMs: 0,
-      suspicious: { reason: `通过但结果异常：刷新检查未通过：${reason}`, sample: '' },
+      suspicious: { reason: t('data.rawTables.refreshCheckFailed', { reason }), sample: '' },
     });
     setPreviewOpen(true);
   };
@@ -971,7 +973,7 @@ export function RawTableEditorWorkbench({
       .map((row) => preview.columns.map((column) => String(row[column] ?? '')).join(','));
     return {
       reason: verdict.reason ?? '',
-      sample: `输出预览（共 ${preview.totalRows} 行）：\n${[head, ...lines].join('\n')}`,
+      sample: `${t('data.rawTables.outputPreviewWithRows', { count: preview.totalRows })}\n${[head, ...lines].join('\n')}`,
     };
   };
 
@@ -1321,7 +1323,7 @@ export function RawTableEditorWorkbench({
       suspicious: {
         reason: t('fixError.userRejected'),
         sample: previewData
-          ? `输出预览（共 ${previewData.totalRows} 行）：\n${[head, ...lines].join('\n')}`
+          ? `${t('data.rawTables.outputPreviewWithRows', { count: previewData.totalRows })}\n${[head, ...lines].join('\n')}`
           : '',
       },
     });
@@ -1384,9 +1386,6 @@ export function RawTableEditorWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewPreviewFor, previewRun === null]);
 
-  const customizeStepIndex = (['rules', 'generate', 'review'] as RawTableCustomizeStep[]).indexOf(
-    customizeStep
-  );
   const customizeSteps: Array<{
     value: RawTableCustomizeStep;
     label: string;
@@ -1773,44 +1772,11 @@ export function RawTableEditorWorkbench({
                   data-testid="raw-customize-steps"
                 >
                   <RawTableConfigRow label={t('data.rawTables.editor.customizeFlowLabel')}>
-                    <div className="flex min-h-[35px] items-center px-2.5">
-                      {customizeSteps.map((step, index) => {
-                        const isActive = customizeStep === step.value;
-                        const isDone = index < customizeStepIndex;
-                        const clickable = step.reachable || isActive;
-                        return (
-                          <Fragment key={step.value}>
-                            {index > 0 ? (
-                              <ChevronRight
-                                aria-hidden
-                                className="mx-2.5 h-3.5 w-3.5 flex-shrink-0 text-text-muted"
-                              />
-                            ) : null}
-                            <button
-                              type="button"
-                              disabled={!clickable}
-                              aria-current={isActive ? 'step' : undefined}
-                              data-step={step.value}
-                              onClick={() => setCustomizeStep(step.value)}
-                              className={`inline-flex h-7 items-center gap-1.5 text-[12.5px] transition-colors ${
-                                isActive
-                                  ? 'font-semibold text-accent'
-                                  : clickable
-                                    ? 'font-normal text-text-primary hover:text-accent'
-                                    : 'cursor-not-allowed font-normal text-text-muted'
-                              }`}
-                            >
-                              {isDone ? (
-                                <Check className="h-3 w-3" />
-                              ) : (
-                                <span className="font-semibold tabular-nums">{index + 1}</span>
-                              )}
-                              {step.label}
-                            </button>
-                          </Fragment>
-                        );
-                      })}
-                    </div>
+                    <WorkbenchStepBreadcrumb
+                      steps={customizeSteps}
+                      activeStep={customizeStep}
+                      onSelectStep={setCustomizeStep}
+                    />
                   </RawTableConfigRow>
                 </section>
 
@@ -1866,7 +1832,7 @@ export function RawTableEditorWorkbench({
                           selectedConfigSetId={
                             selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
                           }
-                          fallbackLabel={t('chat.noModel', { defaultValue: '未配置模型' })}
+                          fallbackLabel={t('chat.noModel')}
                           disabled={isBusy || !rawTable}
                           align="start"
                           triggerClassName="ui-flush-control flex items-center justify-between gap-2 text-left text-text-primary"
@@ -1928,7 +1894,7 @@ export function RawTableEditorWorkbench({
                       log={generationLog}
                       modelLabel={getAgentModelLabel(
                         appConfig,
-                        t('chat.noModel', { defaultValue: '未配置模型' }),
+                        t('chat.noModel'),
                         selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
                       )}
                       t={t}
@@ -2255,49 +2221,24 @@ export function RawTableEditorWorkbench({
                     // After a fix turn: keep editing the same draft with a follow-up request.
                     cols = '104px minmax(0,1fr) 92px 120px';
                     cells = (
-                      <>
-                        {backCell}
-                        <input
-                          value={continueText}
-                          onChange={(event) => setContinueText(event.target.value.slice(0, 2000))}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' && !event.nativeEvent.isComposing)
-                              sendNormalizerContinue();
-                          }}
-                          placeholder={t('fixError.continuePlaceholder')}
-                          data-testid="fix-continue-input"
-                          className="min-w-0 border-0 border-l border-border-subtle bg-transparent px-2.5 text-xs text-text-primary outline-none placeholder:text-text-muted"
-                        />
-                        <button
-                          type="button"
-                          disabled={!continueText.trim()}
-                          onClick={sendNormalizerContinue}
-                          data-testid="fix-continue-send"
-                          className={toolCell}
-                        >
-                          <Send className="h-3.5 w-3.5" />
-                          {t('fixError.send')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReviewView('code');
-                            setCustomizeStep('review');
-                          }}
-                          data-testid="fix-view-changes"
-                          className="ui-accent-cell border-l border-border-subtle"
-                        >
-                          <FileCode2 className="h-3.5 w-3.5" />
-                          {t('fixError.viewChanges')}
-                        </button>
-                      </>
+                      <FixContinueActionCells
+                        backCell={backCell}
+                        continueText={continueText}
+                        onContinueTextChange={(value) => setContinueText(value.slice(0, 2000))}
+                        onSendContinue={sendNormalizerContinue}
+                        onViewChanges={() => {
+                          setReviewView('code');
+                          setCustomizeStep('review');
+                        }}
+                        toolCellClassName={toolCell}
+                      />
                     );
                   } else if (customizeStep === 'generate') {
                     cols = '104px minmax(0,1fr) 120px';
                     cells = (
-                      <>
-                        {backCell}
-                        {noteCell(
+                      <GenerateActionCells
+                        backCell={backCell}
+                        note={noteCell(
                           customizeGenerating
                             ? t('data.rawTables.editor.customizeGeneratingHint')
                             : generateCancelled
@@ -2308,43 +2249,20 @@ export function RawTableEditorWorkbench({
                                   ? t('data.rawTables.editor.customizeDoneHint')
                                   : t('data.rawTables.editor.generatedStatusEmpty')
                         )}
-                        {customizeGenerating ? (
-                          <button
-                            type="button"
-                            onClick={cancelNormalizerAgent}
-                            data-testid="raw-agent-cancel"
-                            className="ui-accent-cell border-l border-border-subtle"
-                          >
-                            <XCircle className="h-3.5 w-3.5" />
-                            {t('scripts.editor.cancelAgent')}
-                          </button>
-                        ) : generateFailed ? (
-                          <button
-                            type="button"
-                            disabled={!canGenerateCustomizeDraft}
-                            onClick={() => void generateCustomizeDraft()}
-                            data-testid="raw-customize-regenerate"
-                            className="ui-accent-cell border-l border-border-subtle"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            {t('data.rawTables.editor.regenerateProjectDraft')}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={customizeGenerating || normalizerProjectFiles.length === 0}
-                            onClick={() => {
-                              setReviewView('result');
-                              setCustomizeStep('review');
-                            }}
-                            data-testid="raw-customize-view-code"
-                            className="ui-accent-cell border-l border-border-subtle"
-                          >
-                            <FileCode2 className="h-3.5 w-3.5" />
-                            {t('data.rawTables.editor.generationViewCode')}
-                          </button>
-                        )}
-                      </>
+                        generating={customizeGenerating}
+                        showRegenerate={generateFailed}
+                        canRegenerate={canGenerateCustomizeDraft}
+                        canViewCode={!customizeGenerating && normalizerProjectFiles.length > 0}
+                        cancelTestId="raw-agent-cancel"
+                        regenerateTestId="raw-customize-regenerate"
+                        viewCodeTestId="raw-customize-view-code"
+                        onCancel={cancelNormalizerAgent}
+                        onRegenerate={() => void generateCustomizeDraft()}
+                        onViewCode={() => {
+                          setReviewView('result');
+                          setCustomizeStep('review');
+                        }}
+                      />
                     );
                   } else {
                     const isPublished =

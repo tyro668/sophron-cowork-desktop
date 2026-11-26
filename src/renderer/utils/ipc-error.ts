@@ -9,3 +9,10 @@ export function ipcErrorMessage(error: unknown): string {
     message = next;
   }
 }
+
+/** Extract a clean error message, returning `fallback` when `error` is not an Error or empty. */
+export function formatIpcError(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const msg = ipcErrorMessage(error);
+  return msg || fallback;
+}

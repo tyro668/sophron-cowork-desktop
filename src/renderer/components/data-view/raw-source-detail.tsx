@@ -7,6 +7,7 @@
  */
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDismissibleLayer } from '../../hooks/useDismissibleLayer';
 import {
   ArrowLeft,
   Check,
@@ -535,14 +536,11 @@ function TitleTableSwitcher({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
+  useDismissibleLayer({
+    open,
+    refs: [rootRef],
+    onDismiss: () => setOpen(false),
+  });
   const current = tables.find((table) => table.id === selectedId) ?? tables[0];
   const missing = (table: DataRawTable) => table.memberStatus === 'missing';
   const q = query.trim().toLowerCase();

@@ -21,6 +21,7 @@ import {
   Table2,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { formatByteSize } from '../../utils/i18n-format';
 import { useAppStore } from '../../store';
 import type {
   CloudTableChatAttachment,
@@ -169,10 +170,7 @@ function getDriveFileMeta(file: PersonalAnalysisDriveFile) {
 }
 
 function formatFileSize(bytes?: number): string {
-  if (typeof bytes !== 'number' || !Number.isFinite(bytes)) return '-';
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return formatByteSize(bytes, '-');
 }
 
 const EMPTY_TABLE_PAGE_INFO = {

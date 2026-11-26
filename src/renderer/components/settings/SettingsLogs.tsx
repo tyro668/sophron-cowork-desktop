@@ -1,10 +1,11 @@
+import { formatIpcError } from '../../utils/ipc-error';
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, Loader2, Save, Globe, Trash2, Copy } from 'lucide-react';
 import { formatAppDateTime } from '../../utils/i18n-format';
 import { showToast } from '../../utils/toast';
 import { SettingsContentSection } from './shared';
-import { GlassSwitch } from '../GlassSwitch';
+import { Switch } from '../ui';
 import { useConfirmDialog } from '../ConfirmDialog';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -67,7 +68,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
         showToast('error', result.error || t('logs.toggleFailed'));
       }
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : t('logs.toggleFailed'));
+      showToast('error', formatIpcError(err, t('logs.toggleFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -83,7 +84,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
         showToast('error', result.error || t('logs.exportFailed'));
       }
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : t('logs.exportFailed'));
+      showToast('error', formatIpcError(err, t('logs.exportFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -94,7 +95,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
     try {
       await window.electronAPI.logs.open();
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : t('logs.exportFailed'));
+      showToast('error', formatIpcError(err, t('logs.exportFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -102,7 +103,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
 
   async function handleClear() {
     const confirmed = await confirmDelete({
-      title: t('logs.clearLogs', '清空日志'),
+      title: t('logs.clearLogs'),
       message: t('logs.clearConfirm'),
     });
     if (!confirmed) return;
@@ -117,7 +118,7 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
         showToast('error', result.error || t('logs.clearFailed'));
       }
     } catch (err) {
-      showToast('error', err instanceof Error ? err.message : t('logs.clearFailed'));
+      showToast('error', formatIpcError(err, t('logs.clearFailed')));
     } finally {
       setIsLoading(false);
     }
@@ -144,11 +145,11 @@ export function SettingsLogs({ isActive }: { isActive: boolean }) {
             <h4 className="text-sm font-semibold text-text-primary">{t('logs.enableDevLogs')}</h4>
             <p className="mt-1 text-xs leading-5 text-text-muted">{t('logs.enableDevLogsDesc')}</p>
           </div>
-          <GlassSwitch
+          <Switch
             checked={devLogsEnabled}
             onCheckedChange={handleToggleDevLogs}
             disabled={isLoading}
-            ariaLabel={t('logs.enableDevLogs')}
+            aria-label={t('logs.enableDevLogs')}
           />
         </div>
       </section>

@@ -1,4 +1,7 @@
 import { formatAppDateTime, formatClockTime } from '../../utils/i18n-format';
+import { getVisiblePageNumbers } from '../../utils/pagination';
+
+export { getVisiblePageNumbers };
 import { createContext, Fragment, useContext, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -496,14 +499,6 @@ export function matchesSearchText(value: string, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
   return value.toLowerCase().includes(normalizedQuery);
-}
-
-export function getVisiblePageNumbers(currentPage: number, pageCount: number): number[] {
-  if (pageCount <= 5) {
-    return Array.from({ length: pageCount }, (_, index) => index + 1);
-  }
-  const start = Math.max(1, Math.min(currentPage - 2, pageCount - 4));
-  return Array.from({ length: 5 }, (_, index) => start + index);
 }
 
 export function formatTimestamp(timestamp: number | null, t: (key: string) => string): string {

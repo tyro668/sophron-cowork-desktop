@@ -2,17 +2,21 @@ import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import fs from 'node:fs';
 
-const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/useIPC.ts');
+const useIPCPath = path.resolve(process.cwd(), 'src/renderer/hooks/ipc-event-bridge.ts');
 
 describe('useIPC config/status gating', () => {
   it('hydrates config state without auto-opening the config modal on first load', () => {
     const source = fs.readFileSync(useIPCPath, 'utf8');
 
-    expect(source).toContain('const applyConfigSnapshot = (config: AppConfig, isConfigured: boolean) => {');
+    expect(source).toContain(
+      'const applyConfigSnapshot = (config: AppConfig, isConfigured: boolean) => {'
+    );
     expect(source).toContain('const isInitialConfigStatus = !store.hasSeenInitialConfigStatus;');
     expect(source).toContain('store.markInitialConfigStatusSeen();');
     expect(source).toContain('if (isInitialConfigStatus) {');
-    expect(source).toContain('applyConfigSnapshot(event.payload.config, event.payload.isConfigured);');
+    expect(source).toContain(
+      'applyConfigSnapshot(event.payload.config, event.payload.isConfigured);'
+    );
     expect(source).toContain('window.electronAPI.config.get()');
     expect(source).not.toContain('store.setShowConfigModal(true);');
   });
