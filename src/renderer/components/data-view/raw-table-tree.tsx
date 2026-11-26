@@ -305,7 +305,7 @@ export function RawTableTree({
     return counts;
   }, [groupCounts, drafts.length, isPicker]);
   const grouped = hasNamedSections(pageSections);
-  const colSpan = isPicker ? 2 : 6;
+  const colSpan = isPicker ? 2 : 5;
   const pageSize = isPicker ? Number.MAX_SAFE_INTEGER : TABLE_PAGE_SIZE;
 
   const pickerNodes = useMemo(
@@ -392,19 +392,16 @@ export function RawTableTree({
       colSpan={colSpan}
       header={
         <tr className={DATA_LIST_HEADER_ROW_CLASS}>
-          <th className="w-[30%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
-          <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
-          <th className="w-[12%] whitespace-nowrap px-2 pr-6 text-right">
-            {t('data.columns.rowCount')}
-          </th>
-          <th className="w-[22%] whitespace-nowrap px-2">{t('data.columns.relatedPipelines')}</th>
+          <th className="w-[34%] whitespace-nowrap px-2">{t('data.columns.rawTableName')}</th>
+          <th className="w-[12%] whitespace-nowrap px-2">{t('data.columns.sourceType')}</th>
+          <th className="w-[26%] whitespace-nowrap px-2">{t('data.columns.relatedPipelines')}</th>
           <th className="w-[16%] whitespace-nowrap px-2">
             <span className="inline-flex items-center gap-1">
               {t('data.columns.updatedAt')}
               <ArrowUpDown className="h-3 w-3" />
             </span>
           </th>
-          <th className="w-[10%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
+          <th className="w-[12%] whitespace-nowrap px-2">{t('data.columns.status')}</th>
         </tr>
       }
     >
@@ -446,7 +443,7 @@ function renderPartRow(
       className="h-8 border-b border-border-muted/60 text-[12px]"
     >
       <td
-        colSpan={6}
+        colSpan={5}
         className={`pr-2 ${
           row.child ? (indented ? 'pl-[5.5rem]' : 'pl-16') : indented ? 'pl-[4.25rem]' : 'pl-12'
         }`}
@@ -646,13 +643,6 @@ function renderPageTableRow(
           {ctx.t(sourceMeta.labelKey)}
         </span>
       </td>
-      <td className="whitespace-nowrap px-2 pr-6 text-right text-[13px] tabular-nums text-text-secondary">
-        {rawTable ? (
-          rawTable.rowCount.toLocaleString('en-US')
-        ) : (
-          <span className="text-text-muted">—</span>
-        )}
-      </td>
       <td className="px-2">
         <div className="truncate text-[13px] font-medium text-text-secondary">
           {rawTable
@@ -794,7 +784,6 @@ function renderSourceRow(
           </span>
         </div>
       </td>
-      <td />
       <td className="px-2">
         <div className="truncate text-[13px] font-medium text-text-secondary">
           {formatRelatedPipelineNames(pipelines, ctx.t)}

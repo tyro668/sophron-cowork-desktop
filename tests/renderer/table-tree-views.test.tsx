@@ -95,7 +95,7 @@ describe('reusable table trees in existing views', () => {
     expect(screen.getByText('目标')).toBeTruthy();
     expect(screen.getByText('销售')).toBeTruthy();
     expect(screen.getByText('Source type')).toBeTruthy();
-    expect(screen.getByText('Rows')).toBeTruthy();
+    expect(screen.queryByText('Rows')).toBeNull();
     const filler = screen.getByTestId('data-list-filler');
     expect(filler).toBeTruthy();
     expect(filler.getAttribute('aria-hidden')).toBe('true');
@@ -107,7 +107,7 @@ describe('reusable table trees in existing views', () => {
     expect(dataRows.some((row) => row.className.includes('border-dashed'))).toBe(false);
     expect(dataRows.some((row) => row.className.includes('border-border-muted/85'))).toBe(true);
     expect(filler.querySelectorAll('td')).toHaveLength(1);
-    expect(filler.querySelector('td')?.getAttribute('colspan')).toBe('6');
+    expect(filler.querySelector('td')?.getAttribute('colspan')).toBe('5');
   });
 
   it('renders the 结果表 page with folder grouping after the tree extract', () => {
