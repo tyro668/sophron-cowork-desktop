@@ -327,6 +327,42 @@ async function renameProject(
   return project;
 }
 
+async function createProject(
+  folders: string[],
+  name?: string | null
+): Promise<{ success: boolean; project?: Project; error?: string }> {
+  const normalizedFolders = folders.map((item) => item.trim()).filter(Boolean);
+  const normalizedName = name?.trim() || null;
+  if (normalizedFolders.length === 0) {
+    return { success: false, error: 'Project directory cannot be empty' };
+  }
+  if (!isElectron) {
+    const now = Date.now();
+    const project: Project = {
+      id: `project-${now}`,
+      name: normalizedName,
+      cwd: normalizedFolders[0],
+      folders: normalizedFolders,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const store = useAppStore.getState();
+    store.upsertProject(project);
+    store.setWorkingDir(project.cwd);
+    return { success: true, project };
+  }
+  const result = await invoke<{ success: boolean; project?: Project; error?: string }>({
+    type: 'project.create',
+    payload: { folders: normalizedFolders, name: normalizedName },
+  });
+  if (result.success && result.project) {
+    const store = useAppStore.getState();
+    store.upsertProject(result.project);
+    store.setWorkingDir(result.project.cwd);
+  }
+  return result;
+}
+
 async function deleteProject(projectId: string): Promise<void> {
   useAppStore.getState().removeProject(projectId);
   if (isElectron) {
@@ -383,6 +419,14 @@ async function selectFolder(): Promise<string | null> {
   return invoke<string | null>({ type: 'folder.select', payload: {} });
 }
 
+async function selectFolders(): Promise<string[]> {
+  if (!isElectron) {
+    return ['/mock/folder/path'];
+  }
+  const paths = await invoke<string[] | null>({ type: 'folders.select', payload: {} });
+  return Array.isArray(paths) ? paths : [];
+}
+
 async function getWorkingDir(): Promise<string | null> {
   if (!isElectron) {
     return '/mock/working/dir';
@@ -434,6 +478,7 @@ export const ipcCommands = {
   renameSession,
   duplicateSession,
   batchDeleteSessions,
+  createProject,
   renameProject,
   deleteProject,
   listSessions,
@@ -442,6 +487,7 @@ export const ipcCommands = {
   respondToPermission,
   respondToSudoPassword,
   selectFolder,
+  selectFolders,
   getWorkingDir,
   changeWorkingDir,
   setWorkingDirPath,

@@ -123,6 +123,10 @@ export const clientEventSchema = z.discriminatedUnion('type', [
     payload: z.looseObject({ sessionId: str }),
   }),
   z.looseObject({
+    type: z.literal('project.create'),
+    payload: z.looseObject({ folders: z.array(str).min(1), name: str.nullable().optional() }),
+  }),
+  z.looseObject({
     type: z.literal('project.rename'),
     payload: z.looseObject({ projectId: str, name: str.nullable() }),
   }),
@@ -150,6 +154,7 @@ export const clientEventSchema = z.discriminatedUnion('type', [
     payload: z.record(z.string(), z.unknown()),
   }),
   z.looseObject({ type: z.literal('folder.select'), payload: obj }),
+  z.looseObject({ type: z.literal('folders.select'), payload: obj }),
   z.looseObject({ type: z.literal('workdir.get'), payload: obj }),
   z.looseObject({
     type: z.literal('workdir.set'),

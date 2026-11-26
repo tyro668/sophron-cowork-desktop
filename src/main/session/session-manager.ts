@@ -335,11 +335,49 @@ export class SessionManager {
   }
 
   // Create a new session object
-  private buildMountedPaths(cwd?: string): Session['mountedPaths'] {
-    if (!cwd) {
+  private buildMountedPaths(cwd?: string, folders?: string[]): Session['mountedPaths'] {
+    const allFolders: string[] = [];
+    const seen = new Set<string>();
+    const add = (dir?: string) => {
+      const trimmed = dir?.trim();
+      if (!trimmed || seen.has(trimmed)) return;
+      seen.add(trimmed);
+      allFolders.push(trimmed);
+    };
+    add(cwd);
+    for (const folder of folders ?? []) {
+      add(folder);
+    }
+    if (allFolders.length === 0) {
       return [];
     }
-    return [{ virtual: WORKSPACE_MOUNT_VIRTUAL_PATH, real: cwd }];
+    return allFolders.map((real, index) => ({
+      virtual:
+        index === 0 ? WORKSPACE_MOUNT_VIRTUAL_PATH : `${WORKSPACE_MOUNT_VIRTUAL_PATH}-${index + 1}`,
+      real,
+    }));
+  }
+
+  private getProjectFolders(project?: ProjectRow): string[] {
+    if (!project) return [];
+    const primary = project.cwd?.trim();
+    const out: string[] = [];
+    if (primary) out.push(primary);
+    if (project.folders_json) {
+      try {
+        const parsed = JSON.parse(project.folders_json);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (typeof item === 'string' && item.trim() && !out.includes(item.trim())) {
+              out.push(item.trim());
+            }
+          }
+        }
+      } catch {
+        // Ignore malformed legacy folders_json.
+      }
+    }
+    return out;
   }
 
   private ensureProject(cwd?: string): ProjectRow | undefined {
@@ -379,7 +417,10 @@ export class SessionManager {
       projectId: row.project_id || undefined,
       projectName: row.project_name || undefined,
       cwd,
-      mountedPaths: cwd ? this.buildMountedPaths(cwd) : this.parseStoredMountedPaths(row),
+      mountedPaths:
+        this.parseStoredMountedPaths(row).length > 0
+          ? this.parseStoredMountedPaths(row)
+          : this.buildMountedPaths(cwd),
       allowedTools: this.parseAllowedTools(row),
       memoryEnabled: row.memory_enabled === 1,
       model: row.model || undefined,
@@ -411,7 +452,7 @@ export class SessionManager {
       projectId: project?.id,
       projectName: project?.name || undefined,
       cwd: effectiveCwd,
-      mountedPaths: this.buildMountedPaths(effectiveCwd),
+      mountedPaths: this.buildMountedPaths(effectiveCwd, this.getProjectFolders(project)),
       allowedTools: allowedTools || [
         'askuserquestion',
         'todowrite',
@@ -1225,7 +1266,7 @@ export class SessionManager {
     }
     const project = this.ensureProject(cwd);
     const projectId = project?.id;
-    const mountedPaths = this.buildMountedPaths(cwd);
+    const mountedPaths = this.buildMountedPaths(cwd, this.getProjectFolders(project));
     // Clear agent_session_id in DB so next query creates a new SDK session
     // (agent SDK sessions cannot change cwd mid-session)
     this.db.sessions.update(sessionId, {

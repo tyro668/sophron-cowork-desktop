@@ -1201,14 +1201,21 @@ export class AgentRunner {
       this.prepareMcpConfiguration(imageCapable);
       logTiming('after building MCP servers config', runStartTime);
 
+      const additionalProjectFolders = (session.mountedPaths ?? [])
+        .map((entry) => entry.real?.trim())
+        .filter((dir): dir is string => Boolean(dir) && dir !== workingDir);
+      const additionalFoldersNote =
+        additionalProjectFolders.length > 0
+          ? `\nAdditional project source folders:\n${additionalProjectFolders.map((dir) => `- ${dir}`).join('\n')}`
+          : '';
       const workspaceInfoPrompt =
         useSandboxIsolation && sandboxPath
           ? `<workspace_info>
 Your current workspace is located at: ${VIRTUAL_WORKSPACE_PATH}
-This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the root path for file operations.
+This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the root path for file operations.${additionalFoldersNote}
 </workspace_info>`
           : workingDir
-            ? `<workspace_info>Your current workspace is: ${workingDir}</workspace_info>`
+            ? `<workspace_info>Your current workspace is: ${workingDir}${additionalFoldersNote}</workspace_info>`
             : '';
 
       const coworkAppendPrompt = buildMainAgentSystemPrompt({

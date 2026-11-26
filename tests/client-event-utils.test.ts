@@ -19,6 +19,8 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
       return { type, payload: { sessionId: 'session-1' } };
     case 'session.batchDelete':
       return { type, payload: { sessionIds: ['session-1'] } };
+    case 'project.create':
+      return { type, payload: { folders: ['/tmp/project'], name: 'Project' } };
     case 'project.rename':
       return { type, payload: { projectId: 'project-1', name: 'Project' } };
     case 'project.renameByCwd':
@@ -28,6 +30,7 @@ function makeEvent(type: ClientEvent['type']): ClientEvent {
     case 'session.list':
     case 'settings.update':
     case 'folder.select':
+    case 'folders.select':
     case 'workdir.get':
       return { type, payload: {} };
     case 'permission.response':
@@ -71,9 +74,11 @@ describe('eventRequiresSessionManager', () => {
     const optionalTypes: ClientEvent['type'][] = [
       'settings.update',
       'folder.select',
+      'folders.select',
       'workdir.get',
       'workdir.set',
       'workdir.select',
+      'project.create',
       'project.rename',
       'project.renameByCwd',
       'project.delete',

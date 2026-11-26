@@ -54,6 +54,7 @@ export interface Project {
   id: string;
   name: string | null;
   cwd: string;
+  folders?: string[];
   createdAt: number;
   updatedAt: number;
 }

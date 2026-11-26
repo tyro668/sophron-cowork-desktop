@@ -50,6 +50,7 @@ export type ClientEvent =
   | { type: 'session.list'; payload: Record<string, never> }
   | { type: 'session.getMessages'; payload: { sessionId: string } }
   | { type: 'session.getTraceSteps'; payload: { sessionId: string } }
+  | { type: 'project.create'; payload: { folders: string[]; name?: string | null } }
   | { type: 'project.rename'; payload: { projectId: string; name: string | null } }
   | { type: 'project.renameByCwd'; payload: { cwd: string; name: string | null } }
   | { type: 'project.delete'; payload: { projectId: string } }
@@ -57,6 +58,7 @@ export type ClientEvent =
   | { type: 'sudo.password.response'; payload: { toolUseId: string; password: string | null } }
   | { type: 'settings.update'; payload: Record<string, unknown> }
   | { type: 'folder.select'; payload: Record<string, never> }
+  | { type: 'folders.select'; payload: Record<string, never> }
   | { type: 'workdir.get'; payload: Record<string, never> }
   | { type: 'workdir.set'; payload: { path: string; sessionId?: string } }
   | { type: 'workdir.select'; payload: { sessionId?: string; currentPath?: string } };

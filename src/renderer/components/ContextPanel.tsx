@@ -559,6 +559,22 @@ export function ContextPanel() {
               )}
             </button>
           </div>
+          {activeSession?.mountedPaths && activeSession.mountedPaths.length > 1 && (
+            <div className="mt-1.5 space-y-1 border-t border-border-subtle pt-1.5">
+              {activeSession.mountedPaths.slice(1).map((mount) => (
+                <div key={mount.real} className="flex items-center gap-1.5 min-w-0">
+                  <FolderOpen className="w-3.5 h-3.5 text-text-muted shrink-0" />
+                  <span
+                    className="text-xs truncate flex-1 text-text-secondary cursor-pointer hover:text-text-primary transition-colors"
+                    title={mount.real}
+                    onClick={() => desktopClient.reveal(mount.real)}
+                  >
+                    {formatPath(mount.real)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

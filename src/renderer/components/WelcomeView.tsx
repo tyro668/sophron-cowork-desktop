@@ -10,11 +10,15 @@ import {
 } from '../hooks/useComposerAttachments';
 import { useComposerModelSwitcher } from '../hooks/useComposerModelSwitcher';
 import { useSkillMentions } from '../hooks/useSkillMentions';
-import { getWorkingDirDisplayName } from '../utils/working-dir-label';
+import {
+  getWorkingDirDisplayName,
+  isInternalDefaultWorkingDirPath,
+} from '../utils/working-dir-label';
 import { normalizeWorkspacePath } from '../utils/sidebar-project-groups';
 import { BUILTIN_LLM_PROVIDER } from '../../shared/builtin-llm';
 import { AgentModelSelector } from './AgentModelSelector';
 import { ComposerAttachmentBar } from './ComposerAttachmentBar';
+import { CreateProjectDialog } from './CreateProjectDialog';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 import {
@@ -31,6 +35,7 @@ import {
   FileText,
   BarChart3,
   FolderOpen,
+  FolderPlus,
   ArrowRight,
   ArrowUp,
   Plus,
@@ -50,11 +55,11 @@ export function WelcomeView() {
   const isComposingRef = useRef(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showPermissionMenu, setShowPermissionMenu] = useState(false);
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { startSession, changeWorkingDir, setWorkingDirPath, isElectron } = useIPC();
+  const { startSession, createProject, selectFolders, setWorkingDirPath, isElectron } = useIPC();
   const workingDir = useAppStore((state) => state.workingDir);
   const projects = useAppStore((state) => state.projects);
-  const setWorkingDir = useAppStore((state) => state.setWorkingDir);
   const setGlobalNotice = useAppStore((state) => state.setGlobalNotice);
   const isConfigured = useAppStore((state) => state.isConfigured);
   const appConfig = useAppStore((state) => state.appConfig);
@@ -100,35 +105,45 @@ export function WelcomeView() {
   );
   const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
   const hasSelectedModel = Boolean(appConfig?.model?.trim());
-  const canSubmit =
-    hasSelectedModel &&
-    (prompt.trim().length > 0 ||
-      pastedImages.length > 0 ||
-      attachedFiles.length > 0 ||
-      attachedCloudTables.length > 0);
+  const effectiveWorkingDir =
+    workingDir && !isInternalDefaultWorkingDirPath(workingDir) ? workingDir.trim() : null;
+  const hasWorkingDir = Boolean(effectiveWorkingDir);
+  const hasSubmitContent =
+    prompt.trim().length > 0 ||
+    pastedImages.length > 0 ||
+    attachedFiles.length > 0 ||
+    attachedCloudTables.length > 0;
+  const canSubmit = hasSelectedModel && hasWorkingDir && hasSubmitContent;
   const hasConfiguredModel = Boolean(
     isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
   );
   const fallbackWorkingDirLabel = getWorkingDirDisplayName(
-    workingDir,
+    effectiveWorkingDir,
     t('welcome.defaultWorkingFolder'),
     t('welcome.selectWorkingFolder')
   );
   const rendererPlatform = typeof window !== 'undefined' ? window.electronAPI?.platform : undefined;
   const projectOptions = useMemo(() => {
-    const activeKey = normalizeWorkspacePath(workingDir, rendererPlatform);
+    const activeKey = normalizeWorkspacePath(effectiveWorkingDir, rendererPlatform);
     return [...projects]
-      .filter((project) => Boolean(project.cwd?.trim()))
+      .filter(
+        (project) => Boolean(project.cwd?.trim()) && !isInternalDefaultWorkingDirPath(project.cwd)
+      )
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
-      .map((project) => ({
-        id: project.id,
-        cwd: project.cwd,
-        label:
-          project.name?.trim() ||
-          getWorkingDirDisplayName(project.cwd, t('welcome.defaultWorkingFolder'), project.cwd),
-        active: normalizeWorkspacePath(project.cwd, rendererPlatform) === activeKey,
-      }));
-  }, [projects, workingDir, rendererPlatform, t]);
+      .map((project) => {
+        const folders =
+          project.folders && project.folders.length > 0 ? project.folders : [project.cwd];
+        return {
+          id: project.id,
+          cwd: project.cwd,
+          folders,
+          label:
+            project.name?.trim() ||
+            getWorkingDirDisplayName(project.cwd, t('welcome.defaultWorkingFolder'), project.cwd),
+          active: normalizeWorkspacePath(project.cwd, rendererPlatform) === activeKey,
+        };
+      });
+  }, [projects, effectiveWorkingDir, rendererPlatform, t]);
   const workingDirLabel =
     projectOptions.find((project) => project.active)?.label ?? fallbackWorkingDirLabel;
   const skillMentions = useSkillMentions({
@@ -139,37 +154,24 @@ export function WelcomeView() {
     consumePendingSkill: true,
   });
 
-  const handleSelectFolder = async () => {
+  const handleSelectProjectDir = async (path: string) => {
     try {
-      const result = await changeWorkingDir(undefined, workingDir || undefined);
-      if (result.success && result.path) {
-        setWorkingDir(result.path);
-      } else if (result.error && result.error !== 'User cancelled') {
+      const result = await setWorkingDirPath(path);
+      if (!result.success && result.error && result.error !== 'User cancelled') {
         setGlobalNotice({
-          id: `notice-workdir-select-${Date.now()}`,
+          id: `notice-workdir-project-${Date.now()}`,
           type: 'warning',
           message: `${t('welcome.selectWorkingFolderFailed')}: ${result.error}`,
         });
       }
     } catch (error) {
       setGlobalNotice({
-        id: `notice-workdir-select-${Date.now()}`,
+        id: `notice-workdir-project-${Date.now()}`,
         type: 'error',
         message:
           error instanceof Error && error.message
             ? `${t('welcome.selectWorkingFolderFailed')}: ${error.message}`
             : t('welcome.selectWorkingFolderFailed'),
-      });
-    }
-  };
-
-  const handleSelectProjectDir = async (path: string) => {
-    const result = await setWorkingDirPath(path);
-    if (!result.success && result.error && result.error !== 'User cancelled') {
-      setGlobalNotice({
-        id: `notice-workdir-project-${Date.now()}`,
-        type: 'warning',
-        message: `${t('welcome.selectWorkingFolderFailed')}: ${result.error}`,
       });
     }
   };
@@ -218,6 +220,11 @@ export function WelcomeView() {
     )
       return;
 
+    if (!effectiveWorkingDir) {
+      setShowCreateProjectDialog(true);
+      return;
+    }
+
     const contentBlocks = buildComposerContentBlocks({
       prompt: currentPrompt,
       pastedImages,
@@ -225,14 +232,13 @@ export function WelcomeView() {
       attachedCloudTables,
     });
 
-    // Use the global working directory (always available after app startup)
     setIsSubmitting(true);
     try {
       const sessionTitle = getInitialSessionTitle(
         currentPrompt,
         attachedFiles[0]?.name ?? attachedCloudTables[0]?.tableName
       );
-      const session = await startSession(sessionTitle, contentBlocks, workingDir || undefined, {
+      const session = await startSession(sessionTitle, contentBlocks, effectiveWorkingDir, {
         selectedSkillNames: skillMentions.selectedSkillNames,
       });
       if (session) {
@@ -344,6 +350,23 @@ export function WelcomeView() {
           </p>
         )}
 
+        {/* Working Directory Required Hint */}
+        {!hasWorkingDir && (
+          <p
+            className={`mx-auto ${isConfigured ? 'mt-5' : 'mt-2.5'} max-w-[44rem] rounded-xl border border-warning/20 bg-warning/10 px-3 py-2 text-center text-[13px] text-text-secondary shadow-soft`}
+          >
+            {t('welcome.workingFolderRequired')}{' '}
+            <button
+              type="button"
+              onClick={() => setShowCreateProjectDialog(true)}
+              className="inline-flex items-center gap-1 font-medium text-accent transition-colors hover:text-accent-hover"
+            >
+              {t('welcome.newProject')}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </p>
+        )}
+
         {/* Main Input Card */}
         <form
           onSubmit={handleSubmit}
@@ -447,52 +470,62 @@ export function WelcomeView() {
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="composer-flat-pill group inline-flex h-7 min-w-0 max-w-[11.5rem] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium"
-                    title={workingDir || workingDirLabel}
+                    className={`group inline-flex h-7 min-w-0 max-w-[11.5rem] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium transition-colors ${
+                      hasWorkingDir
+                        ? 'composer-flat-pill'
+                        : 'border border-warning/35 bg-warning/10 text-text-primary hover:bg-warning/15'
+                    }`}
+                    title={effectiveWorkingDir || workingDirLabel}
                   >
-                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    <FolderOpen
+                      className={`h-3.5 w-3.5 shrink-0 ${
+                        hasWorkingDir ? 'text-text-muted' : 'text-warning'
+                      }`}
+                    />
                     <span className="truncate">{workingDirLabel}</span>
                     <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-65 transition-transform duration-150 group-data-[state=open]:rotate-180" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={6}
-                  className="scrollbar-hover max-h-72 w-64 overflow-y-auto"
-                >
-                  {projectOptions.length > 0 && (
-                    <>
-                      <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-text-muted">
-                        {t('welcome.projectDirectory')}
-                      </DropdownMenuLabel>
-                      <div className="space-y-0.5">
-                        {projectOptions.map((project) => (
-                          <DropdownMenuItem
-                            key={project.id}
-                            title={project.cwd}
-                            onSelect={() => void handleSelectProjectDir(project.cwd)}
-                            className={`text-[12.5px] ${
-                              project.active ? 'bg-accent-muted font-medium text-accent' : ''
-                            }`}
-                          >
-                            <Folder className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
-                            <span className="min-w-0 flex-1 truncate">{project.label}</span>
-                            {project.active && (
-                              <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-accent" />
-                            )}
-                          </DropdownMenuItem>
-                        ))}
-                      </div>
-                      <DropdownMenuSeparator className="mx-0 my-1.5" />
-                    </>
+                <DropdownMenuContent side="top" align="start" sideOffset={6} className="w-64">
+                  <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-text-muted">
+                    {t('welcome.projectDirectory')}
+                  </DropdownMenuLabel>
+                  {projectOptions.length > 0 ? (
+                    <div className="scrollbar-hover max-h-56 space-y-0.5 overflow-y-auto">
+                      {projectOptions.map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          title={project.folders.join('\n')}
+                          onSelect={() => void handleSelectProjectDir(project.cwd)}
+                          className={`text-[12.5px] ${
+                            project.active ? 'bg-accent-muted font-medium text-accent' : ''
+                          }`}
+                        >
+                          <Folder className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                          <span className="min-w-0 flex-1 truncate">{project.label}</span>
+                          {project.folders.length > 1 && (
+                            <span className="ml-1.5 shrink-0 text-[11px] tabular-nums text-text-muted">
+                              {project.folders.length}
+                            </span>
+                          )}
+                          {project.active && (
+                            <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-accent" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-2.5 py-2 text-[12px] text-text-muted">
+                      {t('welcome.noProjectsYet')}
+                    </div>
                   )}
+                  <DropdownMenuSeparator className="mx-0 my-1.5" />
                   <DropdownMenuItem
-                    onSelect={() => void handleSelectFolder()}
-                    className="text-[12.5px] text-text-secondary data-[highlighted]:text-text-primary"
+                    onSelect={() => setShowCreateProjectDialog(true)}
+                    className="text-[12.5px] font-medium text-accent data-[highlighted]:text-accent"
                   >
-                    <FolderOpen className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
-                    <span>{t('welcome.openFolder')}</span>
+                    <FolderPlus className="mr-2 h-3.5 w-3.5 shrink-0" />
+                    <span>{t('welcome.newProject')}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -552,6 +585,12 @@ export function WelcomeView() {
           ))}
         </div>
       </div>
+      <CreateProjectDialog
+        open={showCreateProjectDialog}
+        onOpenChange={setShowCreateProjectDialog}
+        onSelectFolders={selectFolders}
+        onCreateProject={createProject}
+      />
     </div>
   );
 }

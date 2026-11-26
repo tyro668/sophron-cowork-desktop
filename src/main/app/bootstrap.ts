@@ -63,11 +63,7 @@ import {
 import { DARK_BG, LIGHT_BG, getSavedThemePreference } from './theme';
 import { setupTray } from './tray';
 import { createWindow } from './window';
-import {
-  initializeDefaultWorkingDir,
-  getWorkspacePathUnsupportedReason,
-  setWorkingDir,
-} from './workdir';
+import { initializeWorkingDir, getWorkspacePathUnsupportedReason, setWorkingDir } from './workdir';
 
 export async function bootstrap(): Promise<void> {
   if (process.platform === 'win32') {
@@ -133,15 +129,14 @@ export async function bootstrap(): Promise<void> {
   log('  OPENAI_API_MODE:', process.env.OPENAI_API_MODE || '(default)');
   log('===========================');
 
-  // Initialize default working directory
-  initializeDefaultWorkingDir();
-  log('Working directory:', appContext.currentWorkingDir);
-  // 远程会话默认使用全局工作目录
-  remoteManager.setDefaultWorkingDirectory(appContext.currentWorkingDir || undefined);
-
   // Initialize database
   const db = initDatabase();
   appContext.appDatabase = db;
+
+  // Initialize active working directory from existing projects (null if none exist yet)
+  initializeWorkingDir(db);
+  log('Working directory:', appContext.currentWorkingDir || '(none)');
+  remoteManager.setDefaultWorkingDirectory(appContext.currentWorkingDir || undefined);
   setSkillUsageSink(db.skillInvocations ?? null);
   appContext.recordDataPipelineLlmUsage = createDataPipelineLlmUsageRecorder(db);
   const initializedDataPipelineStore = createDataPipelineStore(

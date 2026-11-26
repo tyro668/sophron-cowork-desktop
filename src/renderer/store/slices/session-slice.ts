@@ -54,9 +54,15 @@ export const createSessionSlice: AppSliceCreator<SessionSlice> = (set, get) => (
                 ...session,
                 projectName: project.name || undefined,
                 cwd: project.cwd,
-                mountedPaths: project.cwd
-                  ? [{ virtual: '/mnt/workspace', real: project.cwd }]
-                  : session.mountedPaths,
+                mountedPaths:
+                  project.folders && project.folders.length > 0
+                    ? project.folders.map((real, index) => ({
+                        virtual: index === 0 ? '/mnt/workspace' : `/mnt/workspace-${index + 1}`,
+                        real,
+                      }))
+                    : project.cwd
+                      ? [{ virtual: '/mnt/workspace', real: project.cwd }]
+                      : session.mountedPaths,
               }
             : session
         ),
@@ -64,14 +70,26 @@ export const createSessionSlice: AppSliceCreator<SessionSlice> = (set, get) => (
     }),
 
   removeProject: (projectId) =>
-    set((state) => ({
-      projects: state.projects.filter((project) => project.id !== projectId),
-      sessions: state.sessions.map((session) =>
-        session.projectId === projectId
-          ? { ...session, projectId: undefined, projectName: undefined }
-          : session
-      ),
-    })),
+    set((state) => {
+      const removed = state.projects.find((project) => project.id === projectId);
+      const projects = state.projects.filter((project) => project.id !== projectId);
+      let workingDir = state.workingDir;
+      if (removed && state.workingDir && removed.cwd === state.workingDir) {
+        const nextProject = [...projects]
+          .filter((project) => Boolean(project.cwd?.trim()))
+          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+        workingDir = nextProject?.cwd ?? null;
+      }
+      return {
+        projects,
+        workingDir,
+        sessions: state.sessions.map((session) =>
+          session.projectId === projectId
+            ? { ...session, projectId: undefined, projectName: undefined }
+            : session
+        ),
+      };
+    }),
 
   addSession: (session) =>
     set((state) => ({

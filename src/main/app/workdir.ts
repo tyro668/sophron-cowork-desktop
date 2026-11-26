@@ -1,6 +1,6 @@
-import { app } from 'electron';
 import * as fs from 'fs';
-import { join } from 'path';
+import type { Project } from '../../shared/contracts';
+import type { DatabaseInstance } from '../db/database';
 import { configStore } from '../config/config-store';
 import { SandboxSync } from '../sandbox/sandbox-sync';
 import { log } from '../utils/logger';
@@ -12,25 +12,40 @@ import { mapProjectRow } from './projects';
 export const DEFAULT_WORKING_DIR_NAME = 'DefaultWorkingDir';
 export const LEGACY_DEFAULT_WORKING_DIR_NAME = 'default_working_dir';
 
+export function isInternalDefaultWorkingDir(workspacePath?: string | null): boolean {
+  const trimmed = workspacePath?.trim();
+  if (!trimmed) return false;
+  const folderName = trimmed.split(/[/\\]/).filter(Boolean).pop();
+  return Boolean(
+    folderName &&
+    (folderName === DEFAULT_WORKING_DIR_NAME || folderName === LEGACY_DEFAULT_WORKING_DIR_NAME)
+  );
+}
+
 /**
- * Initialize default working directory
- * This is always the app's DefaultWorkingDir in userData - it never changes
- * User-selected workspace directories are persisted as projects and sessions
- * reference those projects.
+ * Pick the most recently updated existing user project directory, or null when
+ * no user project has been added yet.
  */
-export function initializeDefaultWorkingDir(): string {
-  // Create default working directory in user data path (this is the permanent global default)
-  const userDataPath = app.getPath('userData');
-  const defaultDir = join(userDataPath, DEFAULT_WORKING_DIR_NAME);
-
-  if (!fs.existsSync(defaultDir)) {
-    fs.mkdirSync(defaultDir, { recursive: true });
-    log('[App] Created default working directory:', defaultDir);
+export function resolveMostRecentProjectCwd(db?: DatabaseInstance | null): string | null {
+  const projects = db?.projects?.getAll() ?? [];
+  const sorted = [...projects].sort((a, b) => (b.updated_at || 0) - (a.updated_at || 0));
+  for (const project of sorted) {
+    const cwd = project.cwd?.trim();
+    if (!cwd || isInternalDefaultWorkingDir(cwd)) continue;
+    if (fs.existsSync(cwd)) {
+      return cwd;
+    }
   }
+  return null;
+}
 
-  appContext.currentWorkingDir = defaultDir;
-
-  log('[App] Global default working directory:', appContext.currentWorkingDir);
+/**
+ * Initialize the active working directory from the most recent user project.
+ * Leaves it null when no project exists yet so the user is prompted to add one.
+ */
+export function initializeWorkingDir(db?: DatabaseInstance | null): string | null {
+  appContext.currentWorkingDir = resolveMostRecentProjectCwd(db);
+  log('[App] Initial working directory:', appContext.currentWorkingDir || '(none)');
   return appContext.currentWorkingDir;
 }
 
@@ -50,12 +65,70 @@ export function getWorkspacePathUnsupportedReason(workspacePath?: string): strin
 }
 
 /**
+ * Create (or update) a named project for one or more local folders and activate
+ * its primary folder as the current working directory.
+ */
+export async function createProjectWorkspace(
+  folders: string[],
+  name?: string | null
+): Promise<{ success: boolean; project?: Project; error?: string }> {
+  const normalizedFolders: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of folders) {
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    const key =
+      process.platform === 'win32'
+        ? trimmed.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()
+        : trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalizedFolders.push(trimmed);
+  }
+
+  if (normalizedFolders.length === 0) {
+    return { success: false, error: 'Project directory cannot be empty' };
+  }
+
+  for (const folder of normalizedFolders) {
+    const unsupportedReason = getWorkspacePathUnsupportedReason(folder);
+    if (unsupportedReason) {
+      return { success: false, error: unsupportedReason };
+    }
+
+    if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+      return { success: false, error: `Directory does not exist: ${folder}` };
+    }
+  }
+
+  const db = appContext.appDatabase;
+  if (!db?.projects) {
+    return { success: false, error: 'Project store not initialized' };
+  }
+
+  const primaryCwd = normalizedFolders[0];
+  const normalizedName = name?.trim() || null;
+  const ensured = db.projects.ensureForCwd(primaryCwd, normalizedName, normalizedFolders);
+  const updated =
+    db.projects.update(ensured.id, {
+      cwd: primaryCwd,
+      folders_json: JSON.stringify(normalizedFolders),
+      ...(normalizedName !== null ? { name: normalizedName } : {}),
+    }) ?? ensured;
+  const project = mapProjectRow(updated);
+
+  appContext.currentWorkingDir = project.cwd;
+  sendToRenderer({ type: 'project.update', payload: { project } });
+  sendToRenderer({ type: 'workdir.changed', payload: { path: project.cwd } });
+
+  log('[App] Created/activated project workspace:', project.id, normalizedFolders);
+  return { success: true, project };
+}
+
+/**
  * Set working directory
  * - If sessionId is provided: move that session to the project for the selected directory
  * - If no sessionId: persist/activate a project for the WelcomeView's next session
- *
- * Note: The global default (appContext.currentWorkingDir) is NEVER changed after initialization.
- * It is always app.getPath('userData')/DefaultWorkingDir
  */
 export async function setWorkingDir(
   newDir: string,
@@ -71,7 +144,7 @@ export async function setWorkingDir(
   }
 
   if (sessionId && appContext.sessionManager) {
-    // Update only this session's cwd - don't change the global default
+    // Update only this session's cwd
     log('[App] Updating session cwd:', sessionId, '->', newDir);
     appContext.sessionManager.updateSessionCwd(sessionId, newDir);
 
@@ -79,12 +152,15 @@ export async function setWorkingDir(
     SandboxSync.clearSession(sessionId);
     const { LimaSync } = await import('../sandbox/lima-sync');
     LimaSync.clearSession(sessionId);
-  } else if (appContext.appDatabase?.projects) {
-    const project = appContext.appDatabase.projects.ensureForCwd(newDir);
-    sendToRenderer({
-      type: 'project.update',
-      payload: { project: mapProjectRow(project) },
-    });
+  } else {
+    appContext.currentWorkingDir = newDir;
+    if (appContext.appDatabase?.projects) {
+      const project = appContext.appDatabase.projects.ensureForCwd(newDir);
+      sendToRenderer({
+        type: 'project.update',
+        payload: { project: mapProjectRow(project) },
+      });
+    }
   }
 
   // Notify renderer of workdir change (for UI display)

@@ -16,7 +16,13 @@ import {
   resolveEffectiveTheme,
   applyNativeThemePreference,
 } from '../../app/theme';
-import { getWorkingDir, getWorkspacePathUnsupportedReason, setWorkingDir } from '../../app/workdir';
+import {
+  createProjectWorkspace,
+  getWorkingDir,
+  getWorkspacePathUnsupportedReason,
+  resolveMostRecentProjectCwd,
+  setWorkingDir,
+} from '../../app/workdir';
 import { eventRequiresSessionManager } from '../../client-event-utils';
 import {
   configStore,
@@ -186,6 +192,9 @@ export function registerSessionIpc(context: SessionIpcContext): void {
     }
 
     switch (event.type) {
+      case 'project.create':
+        return createProjectWorkspace(event.payload.folders, event.payload.name);
+
       case 'project.rename': {
         const db = context.appDatabase;
         if (!db?.projects) {
@@ -224,14 +233,20 @@ export function registerSessionIpc(context: SessionIpcContext): void {
         if (!db?.projects) {
           throw new Error('Project store not initialized');
         }
+        const existing = db.projects.get(event.payload.projectId);
         db.projects.delete(event.payload.projectId);
         sendToRenderer({ type: 'project.delete', payload: { projectId: event.payload.projectId } });
+        if (existing && context.currentWorkingDir === existing.cwd) {
+          const nextCwd = resolveMostRecentProjectCwd(db);
+          context.currentWorkingDir = nextCwd;
+          sendToRenderer({ type: 'workdir.changed', payload: { path: nextCwd || '' } });
+        }
         return { success: true };
       }
 
       case 'folder.select': {
         const folderResult = await openFolderDialog({
-          properties: ['openDirectory'],
+          properties: ['openDirectory', 'createDirectory'],
         });
         if (!folderResult.canceled && folderResult.filePaths.length > 0) {
           sendToRenderer({
@@ -241,6 +256,16 @@ export function registerSessionIpc(context: SessionIpcContext): void {
           return folderResult.filePaths[0];
         }
         return null;
+      }
+
+      case 'folders.select': {
+        const folderResult = await openFolderDialog({
+          properties: ['openDirectory', 'multiSelections', 'createDirectory'],
+        });
+        if (!folderResult.canceled && folderResult.filePaths.length > 0) {
+          return folderResult.filePaths;
+        }
+        return [];
       }
 
       case 'workdir.get':

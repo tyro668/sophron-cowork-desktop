@@ -35,7 +35,7 @@ export interface DatabaseInstance {
     get: (id: string) => ProjectRow | undefined;
     getByPathKey: (pathKey: string) => ProjectRow | undefined;
     getAll: () => ProjectRow[];
-    ensureForCwd: (cwd: string, name?: string | null) => ProjectRow;
+    ensureForCwd: (cwd: string, name?: string | null, folders?: string[] | null) => ProjectRow;
     delete: (id: string) => void;
   };
 
@@ -102,6 +102,7 @@ export interface ProjectRow {
   id: string;
   name: string | null;
   cwd: string;
+  folders_json?: string | null;
   path_key: string;
   created_at: number;
   updated_at: number;
@@ -264,10 +265,49 @@ function prepareDatabaseDirectory(userDataPath: string): string {
   return dbDir;
 }
 
+function normalizeProjectFolders(primaryCwd: string, folders?: string[] | null): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const add = (candidate?: string | null) => {
+    const trimmed = candidate?.trim();
+    if (!trimmed) return;
+    const key = normalizeProjectPathKey(trimmed);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    result.push(trimmed);
+  };
+  add(primaryCwd);
+  for (const folder of folders ?? []) {
+    add(folder);
+  }
+  return result;
+}
+
+function parseProjectFoldersJson(
+  foldersJson: string | null | undefined,
+  primaryCwd: string
+): string[] {
+  if (foldersJson) {
+    try {
+      const parsed = JSON.parse(foldersJson);
+      if (Array.isArray(parsed)) {
+        return normalizeProjectFolders(
+          primaryCwd,
+          parsed.filter((item): item is string => typeof item === 'string')
+        );
+      }
+    } catch {
+      // Fall back to primary cwd when legacy JSON is malformed.
+    }
+  }
+  return normalizeProjectFolders(primaryCwd);
+}
+
 function ensureProjectForCwdInDatabase(
   database: Database.Database,
   cwd: string,
-  name?: string | null
+  name?: string | null,
+  folders?: string[] | null
 ): ProjectRow {
   const trimmedCwd = cwd.trim();
   if (!trimmedCwd) {
@@ -284,32 +324,46 @@ function ensureProjectForCwdInDatabase(
     .get(pathKey) as ProjectRow | undefined;
   if (existing) {
     const nextName = typeof name === 'string' && name.trim() ? name.trim() : existing.name;
-    if (existing.cwd !== trimmedCwd || nextName !== existing.name) {
+    const nextFolders =
+      folders && folders.length > 0
+        ? normalizeProjectFolders(trimmedCwd, folders)
+        : parseProjectFoldersJson(existing.folders_json, trimmedCwd);
+    const nextFoldersJson = JSON.stringify(nextFolders);
+    if (
+      existing.cwd !== trimmedCwd ||
+      nextName !== existing.name ||
+      (existing.folders_json ?? '[]') !== nextFoldersJson
+    ) {
       database
-        .prepare('UPDATE projects SET cwd = ?, name = ?, updated_at = ? WHERE id = ?')
-        .run(trimmedCwd, nextName, Date.now(), existing.id);
+        .prepare(
+          'UPDATE projects SET cwd = ?, name = ?, folders_json = ?, updated_at = ? WHERE id = ?'
+        )
+        .run(trimmedCwd, nextName, nextFoldersJson, Date.now(), existing.id);
       return database.prepare('SELECT * FROM projects WHERE id = ?').get(existing.id) as ProjectRow;
     }
     return existing;
   }
 
   const now = Date.now();
+  const normalizedFolders = normalizeProjectFolders(trimmedCwd, folders);
   const project: ProjectRow = {
     id: randomUUID(),
     name: typeof name === 'string' && name.trim() ? name.trim() : null,
     cwd: trimmedCwd,
+    folders_json: JSON.stringify(normalizedFolders),
     path_key: pathKey,
     created_at: now,
     updated_at: now,
   };
   database
     .prepare(
-      'INSERT INTO projects (id, name, cwd, path_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO projects (id, name, cwd, folders_json, path_key, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       project.id,
       project.name,
       project.cwd,
+      project.folders_json,
       project.path_key,
       project.created_at,
       project.updated_at
@@ -379,6 +433,7 @@ function createBaselineMainSchema(database: Database.Database): void {
       id TEXT PRIMARY KEY,
       name TEXT,
       cwd TEXT NOT NULL,
+      folders_json TEXT NOT NULL DEFAULT '[]',
       path_key TEXT NOT NULL UNIQUE,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -809,6 +864,13 @@ export const MAIN_SCHEMA_MIGRATIONS: readonly MainSchemaMigration[] = [
       database.exec('ALTER TABLE automation_runs ADD COLUMN script_repairs_json TEXT');
     },
   },
+  {
+    version: 11,
+    name: 'projects_folders',
+    up: (database) => {
+      ensureColumn(database, 'projects', 'folders_json', "folders_json TEXT NOT NULL DEFAULT '[]'");
+    },
+  },
 ];
 
 export const MAIN_SCHEMA_VERSION =
@@ -1016,8 +1078,8 @@ export function initDatabase(): DatabaseInstance {
   `);
 
   const insertProject = rawDb.prepare(`
-    INSERT OR REPLACE INTO projects (id, name, cwd, path_key, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO projects (id, name, cwd, folders_json, path_key, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   const getProjectStmt = rawDb.prepare(`
@@ -1145,6 +1207,7 @@ export function initDatabase(): DatabaseInstance {
           project.id,
           project.name,
           project.cwd,
+          project.folders_json ?? JSON.stringify(normalizeProjectFolders(project.cwd)),
           project.path_key || normalizeProjectPathKey(project.cwd),
           project.created_at,
           project.updated_at
@@ -1193,8 +1256,8 @@ export function initDatabase(): DatabaseInstance {
         return getAllProjectsStmt.all() as ProjectRow[];
       },
 
-      ensureForCwd: (cwd: string, name?: string | null): ProjectRow => {
-        return ensureProjectForCwdInDatabase(rawDb, cwd, name);
+      ensureForCwd: (cwd: string, name?: string | null, folders?: string[] | null): ProjectRow => {
+        return ensureProjectForCwdInDatabase(rawDb, cwd, name, folders);
       },
 
       delete: (id: string) => {
