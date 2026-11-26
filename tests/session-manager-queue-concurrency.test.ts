@@ -119,6 +119,73 @@ describe('SessionManager processQueue concurrency', () => {
     await manager.waitForSessionIdle(session.id);
   });
 
+  it('drains messages sent immediately after stop before announcing idle', async () => {
+    const onCompleted = vi.fn();
+    const manager = new SessionManager(db, sendToRenderer, undefined, undefined, onCompleted);
+    let finishFirst!: () => void;
+    let finishSecond!: () => void;
+    const first = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const second = new Promise<void>((resolve) => {
+      finishSecond = resolve;
+    });
+    const processPrompt = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second)
+      .mockResolvedValue(undefined);
+    (manager as unknown as { processPrompt: typeof processPrompt }).processPrompt = processPrompt;
+    const statuses = () =>
+      sendToRenderer.mock.calls.flatMap(([event]) =>
+        event.type === 'session.status' ? [event.payload.status] : []
+      );
+
+    await manager.continueSession('s1', 'running');
+    await manager.continueSession('s1', 'discarded by stop');
+    manager.stopSession('s1');
+    await manager.continueSession('s1', 'after stop');
+    await manager.continueSession('s1', 'last');
+    const becameIdle = vi.fn();
+    const idle = manager.waitForSessionIdle('s1').then(becameIdle);
+    expect(processPrompt).toHaveBeenCalledTimes(1);
+    finishFirst();
+    await vi.waitFor(() => expect(processPrompt).toHaveBeenCalledTimes(2));
+    expect(statuses()).toEqual(['running']);
+    expect(becameIdle).not.toHaveBeenCalled();
+    expect(onCompleted).not.toHaveBeenCalled();
+    finishSecond();
+    await idle;
+    expect(processPrompt.mock.calls.map((call) => call[1])).toEqual([
+      'running',
+      'after stop',
+      'last',
+    ]);
+    expect(statuses()).toEqual(['running', 'idle']);
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it('stopping during prompt preparation prevents the cancelled agent turn from starting', async () => {
+    let finishSetup!: () => void;
+    const setup = new Promise<void>((resolve) => {
+      finishSetup = resolve;
+    });
+    const onCompleted = vi.fn();
+    const manager = new SessionManager(db, sendToRenderer, undefined, undefined, onCompleted);
+    const runtime = manager as unknown as {
+      ensureSandboxInitialized: () => Promise<void>;
+      agentRunner: { run: Mock };
+    };
+    vi.spyOn(runtime, 'ensureSandboxInitialized').mockReturnValue(setup);
+    await manager.continueSession('s1', 'preparing');
+    const idle = manager.waitForSessionIdle('s1');
+    manager.stopSession('s1');
+    finishSetup();
+    await idle;
+    expect(runtime.agentRunner.run).not.toHaveBeenCalled();
+    expect(onCompleted).not.toHaveBeenCalled();
+  });
+
   it('captures the current policy for each queued turn before another mode is selected', async () => {
     const manager = new SessionManager(db, sendToRenderer);
     const originalPolicy = configStore.get('permissionPolicy');
@@ -171,10 +238,9 @@ describe('SessionManager processQueue concurrency', () => {
     }
   });
 
-  it('activeSessions stays populated while pending items exist (no gap for duplicate queue)', async () => {
+  it('publishes a single running and idle transition for consecutive queued turns', async () => {
     const manager = new SessionManager(db, sendToRenderer);
 
-    // Track activeSessions state via the public-facing status updates
     const statusUpdates: string[] = [];
     sendToRenderer.mockImplementation((msg: ServerEvent) => {
       if (msg.type === 'session.status' && msg.payload.status) {
@@ -243,8 +309,7 @@ describe('SessionManager processQueue concurrency', () => {
       'second prompt'
     );
 
-    // Resolve the first call — the inner loop should pick up the second item
-    // without ever leaving activeSessions.
+    // Releasing the first turn starts the second without an idle transition.
     resolveFirst();
     await new Promise((r) => setTimeout(r, 10));
 
@@ -265,17 +330,10 @@ describe('SessionManager processQueue concurrency', () => {
   it('finally block does not restart processQueue (no duplicate queue possible)', async () => {
     const manager = new SessionManager(db, sendToRenderer);
 
-    // Track how many times processQueue is entered by spying on activeSessions.set
-    let processQueueEntries = 0;
-    const origProcessQueue = (
-      manager as unknown as { processQueue: (s: unknown) => Promise<void> }
-    ).processQueue.bind(manager);
-    (manager as unknown as { processQueue: (s: unknown) => Promise<void> }).processQueue = async (
-      session: unknown
-    ) => {
-      processQueueEntries++;
-      return origProcessQueue(session);
-    };
+    const processQueue = vi.spyOn(
+      manager as unknown as { processQueue: (...args: unknown[]) => Promise<void> },
+      'processQueue'
+    );
 
     // Mock processPrompt to resolve immediately
     (manager as unknown as { processPrompt: () => Promise<void> }).processPrompt = vi
@@ -319,7 +377,7 @@ describe('SessionManager processQueue concurrency', () => {
     await new Promise((r) => setTimeout(r, 50));
 
     // processQueue should have been entered exactly once (not re-entered from finally)
-    expect(processQueueEntries).toBe(1);
+    expect(processQueue).toHaveBeenCalledTimes(1);
   });
 });
 

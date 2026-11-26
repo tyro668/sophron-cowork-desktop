@@ -99,6 +99,12 @@ interface SessionRunOptions {
   permissionPolicy?: PermissionPolicyId;
 }
 
+interface SessionPromptQueue {
+  pending: Array<{ prompt: string; content?: ContentBlock[]; options: SessionRunOptions }>;
+  controller: AbortController;
+  idleWaiters: Set<() => void>;
+}
+
 type RuntimeConfigResolver = (
   config?: AgentRuntimeConfig | null
 ) => AgentRuntimeConfig | undefined | Promise<AgentRuntimeConfig | undefined>;
@@ -115,12 +121,7 @@ export class SessionManager {
   private mcpManager: MCPManager;
   private pluginRuntimeService?: PluginRuntimeService;
   private extensionManager?: AgentRuntimeExtensionManager;
-  private activeSessions: Map<string, AbortController> = new Map();
-  private promptQueues: Map<
-    string,
-    Array<{ prompt: string; content?: ContentBlock[]; options?: SessionRunOptions }>
-  > = new Map();
-  private idleWaiters: Map<string, Set<() => void>> = new Map();
+  private readonly promptQueues = new Map<string, SessionPromptQueue>();
   private unattendedSessions = new Set<string>();
   private pendingPermissions = new Map<
     string,
@@ -488,15 +489,8 @@ export class SessionManager {
    */
   waitForSessionIdle(sessionId: string): Promise<void> {
     const queue = this.promptQueues.get(sessionId);
-    if (!this.activeSessions.has(sessionId) && (!queue || queue.length === 0)) {
-      return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-      const waiters = this.idleWaiters.get(sessionId) || new Set<() => void>();
-      waiters.add(resolve);
-      this.idleWaiters.set(sessionId, waiters);
-    });
+    if (!queue) return Promise.resolve();
+    return new Promise((resolve) => queue.idleWaiters.add(resolve));
   }
 
   async generateSessionTitleFromPrompt(prompt: string): Promise<string> {
@@ -716,8 +710,9 @@ export class SessionManager {
   private async processPrompt(
     session: Session,
     prompt: string,
-    content?: ContentBlock[],
-    options?: SessionRunOptions
+    content: ContentBlock[] | undefined,
+    options: SessionRunOptions,
+    signal: AbortSignal
   ): Promise<void> {
     const traceId = generateTraceId();
     return runWithLogContext({ sessionId: session.id, traceId }, async () => {
@@ -736,6 +731,7 @@ export class SessionManager {
 
       // Ensure sandbox is initialized for this workspace
       await this.ensureSandboxInitialized(session);
+      if (signal.aborted) return;
 
       try {
         // Use provided content blocks or fall back to simple text
@@ -744,6 +740,7 @@ export class SessionManager {
 
         // Process file attachments - copy to .tmp directory
         messageContent = await this.processFileAttachments(session, messageContent);
+        if (signal.aborted) return;
 
         logCtx(
           '[SessionManager] Final message content types:',
@@ -802,6 +799,7 @@ export class SessionManager {
         const runtimeConfig = this.resolveRuntimeConfig
           ? await this.resolveRuntimeConfig(storedRuntimeConfig)
           : storedRuntimeConfig;
+        if (signal.aborted) return;
         const currentModel = runtimeConfig?.model || configStore.get('model');
         if (currentModel && currentModel !== session.model) {
           session.model = currentModel;
@@ -815,7 +813,7 @@ export class SessionManager {
         // Every queued turn carries a rule snapshot, including remote turns that
         // do not provide explicit options. Never consult mutable global rules
         // while the agent is running.
-        setSessionPermissionRules(session.id, options?.permissionRules, options?.permissionPolicy);
+        setSessionPermissionRules(session.id, options.permissionRules, options.permissionPolicy);
         try {
           // Run the agent
           await this.agentRunner.run(
@@ -829,6 +827,7 @@ export class SessionManager {
           clearSessionPermissionRules(session.id);
         }
 
+        if (signal.aborted) return;
         if (this.extensionManager) {
           const stableMessages = this.getMessages(session.id);
           this.extensionManager
@@ -847,6 +846,7 @@ export class SessionManager {
           logCtxError('[SessionManager] Title generation failed:', err)
         );
       } catch (error) {
+        if (signal.aborted) return;
         logCtxError('[SessionManager] Error processing prompt:', error);
         const errorText = error instanceof Error ? error.message : 'Unknown error';
         const alreadyReportedToUser = Boolean(
@@ -977,11 +977,10 @@ export class SessionManager {
     content?: ContentBlock[],
     options?: SessionRunOptions
   ): void {
-    const queue = this.promptQueues.get(session.id) || [];
     const permissionPolicy =
       options?.permissionPolicy ??
       (options?.permissionRules ? 'default' : configStore.get('permissionPolicy'));
-    queue.push({
+    const item = {
       prompt,
       content,
       options: {
@@ -989,101 +988,57 @@ export class SessionManager {
         permissionPolicy,
         permissionRules: options?.permissionRules ?? getPermissionRulesForPolicy(permissionPolicy),
       },
-    });
-    this.promptQueues.set(session.id, queue);
+    };
 
-    if (!this.activeSessions.has(session.id)) {
-      this.processQueue(session).catch((err) => {
-        logError('[SessionManager] Queue processing error:', err);
-        this.sendToRenderer({
-          type: 'error',
-          payload: {
-            message: `Failed to process message: ${err instanceof Error ? err.message : String(err)}`,
-          },
-        });
-      });
-    } else {
-      log('[SessionManager] Session running, queued prompt:', session.id);
+    const activeQueue = this.promptQueues.get(session.id);
+    if (activeQueue) {
+      activeQueue.pending.push(item);
+      return;
     }
+    const queue: SessionPromptQueue = {
+      pending: [item],
+      controller: new AbortController(),
+      idleWaiters: new Set(),
+    };
+    this.promptQueues.set(session.id, queue);
+    void this.processQueue(session.id, queue).catch((error) => {
+      logError('[SessionManager] Failed to drain session queue:', session.id, error);
+    });
   }
 
-  private async processQueue(session: Session): Promise<void> {
-    if (this.activeSessions.has(session.id)) return;
-
-    const controller = new AbortController();
-    this.activeSessions.set(session.id, controller);
-    this.updateSessionStatus(session.id, 'running');
-
+  private async processQueue(sessionId: string, queue: SessionPromptQueue): Promise<void> {
     try {
-      // Outer loop: after the inner loop drains, re-check for items that
-      // arrived while processPrompt was awaited. This keeps the session in
-      // activeSessions the entire time, preventing enqueuePrompt from
-      // spawning a duplicate processQueue during the gap that previously
-      // existed between activeSessions.delete and the restart call.
-      let shouldContinue = true;
-      while (shouldContinue) {
-        while (!controller.signal.aborted) {
-          const queue = this.promptQueues.get(session.id);
-          if (!queue || queue.length === 0) break;
-
-          const item = queue.shift();
-          if (!item) continue;
-
-          const latestSession = this.loadSession(session.id);
-          if (!latestSession) {
-            log('[SessionManager] Session removed while processing queue:', session.id);
-            return; // finally handles cleanup
-          }
-
-          await this.processPrompt(latestSession, item.prompt, item.content, item.options);
-
-          if (controller.signal.aborted) return; // finally handles cleanup
+      this.updateSessionStatus(sessionId, 'running');
+      for (let item = queue.pending.shift(); item; item = queue.pending.shift()) {
+        const session = this.loadSession(sessionId);
+        if (!session) break;
+        if (queue.controller.signal.aborted) queue.controller = new AbortController();
+        try {
+          await this.processPrompt(
+            session,
+            item.prompt,
+            item.content,
+            item.options,
+            queue.controller.signal
+          );
+        } catch (error) {
+          logError('[SessionManager] Queue processing error:', error);
+          this.sendToRenderer({
+            type: 'error',
+            payload: {
+              message: `Failed to process message: ${error instanceof Error ? error.message : String(error)}`,
+            },
+          });
         }
-
-        // If aborted, exit immediately — finally handles cleanup.
-        if (controller.signal.aborted) {
-          shouldContinue = false;
-          continue;
-        }
-
-        // Re-check: items may have been enqueued during the last processPrompt await.
-        const pendingQueue = this.promptQueues.get(session.id);
-        if (!pendingQueue || pendingQueue.length === 0) {
-          shouldContinue = false;
-          continue;
-        }
-
-        // Reload session before continuing with newly arrived prompts.
-        const latestSession = this.loadSession(session.id);
-        if (!latestSession) {
-          this.promptQueues.delete(session.id);
-          shouldContinue = false;
-          continue;
-        }
-        session = latestSession;
-        log('[SessionManager] Continuing queue with newly arrived prompts:', session.id);
       }
     } finally {
-      const wasAborted = controller.signal.aborted;
-      // Only clean up here — no restart logic needed since the outer loop
-      // already handles re-checking. activeSessions is only deleted once
-      // there are truly no pending items remaining.
-      this.activeSessions.delete(session.id);
-      const queue = this.promptQueues.get(session.id);
-      if (queue && queue.length === 0) {
-        this.promptQueues.delete(session.id);
-      }
-      this.sessionRuntimeConfigs.delete(session.id);
-      this.updateSessionStatus(session.id, 'idle');
-      if (!wasAborted) {
-        this.notifySessionCompleted(session.id);
-      } else {
-        this.suppressedCompletionNotifications.delete(session.id);
-      }
-      const waiters = this.idleWaiters.get(session.id);
-      if (waiters) {
-        this.idleWaiters.delete(session.id);
-        for (const resolve of waiters) resolve();
+      this.promptQueues.delete(sessionId);
+      this.sessionRuntimeConfigs.delete(sessionId);
+      try {
+        this.updateSessionStatus(sessionId, 'idle');
+        if (!queue.controller.signal.aborted) this.notifySessionCompleted(sessionId);
+      } finally {
+        for (const resolve of queue.idleWaiters) resolve();
       }
     }
   }
@@ -1100,6 +1055,13 @@ export class SessionManager {
   stopSession(sessionId: string): void {
     log('[SessionManager] Stopping session:', sessionId);
     this.titleGenerationTokens.delete(sessionId);
+    const queue = this.promptQueues.get(sessionId);
+    if (queue) {
+      queue.pending.length = 0;
+      queue.controller.abort();
+    }
+    this.sessionRuntimeConfigs.delete(sessionId);
+    this.suppressedCompletionNotifications.delete(sessionId);
     this.agentRunner.cancel(sessionId);
     for (const entry of this.pendingPermissions.values()) {
       if (entry.sessionId === sessionId) entry.resolve('deny');
@@ -1112,14 +1074,8 @@ export class SessionManager {
         this.sendToRenderer({ type: 'sudo.password.dismiss', payload: { toolUseId } });
       }
     }
-    // Also abort any pending controller we tracked
-    const controller = this.activeSessions.get(sessionId);
-    if (controller) {
-      controller.abort();
-    }
-    this.promptQueues.delete(sessionId);
     this.messageCache.delete(sessionId);
-    this.updateSessionStatus(sessionId, 'idle');
+    if (!queue) this.updateSessionStatus(sessionId, 'idle');
   }
 
   // Delete a session
@@ -1260,7 +1216,7 @@ export class SessionManager {
   // Update session's working directory
   // Also clears SDK session cache because agent SDK sessions are bound to cwd
   updateSessionCwd(sessionId: string, cwd: string): void {
-    if (this.activeSessions.has(sessionId)) {
+    if (this.promptQueues.has(sessionId)) {
       logWarn(
         '[SessionManager] CWD change requested while session running; stopping active run first',
         { sessionId, cwd }

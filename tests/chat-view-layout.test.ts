@@ -3,6 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const chatViewPath = path.resolve(process.cwd(), 'src/renderer/components/ChatView.tsx');
+const chatHeaderPath = path.resolve(process.cwd(), 'src/renderer/components/chat/ChatHeader.tsx');
+const chatComposerPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/chat/ChatComposerForm.tsx'
+);
 const permissionPolicySelectorPath = path.resolve(
   process.cwd(),
   'src/renderer/components/PermissionPolicySelector.tsx'
@@ -14,15 +19,26 @@ function readChatView() {
   return fs.readFileSync(chatViewPath, 'utf8');
 }
 
+function readChatHeader() {
+  return fs.readFileSync(chatHeaderPath, 'utf8');
+}
+
+function readChatComposer() {
+  return fs.readFileSync(chatComposerPath, 'utf8');
+}
+
 describe('ChatView layout', () => {
   it('keeps messages compact while allowing the composer to match the wide mockup', () => {
     const source = readChatView();
+    const composer = readChatComposer();
     expect(source).toContain('max-w-[980px]');
+    expect(composer).toContain('max-w-[980px]');
     expect(source).not.toContain('max-w-[1040px]');
+    expect(composer).not.toContain('max-w-[1040px]');
   });
 
   it('uses a quieter header treatment without a left app-name label', () => {
-    const source = readChatView();
+    const source = readChatHeader();
     expect(source).toContain('<div aria-hidden="true" />');
     expect(source).toContain('glass-panel-header titlebar-drag relative grid h-12');
     expect(source).not.toContain('tracking-[0.08em] uppercase text-text-muted');
@@ -52,20 +68,22 @@ describe('ChatView layout', () => {
   });
 
   it('uses a compact rounded composer shell with bottom toolbar controls', () => {
-    const source = readChatView();
-    expect(source).toContain('chat-composer-panel flex min-h-[120px]');
-    expect(source).toContain('sm:min-h-[132px]');
-    expect(source).toContain('min-h-[32px]');
-    expect(source).toContain('sm:min-h-[36px]');
-    expect(source).not.toContain('min-h-[150px]');
-    expect(source).not.toContain('sm:min-h-[168px]');
-    expect(source).toContain('PermissionPolicySelector');
-    expect(source).toContain('showPermissionMenu');
-    expect(source).toContain('handlePermissionMenuOpenChange');
-    expect(source).toContain('onClick={handleModelButtonClick}');
-    expect(source).toContain('open={showModelMenu}');
-    expect(source).toContain(
-      'onSelect={(configSetId) => void handleModelOptionClick(configSetId)}'
+    const viewSource = readChatView();
+    const composerSource = readChatComposer();
+    expect(composerSource).toContain('chat-composer-panel flex min-h-[120px]');
+    expect(composerSource).toContain('sm:min-h-[132px]');
+    expect(composerSource).toContain('min-h-[32px]');
+    expect(composerSource).toContain('sm:min-h-[36px]');
+    expect(composerSource).not.toContain('min-h-[150px]');
+    expect(composerSource).not.toContain('sm:min-h-[168px]');
+    expect(composerSource).toContain('PermissionPolicySelector');
+    expect(composerSource).toContain('showPermissionMenu');
+    expect(viewSource).toContain('handlePermissionMenuOpenChange');
+    expect(composerSource).toContain('onClick={onModelButtonClick}');
+    expect(composerSource).toContain('open={showModelMenu}');
+    expect(composerSource).toContain('onSelect={onModelOptionClick}');
+    expect(viewSource).toContain(
+      'onModelOptionClick={(configSetId) => void handleModelOptionClick(configSetId)}'
     );
   });
 

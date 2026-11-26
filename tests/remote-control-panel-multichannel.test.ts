@@ -3,6 +3,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const panelPath = path.resolve(process.cwd(), 'src/renderer/components/RemoteControlPanel.tsx');
+const channelModelsPath = path.resolve(
+  process.cwd(),
+  'src/renderer/components/remote/build-channel-models.ts'
+);
 const detailPath = path.resolve(
   process.cwd(),
   'src/renderer/components/remote/ChannelDetailPanel.tsx'
@@ -23,12 +27,13 @@ const brandIconPath = path.resolve(
 describe('RemoteControlPanel multi-channel UI', () => {
   it('renders channel navigation, list, and detail components', () => {
     const source = readFileSync(panelPath, 'utf8');
+    const modelsSource = readFileSync(channelModelsPath, 'utf8');
 
     expect(source).toContain('<RemoteSectionNav');
     expect(source).toContain('<ChannelList');
     expect(source).toContain('<ChannelDetailPanel');
-    expect(source).toContain("type: 'dingtalk'");
-    expect(source).toContain("type: 'wecom'");
+    expect(modelsSource).toContain("type: 'dingtalk'");
+    expect(modelsSource).toContain("type: 'wecom'");
   });
 
   it('keeps only unsupported channel saving disabled in the UI layer', () => {
@@ -97,10 +102,11 @@ describe('RemoteControlPanel multi-channel UI', () => {
 
   it('calls DingTalk and WeCom backend APIs', () => {
     const source = readFileSync(panelPath, 'utf8');
+    const modelsSource = readFileSync(channelModelsPath, 'utf8');
 
     expect(source).toContain('updateDingtalkConfig');
     expect(source).toContain('updateWecomConfig');
-    expect(source).toContain('backendAvailable: true');
+    expect(modelsSource).toContain('backendAvailable: true');
   });
 
   it('exposes independent enable and disable controls for every configured bot', () => {

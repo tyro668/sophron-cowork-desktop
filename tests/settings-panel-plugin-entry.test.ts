@@ -29,7 +29,7 @@ describe('Skills page plugin browse entry', () => {
   });
 
   it('uses the data-workspace table and detail layout', () => {
-    expect(settingsSkillsSource).toContain('function SkillTableRow');
+    expect(settingsPanelContent).toContain('function SkillTableRow');
     expect(settingsSkillsSource).toContain('activeWorkspaceTab');
     expect(settingsSkillsSource).toContain('SKILL_TABLE_PAGE_SIZE');
     expect(settingsSkillsSource).toContain('xl:grid-cols-[minmax(0,1fr)_320px]');

@@ -30,20 +30,14 @@ import {
   type AutomationRunLogEntry,
   type Banner,
   type ListTab,
-  getOutputLocation,
-  getSourceLocation,
   isElectron,
 } from './schedule/types';
 import {
   automationToDraft,
   createCloudTableAutomationDraft,
   createEmptyDraft,
-  relinkLinearGraph,
   draftToPayload,
-  getCloudAutomationConfigsFromDraft,
-  normalizeDraftTrigger,
   parsePendingCloudAutomationTemplate,
-  validateEnabledActionNodes,
 } from './schedule/model';
 import { AutomationListPanel, AutomationRunLogPanel, getRunSortTime } from './schedule/listPanels';
 import {
@@ -54,12 +48,13 @@ import {
   fixedUnderlineTabTriggerClass,
 } from '../data-view/shared';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { AutomationDetailView } from './schedule/AutomationDetailView';
 import {
-  ActionChainSection,
-  EditorHeader,
-  ExecutionProjectPanel,
-  TriggerConditionPanel,
-} from './schedule/editorPanels';
+  buildTableNavigationDraft,
+  computeUnsavedDraftParts,
+  prependMissingCloudInputNode,
+  validateAutomationDraft,
+} from './schedule/draft-navigation';
 
 export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   const { t } = useTranslation();
@@ -138,28 +133,10 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
     return null;
   }, [viewMode, selectedId, selectedAutomation, appConfig, tr]);
   const isDraftDirty = draftSignature !== null && draftSignature !== baselineSignature;
-  // Which sections differ from the saved automation (for the unsaved bar).
-  const unsavedParts = useMemo(() => {
-    if (!isDraftDirty || !selectedAutomation) return [];
-    const saved = draftToPayload(automationToDraft(selectedAutomation), appConfig);
-    const current = draftToPayload(draft, appConfig);
-    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-    const parts: string[] = [];
-    if (saved.name !== current.name) parts.push(tr('schedule.partName'));
-    if (!same(saved.trigger, current.trigger)) parts.push(tr('schedule.partTrigger'));
-    if (saved.projectId !== current.projectId) parts.push(tr('schedule.partProject'));
-    if (saved.enabled !== current.enabled) parts.push(tr('schedule.partEnabled'));
-    if (!same(saved.actionGraph, current.actionGraph)) {
-      const savedNodes = saved.actionGraph?.nodes ?? [];
-      const changed = (current.actionGraph?.nodes ?? []).filter(
-        (node, index) => !same(savedNodes[index] ?? null, node)
-      ).length;
-      parts.push(
-        `${tr('schedule.partActions')} ${Math.max(changed, 1)} ${tr('schedule.partActionsUnit')}`
-      );
-    }
-    return parts;
-  }, [isDraftDirty, selectedAutomation, draft, appConfig, tr]);
+  const unsavedParts = useMemo(
+    () => (isDraftDirty ? computeUnsavedDraftParts(selectedAutomation, draft, appConfig, tr) : []),
+    [isDraftDirty, selectedAutomation, draft, appConfig, tr]
+  );
   const dataPipelines = dataDashboard?.pipelines ?? [];
   const rawTables = dataDashboard?.rawTables ?? [];
   const resultTables = dataDashboard?.resultTables ?? [];
@@ -450,150 +427,15 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
         .then((automation) => {
           if (!automation) throw new Error(tr('schedule.taskMissing'));
           setAutomations((rows) => [...rows.filter((row) => row.id !== id), automation]);
-          const next = automationToDraft(automation);
-          if (
-            outputNavigation.rawTable &&
-            !next.actionGraph.nodes.some(
-              (node) =>
-                node.type === 'cloud.sync' &&
-                node.config.direction === 'input' &&
-                node.config.rawTableId === outputNavigation.rawTable?.id
-            )
-          ) {
-            const node = {
-              id: crypto.randomUUID(),
-              type: 'cloud.sync',
-              enabled: true,
-              config: {
-                direction: 'input',
-                spaceId: outputNavigation.cloudSource?.spaceId ?? '',
-                projectId: outputNavigation.cloudSource?.projectId ?? '',
-                tableId: outputNavigation.cloudSource?.tableId ?? '',
-                tableKind: outputNavigation.cloudSource?.tableKind ?? 'analysis',
-                tableName: outputNavigation.cloudSource?.tableName,
-                rawTableId: outputNavigation.rawTable.id,
-                rawTableName: outputNavigation.rawTable.name,
-              },
-            };
-            next.actionGraph = relinkLinearGraph({
-              ...next.actionGraph,
-              nodes: [node, ...next.actionGraph.nodes],
-            });
-          }
-          setDraft(next);
+          setDraft(prependMissingCloudInputNode(automationToDraft(automation), outputNavigation));
         })
         .catch((error) => setBanner({ tone: 'error', text: String(error) }));
-    } else if (outputNavigation.scriptPackage) {
-      // 创建自动化 from the script editor: 执行脚本 (this package) on a daily trigger; not saved.
-      const pkg = outputNavigation.scriptPackage;
-      const base = createEmptyDraft(pkg.name);
+      return;
+    }
+    const nextDraft = buildTableNavigationDraft(outputNavigation, tr);
+    if (nextDraft) {
       setSelectedId(null);
-      setDraft({
-        ...base,
-        trigger: { ...base.trigger, kind: 'daily', times: [pkg.time] },
-        actionGraph: {
-          version: 1,
-          edges: [],
-          nodes: [
-            {
-              id: crypto.randomUUID(),
-              type: 'script.run',
-              enabled: true,
-              config: { packageId: pkg.id, timeoutMs: 120_000, onScriptError: 'notify' },
-            },
-          ],
-        },
-      });
-    } else if (outputNavigation.resultTable) {
-      const table = outputNavigation.resultTable;
-      setSelectedId(null);
-      setDraft({
-        ...createEmptyDraft(table.name),
-        triggerMode: 'manual',
-        trigger: {
-          kind: 'manual',
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        },
-        tableBindings: [
-          { kind: 'result', tableId: table.id, runOnChange: true, runOnTrigger: true },
-        ],
-        actionGraph: {
-          version: 1,
-          edges: [],
-          nodes: [
-            {
-              id: crypto.randomUUID(),
-              type: 'cloud.sync',
-              enabled: true,
-              config: {
-                direction: 'output',
-                resultTableId: table.id,
-                type: 'drive_file',
-                writeMode: 'create',
-                spaceId: '',
-                projectId: '',
-              },
-            },
-          ],
-        },
-      });
-    } else if (outputNavigation.rawTable || outputNavigation.newRawTableName !== undefined) {
-      const table = outputNavigation.rawTable;
-      const cloudSource = outputNavigation.cloudSource;
-      const name =
-        table?.name || outputNavigation.newRawTableName || tr('schedule.cloudInput.title');
-      setSelectedId(null);
-      if (table && !cloudSource) {
-        setDraft({
-          ...createEmptyDraft(name),
-          triggerMode: 'manual',
-          trigger: {
-            kind: 'manual',
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-          },
-          tableBindings: [
-            { kind: 'raw', tableId: table.id, runOnChange: true, runOnTrigger: false },
-          ],
-          actionGraph: {
-            version: 1,
-            edges: [],
-            nodes: [
-              {
-                id: crypto.randomUUID(),
-                type: 'data.pipeline.run',
-                enabled: true,
-                config: { pipelineId: '', outputMode: 'persisted' },
-              },
-            ],
-          },
-        });
-        return;
-      }
-      setDraft({
-        ...createEmptyDraft(name),
-        actionGraph: {
-          version: 1,
-          edges: [],
-          nodes: [
-            {
-              id: crypto.randomUUID(),
-              type: 'cloud.sync',
-              enabled: true,
-              config: {
-                direction: 'input',
-                spaceId: cloudSource?.spaceId ?? '',
-                projectId: cloudSource?.projectId ?? '',
-                tableId: cloudSource?.tableId ?? '',
-                tableKind: cloudSource?.tableKind ?? 'analysis',
-                tableName: cloudSource?.tableName,
-                rawTableId: table?.id,
-                rawTableName:
-                  table?.name || outputNavigation.newRawTableName || cloudSource?.tableName || '',
-              },
-            },
-          ],
-        },
-      });
+      setDraft(nextDraft);
     }
   }, [outputNavigation, clearOutputNavigation, tr]);
 
@@ -614,71 +456,9 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
   };
 
   const save = async () => {
-    if (!draft.name.trim()) {
-      setBanner({ tone: 'error', text: tr('schedule.titleRequired') });
-      return;
-    }
-    if (draft.actionGraph.nodes.length === 0) {
-      setBanner({ tone: 'error', text: tr('schedule.actionRequired') });
-      return;
-    }
-    const normalizedTrigger = normalizeDraftTrigger(draft.triggerMode, draft.trigger);
-    if (normalizedTrigger.kind === 'weekly' && normalizedTrigger.weekdays.length === 0) {
-      setBanner({ tone: 'error', text: tr('schedule.weekdayRequired') });
-      return;
-    }
-    if (
-      normalizedTrigger.kind === 'monthly' &&
-      normalizedTrigger.daysOfMonth.length === 0 &&
-      !normalizedTrigger.includeLastDay
-    ) {
-      setBanner({ tone: 'error', text: tr('schedule.monthDayRequired') });
-      return;
-    }
-    if (
-      normalizedTrigger.kind === 'interval' &&
-      normalizedTrigger.endAt != null &&
-      normalizedTrigger.endAt <= normalizedTrigger.startAt
-    ) {
-      setBanner({
-        tone: 'error',
-        text: tr('schedule.endAtAfterStartRequired'),
-      });
-      return;
-    }
-    const actionValidationError = validateEnabledActionNodes(draft, tr);
-    if (actionValidationError) {
-      setBanner({ tone: 'error', text: actionValidationError });
-      return;
-    }
-    const cloudAutomations = getCloudAutomationConfigsFromDraft(draft);
-    const missingSource = cloudAutomations.find(
-      (cloudAutomation) =>
-        !cloudAutomation.source.tableId.trim() || !cloudAutomation.source.tableName.trim()
-    );
-    if (missingSource) {
-      setBanner({
-        tone: 'error',
-        text:
-          getSourceLocation(missingSource) === 'local'
-            ? tr('schedule.localSourceRequired')
-            : tr('schedule.cloudSourceRequired'),
-      });
-      return;
-    }
-    const missingTarget = cloudAutomations.find(
-      (cloudAutomation) =>
-        cloudAutomation.output.writeMode === 'replace' &&
-        !cloudAutomation.output.targetTableId.trim()
-    );
-    if (missingTarget) {
-      setBanner({
-        tone: 'error',
-        text:
-          getOutputLocation(missingTarget) === 'local'
-            ? tr('schedule.localTargetRequired')
-            : tr('schedule.cloudTargetRequired'),
-      });
+    const validationError = validateAutomationDraft(draft, tr);
+    if (validationError) {
+      setBanner({ tone: 'error', text: validationError });
       return;
     }
     setIsSaving(true);
@@ -815,114 +595,59 @@ export function SettingsSchedule({ isActive }: { isActive: boolean }) {
 
   if (viewMode === 'detail') {
     return (
-      <div className="flex h-full min-h-0 flex-col text-sm text-text-primary">
-        <EditorHeader
-          selectedAutomation={selectedAutomation}
-          draft={draft}
-          isSaving={isSaving}
-          isDirty={isDraftDirty}
-          onDraftChange={setDraft}
-          onEnabledChange={updateDraftEnabled}
-          onSave={() => void save()}
-          onRun={() => void runNow()}
-          onBack={() => {
-            if (tableReturnTarget) {
-              setTableReturnTarget(null);
-              setBanner(null);
-              navigateToDataElement(tableReturnTarget);
-              return;
-            }
-            setViewMode('list');
+      <AutomationDetailView
+        selectedAutomation={selectedAutomation}
+        draft={draft}
+        projects={projects}
+        actionDefinitions={actionDefinitions}
+        dataPipelines={dataPipelines}
+        rawTables={rawTables}
+        resultTables={resultTables}
+        appConfig={appConfig}
+        isSaving={isSaving}
+        isDraftDirty={isDraftDirty}
+        unsavedParts={unsavedParts}
+        onDraftChange={setDraft}
+        onActionDraftChange={(next) => {
+          suppressSelectedAutomationSyncRef.current = true;
+          setDraft(next);
+        }}
+        onEnabledChange={updateDraftEnabled}
+        onDiscardChanges={() => {
+          if (selectedAutomation) setDraft(automationToDraft(selectedAutomation));
+        }}
+        onSave={() => void save()}
+        onRun={() => void runNow()}
+        onBack={() => {
+          if (tableReturnTarget) {
+            setTableReturnTarget(null);
             setBanner(null);
-          }}
-          tr={tr}
-        />
-        {isDraftDirty && selectedAutomation && (
-          <div className="flex h-9 flex-shrink-0 items-center justify-between gap-3 border-b border-warning/20 bg-warning/8 px-4 text-[12.5px] text-text-primary">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" />
-              <span className="truncate">
-                {tr('schedule.unsavedChanges')}
-                {unsavedParts.length > 0 && `：${unsavedParts.join('、')}`}
-              </span>
-            </span>
-            <button
-              type="button"
-              className="flex-shrink-0 text-xs text-text-secondary hover:text-text-primary"
-              onClick={() => setDraft(automationToDraft(selectedAutomation))}
-            >
-              {tr('schedule.discardChanges')}
-            </button>
-          </div>
-        )}
-
-        <div className="ui-config-flush min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] md:overflow-hidden">
-          <div className="min-h-0 border-b border-border-subtle md:overflow-y-auto md:border-b-0 md:border-r">
-            <div>
-              <ExecutionProjectPanel
-                draft={draft}
-                projects={projects}
-                onDraftChange={setDraft}
-                tr={tr}
-              />
-              <TriggerConditionPanel
-                draft={draft}
-                projects={projects}
-                nextRunAt={selectedAutomation?.nextRunAt ?? null}
-                triggerDirty={
-                  !selectedAutomation ||
-                  (() => {
-                    const saved = automationToDraft(selectedAutomation);
-                    return (
-                      saved.triggerMode !== draft.triggerMode ||
-                      JSON.stringify(saved.trigger) !== JSON.stringify(draft.trigger)
-                    );
-                  })()
-                }
-                onDraftChange={setDraft}
-                tr={tr}
-              />
-            </div>
-          </div>
-          <ActionChainSection
-            baselineNodes={
-              selectedAutomation
-                ? automationToDraft(selectedAutomation).actionGraph.nodes
-                : undefined
-            }
-            workingDirectory={projects.find((project) => project.id === draft.projectId)?.cwd}
-            draft={draft}
-            actionDefinitions={actionDefinitions}
-            dataPipelines={dataPipelines}
-            rawTables={rawTables}
-            resultTables={resultTables}
-            appConfig={appConfig}
-            onDraftChange={(next) => {
-              suppressSelectedAutomationSyncRef.current = true;
-              setDraft(next);
-            }}
-            onGeneratedPipelineSuccess={(workflowDslAvailable) => {
-              void loadDataPipelineResources()
-                .then((resources) => {
-                  if (isMountedRef.current) setDataDashboard(resources);
-                })
-                .catch((error) => {
-                  showTransientBanner({
-                    tone: 'error',
-                    text: formatIpcError(error, String(error)),
-                  });
-                });
+            navigateToDataElement(tableReturnTarget);
+            return;
+          }
+          setViewMode('list');
+          setBanner(null);
+        }}
+        onGeneratedPipelineSuccess={(workflowDslAvailable) => {
+          void loadDataPipelineResources()
+            .then((resources) => {
+              if (isMountedRef.current) setDataDashboard(resources);
+            })
+            .catch((error) => {
               showTransientBanner({
-                tone: workflowDslAvailable ? 'success' : 'warning',
-                text: workflowDslAvailable
-                  ? tr('schedule.generatedPipelineReady')
-                  : tr('schedule.generatedPipelineReadyWithoutDsl'),
+                tone: 'error',
+                text: formatIpcError(error, String(error)),
               });
-            }}
-            tr={tr}
-          />
-        </div>
-      </div>
+            });
+          showTransientBanner({
+            tone: workflowDslAvailable ? 'success' : 'warning',
+            text: workflowDslAvailable
+              ? tr('schedule.generatedPipelineReady')
+              : tr('schedule.generatedPipelineReadyWithoutDsl'),
+          });
+        }}
+        tr={tr}
+      />
     );
   }
 

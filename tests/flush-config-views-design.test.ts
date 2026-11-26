@@ -21,7 +21,7 @@ describe('config / detail views use the flush group variant', () => {
     expect(read('src/renderer/components/data-view/result-tables/ResultTableEditor.tsx')).toContain(
       'ui-config-flush'
     );
-    expect(read('src/renderer/components/settings/SettingsSchedule.tsx')).toContain(
+    expect(read('src/renderer/components/settings/schedule/AutomationDetailView.tsx')).toContain(
       'ui-config-flush'
     );
     expect(read('src/renderer/components/data-view/cloud-connection-datasource.tsx')).toContain(

@@ -16,7 +16,7 @@ import {
 } from '../src/renderer/hooks/useApiConfigState';
 import { resolveProfileModelOptions } from '../src/renderer/hooks/api-config-model';
 
-const hookPath = path.resolve(process.cwd(), 'src/renderer/hooks/useApiConfigState.ts');
+const discoveryHookPath = path.resolve(process.cwd(), 'src/renderer/hooks/useApiModelDiscovery.ts');
 
 describe('api config state helpers', () => {
   it('exposes only first-class providers in the API provider picker', () => {
@@ -377,7 +377,7 @@ describe('api config state helpers', () => {
   });
 
   it('wires local Ollama discovery through the shared config hook', () => {
-    const source = fs.readFileSync(hookPath, 'utf8');
+    const source = fs.readFileSync(discoveryHookPath, 'utf8');
     expect(source).toContain('configClient.discoverLocal({');
     expect(source).toContain('baseUrl: requestedBaseUrl || undefined');
     expect(source).toContain("showErrorKey('api.localOllamaNotFound')");

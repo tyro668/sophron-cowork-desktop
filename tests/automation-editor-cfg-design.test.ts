@@ -5,7 +5,7 @@ import { formatNextRun } from '../src/renderer/components/settings/schedule/edit
 
 const read = (f: string) => fs.readFileSync(path.resolve(process.cwd(), f), 'utf8');
 const dir = 'src/renderer/components/settings/schedule/';
-const schedule = read('src/renderer/components/settings/SettingsSchedule.tsx');
+const detailView = read(dir + 'AutomationDetailView.tsx');
 
 describe('automation editor follows config design c01–c04', () => {
   const panels = read(dir + 'editorPanels.tsx');
@@ -22,7 +22,7 @@ describe('automation editor follows config design c01–c04', () => {
   });
 
   it('puts all groups in flush form cells and adds the 下次执行 row', () => {
-    expect(schedule).toContain('ui-config-flush min-h-0 flex-1 overflow-y-auto md:grid');
+    expect(detailView).toContain('ui-config-flush min-h-0 flex-1 overflow-y-auto md:grid');
     expect(panels.match(/ui-group ui-form-flush/g)?.length).toBeGreaterThanOrEqual(2);
     expect(actions).toContain('ui-group ui-form-flush');
     expect(panels).toContain('data-testid="automation-next-run"');

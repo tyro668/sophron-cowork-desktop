@@ -111,10 +111,9 @@ export function getCloudConnectionPayload(
   return { apiOrigin: storedConnection?.apiOrigin || '', connectionMode: 'account' };
 }
 
-export function getProjectOptionLabel(
-  project: Project,
-  tr: (key: string, fallback?: string) => string
-): string {
+export type TranslateFn = (key: string, fallback?: string) => string;
+
+export function getProjectOptionLabel(project: Project, tr: TranslateFn): string {
   const name = project.name?.trim();
   if (name) return name;
   return getWorkingDirDisplayName(

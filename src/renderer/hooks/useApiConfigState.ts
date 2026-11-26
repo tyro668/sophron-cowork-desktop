@@ -5,24 +5,12 @@ import { useAppStore } from '../store';
 import type {
   AppConfig,
   CustomProtocolType,
-  ProviderModelInfo,
-  ProviderProfileKey,
   ProviderPresets,
   ProviderType,
   ThinkingLevel,
 } from '../types';
-import { isLoopbackBaseUrl } from '../../shared/network/loopback';
-import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from '../../shared/ollama-base-url';
 import { getModelInputGuidance } from '../../shared/api-model-presets';
-import {
-  COMMON_PROVIDER_SETUPS,
-  detectCommonProviderSetup,
-  getFallbackOpenAISetup,
-  isParsableBaseUrl,
-  orderCommonProviderSetups,
-  resolveProviderGuidanceErrorHint,
-  type CommonProviderSetup,
-} from '../../shared/api-provider-guidance';
+import { COMMON_PROVIDER_SETUPS } from '../../shared/api-provider-guidance';
 import { apiConfigReducer } from './api-config-reducer';
 import type { ApiConfigState } from './api-config-reducer';
 import { showToast } from '../utils/toast';
@@ -39,24 +27,22 @@ import {
   isCustomOpenAiLoopbackGateway,
   isElectron,
   modelPresetForProfile,
-  normalizeDiscoveredOllamaModels,
   normalizeThinkingLevel,
   profileKeyFromProvider,
   profileKeyToProvider,
   canProviderRefreshModels,
   resolveProfileModelOptions,
-  protocolLabel,
-  providerTabLabel,
   toPersistedProfiles,
   translateApiConfigErrorMessage,
 } from './api-config-model';
 import type {
   ApiConfigBootstrap,
-  CreateMode,
-  PendingConfigSetAction,
   UIProviderProfile,
   UseApiConfigStateOptions,
 } from './api-config-model';
+import { computeApiProviderGuidance } from './api-config-guidance';
+import { useApiModelDiscovery } from './useApiModelDiscovery';
+import { useApiConfigSetActions } from './useApiConfigSetActions';
 
 export { getModelInputGuidance } from '../../shared/api-model-presets';
 export {
@@ -162,22 +148,11 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     isDiagnosing,
   } = state;
 
-  const ollamaRefreshRequestIdRef = useRef(0);
   const selectedConfigSetIdRef = useRef(selectedConfigSetId);
   const hasAppliedLoadedStateRef = useRef(false);
   useEffect(() => {
     selectedConfigSetIdRef.current = selectedConfigSetId;
   }, [selectedConfigSetId]);
-  const latestOllamaTargetRef = useRef<{
-    activeProfileKey: ProviderProfileKey;
-    baseUrl: string;
-    provider: ProviderType;
-  }>({
-    activeProfileKey,
-    baseUrl: '',
-    provider: 'deepseek',
-  });
-  const ollamaDiscoverRequestIdRef = useRef(0);
 
   const clearError = useCallback(() => {
     dispatch({ type: 'CLEAR_ERROR' });
@@ -260,146 +235,25 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     provider !== 'ollama' || useCustomModel || Boolean(error) || modelOptions.length === 0;
   const contextWindow = currentProfile.contextWindow;
   const maxTokens = currentProfile.maxTokens;
-  const detectedProviderSetup = useMemo(
-    () => (provider === 'custom' ? detectCommonProviderSetup(baseUrl) : null),
-    [baseUrl, provider]
-  );
-  const fallbackOpenAISetup = useMemo(() => getFallbackOpenAISetup(), []);
-  const effectiveProviderSetup = useMemo(() => {
-    if (detectedProviderSetup) {
-      return detectedProviderSetup;
-    }
-    if (
-      provider === 'custom' &&
-      customProtocol === 'openai' &&
-      baseUrl.trim() &&
-      isParsableBaseUrl(baseUrl)
-    ) {
-      return fallbackOpenAISetup;
-    }
-    return null;
-  }, [baseUrl, customProtocol, detectedProviderSetup, fallbackOpenAISetup, provider]);
-  const setupDisplayProtocol = useCallback(
-    (setup: CommonProviderSetup) =>
-      setup.protocolLabel || protocolLabel(setup.recommendedProtocol, t),
-    [t]
-  );
-  const protocolGuidanceTone = useMemo<'info' | 'warning' | undefined>(() => {
-    if (provider !== 'custom' || !detectedProviderSetup) {
-      return undefined;
-    }
-    if (detectedProviderSetup.preferProviderTab) {
-      return 'warning';
-    }
-    return customProtocol === detectedProviderSetup.recommendedProtocol ? 'info' : 'warning';
-  }, [customProtocol, detectedProviderSetup, provider]);
-  const protocolGuidanceText = useMemo(() => {
-    if (provider !== 'custom' || !detectedProviderSetup) {
-      return '';
-    }
-
-    const serviceName = t(detectedProviderSetup.nameKey);
-    if (detectedProviderSetup.preferProviderTab) {
-      return t('api.guidance.preferProviderTab', {
-        service: serviceName,
-        provider: providerTabLabel(detectedProviderSetup.preferProviderTab, presets, t),
-      });
-    }
-
-    if (customProtocol !== detectedProviderSetup.recommendedProtocol) {
-      return t('api.guidance.protocolMismatch', {
-        service: serviceName,
-        recommendedProtocol: setupDisplayProtocol(detectedProviderSetup),
-      });
-    }
-
-    return t('api.guidance.protocolLooksGood', {
-      service: serviceName,
-      recommendedProtocol: setupDisplayProtocol(detectedProviderSetup),
-    });
-  }, [customProtocol, detectedProviderSetup, presets, provider, setupDisplayProtocol, t]);
-  const baseUrlGuidanceText = useMemo(() => {
-    if (provider !== 'custom' || !effectiveProviderSetup) {
-      return '';
-    }
-
-    if (!detectedProviderSetup && effectiveProviderSetup.id === fallbackOpenAISetup.id) {
-      return t('api.guidance.genericBaseUrlHint', {
-        recommendedProtocol: setupDisplayProtocol(effectiveProviderSetup),
-        baseUrl: effectiveProviderSetup.recommendedBaseUrl,
-        model: effectiveProviderSetup.exampleModel,
-      });
-    }
-
-    return t('api.guidance.baseUrlHint', {
-      service: t(effectiveProviderSetup.nameKey),
-      recommendedProtocol: setupDisplayProtocol(effectiveProviderSetup),
-      baseUrl: effectiveProviderSetup.recommendedBaseUrl,
-      model: effectiveProviderSetup.exampleModel,
-    });
-  }, [
+  const {
     detectedProviderSetup,
-    effectiveProviderSetup,
-    fallbackOpenAISetup.id,
-    provider,
-    setupDisplayProtocol,
-    t,
-  ]);
-  const commonProviderSetups = useMemo(
+    protocolGuidanceTone,
+    protocolGuidanceText,
+    baseUrlGuidanceText,
+    commonProviderSetups,
+    friendlyTestDetails,
+  } = useMemo(
     () =>
-      provider === 'custom'
-        ? orderCommonProviderSetups(detectedProviderSetup?.id).map((setup) => ({
-            id: setup.id,
-            name: t(setup.nameKey),
-            protocolLabel: setupDisplayProtocol(setup),
-            baseUrl: setup.recommendedBaseUrl,
-            exampleModel: setup.exampleModel,
-            notes: t(setup.noteKey),
-            isDetected: setup.id === detectedProviderSetup?.id,
-          }))
-        : [],
-    [detectedProviderSetup?.id, provider, setupDisplayProtocol, t]
+      computeApiProviderGuidance({
+        provider,
+        customProtocol,
+        baseUrl,
+        presets,
+        testResultDetails: testResult?.details,
+        t,
+      }),
+    [baseUrl, customProtocol, presets, provider, t, testResult?.details]
   );
-  const friendlyTestDetails = useMemo(() => {
-    const hintKind = resolveProviderGuidanceErrorHint(testResult?.details, detectedProviderSetup);
-    if (!hintKind) {
-      return '';
-    }
-
-    if (hintKind === 'emptyProbePreferProvider' && detectedProviderSetup?.preferProviderTab) {
-      return t('api.guidance.errorHints.emptyProbePreferProvider', {
-        service: t(detectedProviderSetup.nameKey),
-        provider: providerTabLabel(detectedProviderSetup.preferProviderTab, presets, t),
-      });
-    }
-    if (hintKind === 'emptyProbeDetected' && effectiveProviderSetup) {
-      return t('api.guidance.errorHints.emptyProbeDetected', {
-        service: t(effectiveProviderSetup.nameKey),
-        recommendedProtocol: setupDisplayProtocol(effectiveProviderSetup),
-      });
-    }
-    if (hintKind === 'emptyProbeGeneric') {
-      return t('api.guidance.errorHints.emptyProbeGeneric');
-    }
-    if (hintKind === 'probeMismatchDetected' && effectiveProviderSetup) {
-      return t('api.guidance.errorHints.probeMismatchDetected', {
-        service: t(effectiveProviderSetup.nameKey),
-        recommendedProtocol: setupDisplayProtocol(effectiveProviderSetup),
-      });
-    }
-    if (hintKind === 'probeMismatchGeneric') {
-      return t('api.guidance.errorHints.probeMismatchGeneric');
-    }
-
-    return '';
-  }, [
-    detectedProviderSetup,
-    effectiveProviderSetup,
-    presets,
-    setupDisplayProtocol,
-    t,
-    testResult?.details,
-  ]);
 
   const allowEmptyApiKey =
     provider === 'sophron' ||
@@ -679,42 +533,6 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     useCustomModel,
   ]);
 
-  useEffect(() => {
-    latestOllamaTargetRef.current = {
-      activeProfileKey,
-      baseUrl: baseUrl.trim(),
-      provider,
-    };
-  }, [activeProfileKey, baseUrl, provider]);
-
-  useEffect(() => {
-    if (provider !== 'ollama') {
-      return;
-    }
-    // Drop stale discovered model list when baseUrl changes
-    dispatch({ type: 'DELETE_DISCOVERED_MODELS', profileKey: activeProfileKey });
-
-    // If the current model came from discovered models and is not in presets,
-    // reset to an endpoint-selected model once discovery runs again.
-    const preset = modelPresetForProfile(activeProfileKey, presets);
-    dispatch({
-      type: 'UPDATE_PROFILE_FN',
-      profileKey: activeProfileKey,
-      updater: (current) => {
-        if (current && !current.useCustomModel && current.model) {
-          const inPreset = preset.models.some((m) => m.id === current.model);
-          if (!inPreset) {
-            return {
-              ...current,
-              model: provider === 'ollama' ? '' : preset.models[0]?.id || '',
-            };
-          }
-        }
-        return current;
-      },
-    });
-  }, [activeProfileKey, baseUrl, provider, presets]);
-
   const handleTest = useCallback(async () => {
     if (requiresApiKey && !apiKey.trim()) {
       showErrorKey('api.testError.missing_key');
@@ -836,225 +654,19 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     await handleDiagnose('deep');
   }, [handleDiagnose]);
 
-  const refreshModelOptions = useCallback(async () => {
-    if (!isElectron || !canProviderRefreshModels(provider)) {
-      return [];
-    }
-
-    const requestedProfileKey = activeProfileKey;
-    const requestedBaseUrl = baseUrl.trim();
-    const requestId = ++ollamaRefreshRequestIdRef.current;
-
-    dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: true });
-    clearError();
-    try {
-      const models = await configClient.listModels({
-        provider,
-        apiKey: apiKey.trim(),
-        baseUrl: requestedBaseUrl || undefined,
-      });
-
-      const latestTarget = latestOllamaTargetRef.current;
-      if (
-        requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== provider ||
-        latestTarget.activeProfileKey !== requestedProfileKey ||
-        latestTarget.baseUrl !== requestedBaseUrl
-      ) {
-        return models;
-      }
-
-      dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: requestedProfileKey, models });
-
-      dispatch({
-        type: 'UPDATE_PROFILE_FN',
-        profileKey: requestedProfileKey,
-        updater: (current) => {
-          const explicitManualModel = current.useCustomModel ? current.customModel.trim() : '';
-          const currentModel = explicitManualModel || current.model.trim();
-          const hasDiscoveredMatch = models.some((item) => item.id === currentModel);
-          const shouldAutoSelectModel =
-            Boolean(models[0]?.id) &&
-            !explicitManualModel &&
-            (!currentModel || !hasDiscoveredMatch);
-
-          return {
-            ...current,
-            model: shouldAutoSelectModel ? models[0]!.id : current.model,
-            useCustomModel: shouldAutoSelectModel ? false : current.useCustomModel,
-          };
-        },
-      });
-      return models;
-    } catch (refreshError) {
-      const latestTarget = latestOllamaTargetRef.current;
-      if (
-        requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== provider ||
-        latestTarget.activeProfileKey !== requestedProfileKey ||
-        latestTarget.baseUrl !== requestedBaseUrl
-      ) {
-        return [];
-      }
-      dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
-      if (refreshError instanceof Error) {
-        showErrorText(refreshError.message);
-      } else {
-        showErrorKey('api.refreshModelsFailed');
-      }
-      return [];
-    } finally {
-      if (requestId === ollamaRefreshRequestIdRef.current) {
-        dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: false });
-      }
-    }
-  }, [activeProfileKey, apiKey, baseUrl, provider, clearError, showErrorKey, showErrorText]);
-
-  const applyDiscoveredOllamaState = useCallback(
-    (
-      targetProfileKey: ProviderProfileKey,
-      discoveredBaseUrl: string,
-      models: ProviderModelInfo[],
-      options?: { autoSelectModelId?: string }
-    ) => {
-      const normalizedBaseUrl =
-        normalizeOllamaBaseUrl(discoveredBaseUrl) || DEFAULT_OLLAMA_BASE_URL;
-
-      dispatch({
-        type: 'UPDATE_PROFILE_FN',
-        profileKey: targetProfileKey,
-        updater: (current) => {
-          const autoSelectModelId = options?.autoSelectModelId?.trim() || '';
-          const explicitManualModel = current.useCustomModel ? current.customModel.trim() : '';
-          const currentModel = explicitManualModel || current.model.trim();
-          const hasDiscoveredMatch = models.some((item) => item.id === currentModel);
-          const shouldAutoSelectModel =
-            Boolean(autoSelectModelId) &&
-            !explicitManualModel &&
-            (!currentModel || !hasDiscoveredMatch);
-
-          return {
-            ...current,
-            baseUrl: normalizedBaseUrl,
-            model: shouldAutoSelectModel ? autoSelectModelId : current.model,
-            useCustomModel: shouldAutoSelectModel ? false : current.useCustomModel,
-          };
-        },
-      });
-
-      dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: targetProfileKey, models });
-    },
-    []
-  );
-
-  const discoverLocalOllama = useCallback(
-    async (options?: { silent?: boolean }) => {
-      if (!isElectron || provider !== 'ollama') {
-        return null;
-      }
-
-      const requestedProfileKey = activeProfileKey;
-      const requestedBaseUrl = baseUrl.trim();
-      const shouldClearDiscoveredModels = !requestedBaseUrl || isLoopbackBaseUrl(requestedBaseUrl);
-      const requestId = ++ollamaDiscoverRequestIdRef.current;
-      dispatch({ type: 'SET_IS_DISCOVERING_LOCAL_OLLAMA', payload: true });
-      if (!options?.silent) {
-        clearError();
-      }
-
-      try {
-        const result = await configClient.discoverLocal({
-          baseUrl: requestedBaseUrl || undefined,
-        });
-        const latestTarget = latestOllamaTargetRef.current;
-        if (
-          requestId !== ollamaDiscoverRequestIdRef.current ||
-          latestTarget.provider !== 'ollama' ||
-          latestTarget.activeProfileKey !== requestedProfileKey ||
-          latestTarget.baseUrl !== requestedBaseUrl
-        ) {
-          return result;
-        }
-        if (!result.available) {
-          if (shouldClearDiscoveredModels) {
-            dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
-          }
-          if (!options?.silent) {
-            showErrorKey('api.localOllamaNotFound');
-          }
-          return result;
-        }
-
-        const models = normalizeDiscoveredOllamaModels(result.models);
-        applyDiscoveredOllamaState(requestedProfileKey, result.baseUrl, models, {
-          autoSelectModelId: models[0]?.id,
-        });
-
-        if (!options?.silent) {
-          if (result.status === 'service_available') {
-            showErrorKey('api.localOllamaNoModels');
-          } else {
-            showSuccessKey('api.localOllamaDiscovered', { count: models.length });
-            setTimeout(() => clearSuccessMessage(), 2500);
-          }
-        }
-        return result;
-      } catch (discoveryError) {
-        const latestTarget = latestOllamaTargetRef.current;
-        if (
-          requestId !== ollamaDiscoverRequestIdRef.current ||
-          latestTarget.provider !== 'ollama' ||
-          latestTarget.activeProfileKey !== requestedProfileKey ||
-          latestTarget.baseUrl !== requestedBaseUrl
-        ) {
-          return null;
-        }
-        if (shouldClearDiscoveredModels) {
-          dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
-        }
-        if (!options?.silent) {
-          if (discoveryError instanceof Error) {
-            showErrorText(discoveryError.message);
-          } else {
-            showErrorKey('api.localOllamaNotFound');
-          }
-        }
-        return null;
-      } finally {
-        if (requestId === ollamaDiscoverRequestIdRef.current) {
-          dispatch({ type: 'SET_IS_DISCOVERING_LOCAL_OLLAMA', payload: false });
-        }
-      }
-    },
-    [
-      activeProfileKey,
-      applyDiscoveredOllamaState,
-      baseUrl,
-      clearError,
-      clearSuccessMessage,
-      provider,
-      showErrorKey,
-      showErrorText,
-      showSuccessKey,
-    ]
-  );
-
-  // Auto-refresh model list when Ollama baseUrl changes (debounced).
-  // Only fires for URLs that look plausible (start with http(s):// and have a host).
-  useEffect(() => {
-    if (provider !== 'ollama') return;
-    const trimmed = baseUrl.trim();
-    if (!trimmed || !/^https?:\/\/.{3,}/i.test(trimmed)) return;
-    const timer = setTimeout(() => {
-      void refreshModelOptions();
-    }, 800);
-    return () => clearTimeout(timer);
-  }, [provider, baseUrl, refreshModelOptions]);
-
-  useEffect(() => {
-    if (provider !== 'sophron' && provider !== 'openai-codex') return;
-    void refreshModelOptions();
-  }, [provider, refreshModelOptions]);
+  const { refreshModelOptions, discoverLocalOllama } = useApiModelDiscovery({
+    activeProfileKey,
+    provider,
+    apiKey,
+    baseUrl,
+    presets,
+    dispatch,
+    clearError,
+    clearSuccessMessage,
+    showErrorKey,
+    showErrorText,
+    showSuccessKey,
+  });
 
   const handleSave = useCallback(
     async (options?: { silentSuccess?: boolean }) => {
@@ -1168,292 +780,35 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     ]
   );
 
-  const switchConfigSet = useCallback(
-    async (setId: string) => {
-      if (!isElectron) {
-        return false;
-      }
-
-      dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
-      clearError();
-      try {
-        const result = await configClient.switchSet({ id: setId });
-        // Setting the default also brings that set into the editor.
-        applyPersistedConfigToStore(result.config, presets, setId);
-        return true;
-      } catch (switchError) {
-        if (switchError instanceof Error) {
-          showErrorText(translateApiConfigErrorMessage(switchError.message, t));
-        } else {
-          showErrorKey('api.saveFailed');
-        }
-        return false;
-      } finally {
-        dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: false });
-      }
-    },
-    [applyPersistedConfigToStore, clearError, presets, showErrorKey, showErrorText, t]
-  );
-
-  const selectConfigSet = useCallback(
-    (setId: string) => {
-      const target = configSets.find((set) => set.id === setId);
-      if (!target || setId === selectedConfigSetId) return;
-      selectedConfigSetIdRef.current = setId;
-      const snapshot = buildSnapshotFromConfigSet(target, presets);
-      const selectedMeta = profileKeyToProvider(snapshot.activeProfileKey);
-      dispatch({
-        type: 'APPLY_LOADED_STATE',
-        payload: {
-          presets,
-          profiles: snapshot.profiles,
-          activeProfileKey: snapshot.activeProfileKey,
-          providerUnset: target.provider === '',
-          enableThinking: snapshot.enableThinking,
-          thinkingLevel: snapshot.thinkingLevel,
-          configSets,
-          activeConfigSetId,
-          selectedConfigSetId: setId,
-          lastCustomProtocol:
-            selectedMeta.provider === 'custom' ? selectedMeta.customProtocol : lastCustomProtocol,
-          savedDraftSignature: buildApiConfigDraftSignature(
-            snapshot.activeProfileKey,
-            snapshot.profiles,
-            snapshot.enableThinking,
-            snapshot.thinkingLevel,
-            snapshot.providerUnset
-          ),
-        },
-      });
-    },
-    [activeConfigSetId, configSets, lastCustomProtocol, presets, selectedConfigSetId]
-  );
-
-  const requestSelectConfigSet = useCallback(
-    (setId: string) => {
-      if (!setId || setId === selectedConfigSetId) {
-        return;
-      }
-
-      const action: PendingConfigSetAction = { type: 'select', targetSetId: setId };
-      if (hasUnsavedChanges) {
-        dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: action });
-        return;
-      }
-
-      selectConfigSet(setId);
-    },
-    [hasUnsavedChanges, selectConfigSet, selectedConfigSetId]
-  );
-
-  const createConfigSet = useCallback(
-    async (payload: { name: string; mode: CreateMode }) => {
-      if (!isElectron) {
-        return false;
-      }
-
-      if (configSets.length >= CONFIG_SET_LIMIT) {
-        showErrorKey('api.configSetLimitReached', { count: CONFIG_SET_LIMIT });
-        return false;
-      }
-
-      const trimmed = payload.name.trim();
-      if (!trimmed) {
-        showErrorKey('api.configSetNameRequired');
-        return false;
-      }
-
-      dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
-      clearError();
-      try {
-        const result = await configClient.createSet({
-          name: trimmed,
-          mode: payload.mode,
-          fromSetId: payload.mode === 'clone' ? activeConfigSetId : undefined,
-        });
-        // Open the freshly created set in the editor without touching the default.
-        const createdSet = result.config.configSets?.find(
-          (set) => !configSets.some((existing) => existing.id === set.id)
-        );
-        applyPersistedConfigToStore(result.config, presets, createdSet?.id);
-        showSuccessKey('api.configSetCreated');
-        setTimeout(() => clearSuccessMessage(), 1500);
-        return true;
-      } catch (createError) {
-        if (createError instanceof Error) {
-          showErrorText(translateApiConfigErrorMessage(createError.message, t));
-        } else {
-          showErrorKey('api.saveFailed');
-        }
-        return false;
-      } finally {
-        dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: false });
-      }
-    },
-    [
-      activeConfigSetId,
-      applyPersistedConfigToStore,
-      clearError,
-      clearSuccessMessage,
-      configSets,
-      presets,
-      showErrorKey,
-      showErrorText,
-      showSuccessKey,
-      t,
-    ]
-  );
-
-  const createBlankConfigSet = useCallback(async () => {
-    await createConfigSet({
-      name: t('api.newSetDefaultName'),
-      mode: 'blank',
-    });
-  }, [createConfigSet, t]);
-
-  const requestConfigSetSwitch = useCallback(
-    async (setId: string) => {
-      if (!setId || setId === activeConfigSetId) {
-        return;
-      }
-
-      const action: PendingConfigSetAction = { type: 'switch', targetSetId: setId };
-      if (hasUnsavedChanges) {
-        dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: action });
-        return;
-      }
-
-      await switchConfigSet(setId);
-    },
-    [activeConfigSetId, hasUnsavedChanges, switchConfigSet]
-  );
-
-  const continuePendingConfigSetAction = useCallback(
-    async (action: PendingConfigSetAction) => {
-      if (action.type === 'select') {
-        selectConfigSet(action.targetSetId);
-        return;
-      }
-      await switchConfigSet(action.targetSetId);
-    },
-    [selectConfigSet, switchConfigSet]
-  );
-
-  const cancelPendingConfigSetAction = useCallback(() => {
-    dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: null });
-  }, []);
-
-  const saveAndContinuePendingConfigSetAction = useCallback(async () => {
-    if (!pendingConfigSetAction) {
-      return;
-    }
-    const action = pendingConfigSetAction;
-    const saved = await handleSave({ silentSuccess: true });
-    if (!saved) {
-      return;
-    }
-    dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: null });
-    await continuePendingConfigSetAction(action);
-  }, [continuePendingConfigSetAction, handleSave, pendingConfigSetAction]);
-
-  const discardAndContinuePendingConfigSetAction = useCallback(async () => {
-    if (!pendingConfigSetAction) {
-      return;
-    }
-    const action = pendingConfigSetAction;
-    dispatch({ type: 'SET_PENDING_CONFIG_SET_ACTION', payload: null });
-    await continuePendingConfigSetAction(action);
-  }, [continuePendingConfigSetAction, pendingConfigSetAction]);
-
-  const requestCreateBlankConfigSet = useCallback(async () => {
-    if (hasUnsavedChanges) {
-      const saved = await handleSave({ silentSuccess: true });
-      if (!saved) {
-        return;
-      }
-    }
-    await createBlankConfigSet();
-  }, [createBlankConfigSet, handleSave, hasUnsavedChanges]);
-
-  const renameConfigSet = useCallback(
-    async (id: string, name: string) => {
-      if (!isElectron) {
-        return false;
-      }
-
-      const trimmed = name.trim();
-      if (!trimmed) {
-        showErrorKey('api.configSetNameRequired');
-        return false;
-      }
-
-      dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
-      clearError();
-      try {
-        const result = await configClient.renameSet({ id, name: trimmed });
-        applyPersistedConfigToStore(result.config, presets);
-        showSuccessKey('api.configSetRenamed');
-        setTimeout(() => clearSuccessMessage(), 1500);
-        return true;
-      } catch (renameError) {
-        if (renameError instanceof Error) {
-          showErrorText(translateApiConfigErrorMessage(renameError.message, t));
-        } else {
-          showErrorKey('api.saveFailed');
-        }
-        return false;
-      } finally {
-        dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: false });
-      }
-    },
-    [
-      applyPersistedConfigToStore,
-      clearError,
-      clearSuccessMessage,
-      presets,
-      showErrorKey,
-      showErrorText,
-      showSuccessKey,
-      t,
-    ]
-  );
-
-  const deleteConfigSet = useCallback(
-    async (id: string) => {
-      if (!isElectron) {
-        return false;
-      }
-
-      dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: true });
-      clearError();
-      try {
-        const result = await configClient.deleteSet({ id });
-        applyPersistedConfigToStore(result.config, presets);
-        showSuccessKey('api.configSetDeleted');
-        setTimeout(() => clearSuccessMessage(), 1500);
-        return true;
-      } catch (deleteError) {
-        if (deleteError instanceof Error) {
-          showErrorText(translateApiConfigErrorMessage(deleteError.message, t));
-        } else {
-          showErrorKey('api.saveFailed');
-        }
-        return false;
-      } finally {
-        dispatch({ type: 'SET_IS_MUTATING_CONFIG_SET', payload: false });
-      }
-    },
-    [
-      applyPersistedConfigToStore,
-      clearError,
-      clearSuccessMessage,
-      presets,
-      showErrorKey,
-      showErrorText,
-      showSuccessKey,
-      t,
-    ]
-  );
+  const {
+    requestConfigSetSwitch,
+    requestSelectConfigSet,
+    requestCreateBlankConfigSet,
+    cancelPendingConfigSetAction,
+    saveAndContinuePendingConfigSetAction,
+    discardAndContinuePendingConfigSetAction,
+    createConfigSet,
+    renameConfigSet,
+    deleteConfigSet,
+  } = useApiConfigSetActions({
+    t,
+    presets,
+    configSets,
+    activeConfigSetId,
+    selectedConfigSetId,
+    selectedConfigSetIdRef,
+    lastCustomProtocol,
+    hasUnsavedChanges,
+    pendingConfigSetAction,
+    dispatch,
+    applyPersistedConfigToStore,
+    handleSave,
+    clearError,
+    clearSuccessMessage,
+    showErrorKey,
+    showErrorText,
+    showSuccessKey,
+  });
 
   return {
     isLoadingConfig,

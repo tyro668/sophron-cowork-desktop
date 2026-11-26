@@ -53,6 +53,114 @@ function fixture(maxConcurrentRuns = 4) {
     });
   return { raw, store, service, create, execute };
 }
+describe('automation overlap scheduling', () => {
+  function holdFirstRun(f: ReturnType<typeof fixture>, id: string) {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    f.execute.mockImplementationOnce(async () => {
+      await gate;
+      return {};
+    });
+    const running = f.service.runNow(id);
+    return async () => {
+      release();
+      await running;
+    };
+  }
+
+  it.each(['manual', 'file_change', 'timer'] as const)(
+    'runs one pending %s request after the lock clears',
+    async (reason) => {
+      const f = fixture();
+      const { id } = f.create('out');
+      f.service.update(id, { concurrencyPolicy: { overlapPolicy: 'queue_once' } });
+      const finish = holdFirstRun(f, id);
+      const trigger = () =>
+        reason === 'manual' ? f.service.runNow(id) : f.service.runTriggered(id, reason);
+      const first = await trigger();
+      const repeated = await trigger();
+      await finish();
+      expect(first?.status).toBe('queued');
+      expect(repeated?.id).toBe(first?.id);
+      await vi.waitFor(() =>
+        expect(f.store.listRuns(id)).toContainEqual(
+          expect.objectContaining({ id: first!.id, status: 'succeeded', triggerReason: reason })
+        )
+      );
+      expect(f.execute).toHaveBeenCalledTimes(2);
+      expect(f.store.listRuns(id)).toHaveLength(2);
+    }
+  );
+
+  it('coalesces a file event and a manual run while waiting for a global slot', async () => {
+    const f = fixture(1);
+    const blocker = f.create('blocker');
+    const target = f.create('out');
+    f.service.update(target.id, {
+      concurrencyPolicy: { overlapPolicy: 'queue_once' },
+      outputBindings: [{ resultTableId: 'out', runOnChange: true, runOnTrigger: false }],
+    });
+    const finish = holdFirstRun(f, blocker.id);
+    const queued = await f.service.runTriggered(target.id, 'file_change');
+    const manual = await f.service.runNow(target.id);
+    expect(manual?.id).toBe(queued?.id);
+    await finish();
+    await vi.waitFor(() =>
+      expect(f.store.listRuns(target.id)).toEqual([
+        expect.objectContaining({ id: queued!.id, status: 'succeeded' }),
+      ])
+    );
+    expect(f.execute).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['skip', 'queue_once'] as const)(
+    'advances an overdue recurring timer under %s',
+    async (overlapPolicy) => {
+      const f = fixture();
+      const { id } = f.create('recurring');
+      f.service.update(id, {
+        trigger: { kind: 'daily', times: ['09:00'], timezone: 'UTC' },
+        concurrencyPolicy: { overlapPolicy },
+      });
+      const finish = holdFirstRun(f, id);
+      f.store.setRuntimeState(id, { nextRunAt: 1 });
+      await f.service.runDueAutomations();
+      await f.service.runDueAutomations();
+      await finish();
+      expect(f.store.get(id)!.nextRunAt).toBeGreaterThan(Date.now());
+      const expectedRuns = overlapPolicy === 'skip' ? 1 : 2;
+      await vi.waitFor(() =>
+        expect(f.store.listRuns(id).filter((run) => run.status === 'succeeded')).toHaveLength(
+          expectedRuns
+        )
+      );
+      expect(f.store.listRuns(id)).toHaveLength(expectedRuns);
+      expect(f.execute).toHaveBeenCalledTimes(expectedRuns);
+    }
+  );
+
+  it('executes the last tick of a one-shot schedule after an overlapping run', async () => {
+    const f = fixture();
+    const { id } = f.create('once');
+    f.service.update(id, {
+      trigger: { kind: 'once', runAt: Date.now() - 1000, timezone: 'UTC' },
+      concurrencyPolicy: { overlapPolicy: 'queue_once' },
+    });
+    const finish = holdFirstRun(f, id);
+    f.store.setRuntimeState(id, { nextRunAt: 1 });
+    await f.service.runDueAutomations();
+    await f.service.runDueAutomations();
+    await finish();
+    await vi.waitFor(() =>
+      expect(f.store.listRuns(id).map((run) => run.status)).toEqual(['succeeded', 'succeeded'])
+    );
+    expect(f.execute).toHaveBeenCalledTimes(2);
+    expect(f.store.get(id)).toMatchObject({ enabled: false, nextRunAt: null, lockedRunId: null });
+  });
+});
+
 describe('output table automation integration', () => {
   it('pauses legacy generated cloud-table writes while retaining their targets', async () => {
     const f = fixture();

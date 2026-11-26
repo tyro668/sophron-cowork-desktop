@@ -282,17 +282,6 @@ export class AutomationService {
   async runNow(id: string): Promise<AutomationRun | null> {
     const automation = this.store.get(id);
     if (!automation) return null;
-    if (automation.lockedRunId) {
-      if (automation.concurrencyPolicy.overlapPolicy === 'queue_once') {
-        return this.store.createRun({
-          automationId: automation.id,
-          status: 'queued',
-          triggerReason: 'queued_overlap',
-          queuedAt: this.now(),
-        });
-      }
-      throw new Error('Automation is already running');
-    }
     return this.runner.run(automation, 'manual');
   }
 
@@ -303,21 +292,6 @@ export class AutomationService {
   ): Promise<AutomationRun | null> {
     const automation = this.store.get(id);
     if (!automation || !automation.enabled || automation.status === 'paused') return null;
-    if (reason === 'output_change' && this.runner.hasQueuedRun(automation.id)) {
-      return this.runner.queueOnce(automation, reason, context);
-    }
-    if (automation.lockedRunId) {
-      if (automation.concurrencyPolicy.overlapPolicy === 'queue_once') {
-        if (reason === 'output_change') return this.runner.queueOnce(automation, reason, context);
-        return this.store.createRun({
-          automationId: automation.id,
-          status: 'queued',
-          triggerReason: 'queued_overlap',
-          queuedAt: this.now(),
-        });
-      }
-      return null;
-    }
     return this.runner.run(automation, reason, context);
   }
 
@@ -366,28 +340,21 @@ export class AutomationService {
   async runDueAutomations(): Promise<void> {
     const now = this.now();
     for (const automation of this.store.listRunnable(now)) {
-      if (automation.lockedRunId) {
-        if (automation.concurrencyPolicy.overlapPolicy === 'queue_once') {
-          this.store.createRun({
-            automationId: automation.id,
-            status: 'queued',
-            triggerReason: 'queued_overlap',
-            queuedAt: now,
-          });
-        }
-        continue;
-      }
       const nextRunAt = computeNextAutomationRunAt(automation.trigger, now);
+      this.store.setRuntimeState(automation.id, { nextRunAt });
       if (nextRunAt === null && automation.trigger.kind === 'once') {
-        this.store.setRuntimeState(automation.id, {
-          enabled: false,
-          status: 'disabled',
-          nextRunAt: null,
-        });
+        const { runAt } = automation.trigger;
+        // A queued one-shot must remain eligible until it starts. A later edit may reschedule it.
+        const disableConsumedSchedule = (current: Automation) => {
+          if (current.trigger.kind === 'once' && current.trigger.runAt === runAt) {
+            this.store.setRuntimeState(current.id, { enabled: false, status: 'disabled' });
+          }
+        };
+        const run = this.runner.run(automation, 'timer', undefined, disableConsumedSchedule);
+        if (!run) disableConsumedSchedule(automation);
       } else {
-        this.store.setRuntimeState(automation.id, { nextRunAt });
+        void this.runner.run(automation, 'timer');
       }
-      void this.runner.run(automation, 'timer');
     }
   }
 

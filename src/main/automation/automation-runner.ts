@@ -26,6 +26,14 @@ export interface AutomationRunnerOptions {
   notifyRunFinished?: (automation: Automation, run: AutomationRun) => void;
 }
 
+interface QueuedAutomationRun {
+  run: AutomationRun;
+  executionReason: AutomationTriggerReason;
+  ancestors: readonly string[];
+  context?: AutomationTableTriggerContext;
+  onStart?: (current: Automation) => void;
+}
+
 export class AutomationRunner {
   private readonly store: AutomationStore;
   private readonly registry: AutomationActionRegistry;
@@ -34,14 +42,7 @@ export class AutomationRunner {
   private readonly deliver?: AutomationRunnerOptions['deliver'];
   private readonly notifyRunFinished?: AutomationRunnerOptions['notifyRunFinished'];
   private runningCount = 0;
-  private readonly queued: Array<{
-    automation: Automation;
-    reason: AutomationTriggerReason;
-    runId: string;
-    run: AutomationRun;
-    ancestors: readonly string[];
-    context?: AutomationTableTriggerContext;
-  }> = [];
+  private readonly queued: QueuedAutomationRun[] = [];
 
   constructor(options: AutomationRunnerOptions) {
     this.store = options.store;
@@ -52,69 +53,73 @@ export class AutomationRunner {
     this.notifyRunFinished = options.notifyRunFinished;
   }
 
-  hasQueuedRun(id: string): boolean {
-    return this.queued.some((entry) => entry.automation.id === id);
-  }
-
-  async run(
+  run(automation: Automation, reason: 'manual'): Promise<AutomationRun>;
+  run(
     automation: Automation,
     reason: AutomationTriggerReason,
-    context?: AutomationTableTriggerContext
-  ): Promise<AutomationRun> {
-    if (this.runningCount >= this.maxConcurrentRuns) {
-      const queuedRun = this.store.createRun({
+    context?: AutomationTableTriggerContext,
+    onStart?: (current: Automation) => void
+  ): Promise<AutomationRun> | null;
+  run(
+    automation: Automation,
+    reason: AutomationTriggerReason,
+    context?: AutomationTableTriggerContext,
+    onStart?: (current: Automation) => void
+  ): Promise<AutomationRun> | null {
+    if (automation.concurrencyPolicy.overlapPolicy === 'queue_once' || reason === 'output_change') {
+      const pending = this.queued.find((entry) => entry.run.automationId === automation.id);
+      if (pending) {
+        this.mergeQueuedTrigger(pending, reason, context);
+        if (onStart) pending.onStart = onStart;
+        return Promise.resolve(pending.run);
+      }
+    }
+
+    if (automation.lockedRunId && automation.concurrencyPolicy.overlapPolicy === 'skip') {
+      if (reason === 'manual') throw new Error('Automation is already running');
+      return null;
+    }
+
+    if (automation.lockedRunId || this.runningCount >= this.maxConcurrentRuns) {
+      const run = this.store.createRun({
         automationId: automation.id,
         status: 'queued',
         triggerReason: reason,
         queuedAt: this.now(),
       });
       this.queued.push({
-        automation,
-        reason,
+        run,
+        executionReason: reason,
         context,
-        runId: queuedRun.id,
-        run: queuedRun,
+        onStart,
         ancestors: automationRunScope.getStore() ?? [],
       });
-      return queuedRun;
+      return Promise.resolve(run);
     }
+
+    onStart?.(automation);
     return this.execute(automation, reason, undefined, context);
   }
 
-  queueOnce(
-    automation: Automation,
+  private mergeQueuedTrigger(
+    pending: QueuedAutomationRun,
     reason: AutomationTriggerReason,
     context?: AutomationTableTriggerContext
-  ): AutomationRun {
-    const existing = this.queued.find((entry) => entry.automation.id === automation.id);
-    if (existing) {
-      const tables = new Map(
-        [...(existing.context?.tables ?? []), ...(context?.tables ?? [])].map((table) => [
-          tableBindingKey(table),
-          table,
-        ])
-      );
-      existing.context = { tables: [...tables.values()] };
-      existing.ancestors = [
-        ...new Set([...existing.ancestors, ...(automationRunScope.getStore() ?? [])]),
-      ];
-      return existing.run;
+  ): void {
+    // Manual runs cover every action. Timers and file events also cover actions outside a changed table.
+    if (reason === 'manual' || pending.executionReason === 'output_change') {
+      pending.executionReason = reason;
     }
-    const run = this.store.createRun({
-      automationId: automation.id,
-      status: 'queued',
-      triggerReason: reason,
-      queuedAt: this.now(),
-    });
-    this.queued.push({
-      automation,
-      reason,
-      runId: run.id,
-      run,
-      context,
-      ancestors: automationRunScope.getStore() ?? [],
-    });
-    return run;
+    const tables = new Map(
+      [...(pending.context?.tables ?? []), ...(context?.tables ?? [])].map((table) => [
+        tableBindingKey(table),
+        table,
+      ])
+    );
+    pending.context = { tables: [...tables.values()] };
+    pending.ancestors = [
+      ...new Set([...pending.ancestors, ...(automationRunScope.getStore() ?? [])]),
+    ];
   }
 
   private execute(
@@ -331,20 +336,24 @@ export class AutomationRunner {
       // An overlap may be waiting for its own automation while other slots are
       // free. Its current run will drain the queue when it releases its lock.
       const index = this.queued.findIndex(
-        (entry) => !this.store.get(entry.automation.id)?.lockedRunId
+        (entry) => !this.store.get(entry.run.automationId)?.lockedRunId
       );
       if (index < 0) return;
       const [next] = this.queued.splice(index, 1);
-      const current = this.store.get(next.automation.id);
+      const current = this.store.get(next.run.automationId);
       if (
-        ['output_change', 'timer', 'file_change', 'queued_overlap'].includes(next.reason) &&
-        (!current || !current.enabled || current.status === 'paused')
+        !current ||
+        (['output_change', 'timer', 'file_change', 'queued_overlap'].includes(
+          next.executionReason
+        ) &&
+          (!current.enabled || current.status === 'paused'))
       ) {
-        this.store.updateRun(next.runId, { status: 'cancelled', finishedAt: this.now() });
+        this.store.updateRun(next.run.id, { status: 'cancelled', finishedAt: this.now() });
         continue;
       }
+      next.onStart?.(current);
       await automationRunScope.run(next.ancestors, () =>
-        this.execute(current ?? next.automation, next.reason, next.runId, next.context)
+        this.execute(current, next.executionReason, next.run.id, next.context)
       );
     }
   }

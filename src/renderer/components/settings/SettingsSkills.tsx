@@ -1,31 +1,8 @@
 import { skillsClient } from '../../features/skills/api/skills-client';
 import { formatIpcError } from '../../utils/ipc-error';
-import { formatAppDateTime } from '../../utils/i18n-format';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GlassDropdownMenu, GlassMenuItem } from '../GlassDropdownMenu';
-import {
-  ChevronDown,
-  BarChart3,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  FileText,
-  FolderOpen,
-  GitBranch,
-  Layers,
-  Package,
-  Trash2,
-  Plus,
-  Power,
-  PowerOff,
-  AtSign,
-  Loader2,
-  RefreshCw,
-  ShoppingBag,
-  Table2,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FolderOpen, Plus, Loader2, RefreshCw } from 'lucide-react';
 import type { Skill, PluginCatalogItemV2, InstalledPlugin } from '../../types';
 import { useAppStore } from '../../store';
 import type { LocalizedBanner } from './shared';
@@ -45,104 +22,29 @@ import {
 import { useConfirmDialog } from '../ConfirmDialog';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import {
+  getCatalogLookupKeys,
+  getInstalledSkillLookupKeys,
+  getPluginTags,
+  getSkillSupportFeatures,
+  normalizePluginLookupKey,
+  skillUsageCount,
+  type SkillTableItem,
+  type SkillWorkspaceTab,
+} from './skills/skill-helpers';
+import { SkillDetailSidebar } from './skills/SkillDetailSidebar';
+import { SkillFilterCell, SkillTableRow } from './skills/SkillTablePrimitives';
+
+export {
+  getCatalogLookupKeys,
+  getInstalledSkillLookupKeys,
+  normalizePluginLookupKey,
+  skillUsageCount,
+};
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
 const SKILLHUB_MARKET_PAGE_SIZE = 50;
 const SKILL_TABLE_PAGE_SIZE = 10;
-
-type SkillWorkspaceTab = 'installed' | 'builtin' | 'market';
-
-type SkillTableItem =
-  | {
-      kind: 'skill';
-      id: string;
-      name: string;
-      description: string;
-      type: Skill['type'];
-      typeLabel: string;
-      enabled: boolean;
-      updatedAt: number;
-      raw: Skill;
-      tags: string[];
-    }
-  | {
-      kind: 'plugin';
-      id: string;
-      name: string;
-      description: string;
-      type: 'plugin';
-      typeLabel: string;
-      enabled: boolean;
-      updatedAt: number;
-      raw: PluginCatalogItemV2;
-      installed: boolean;
-      tags: string[];
-    };
-
-export function normalizePluginLookupKey(value: string | undefined): string {
-  if (!value) {
-    return '';
-  }
-  return value
-    .trim()
-    .replace(/\.skills?$/i, '')
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-export function getCatalogLookupKeys(plugin: PluginCatalogItemV2): string[] {
-  const keys = new Set<string>();
-  const addKey = (value: string | undefined) => {
-    if (!value) {
-      return;
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return;
-    }
-    keys.add(trimmed);
-    keys.add(trimmed.toLowerCase());
-    const normalized = normalizePluginLookupKey(trimmed);
-    if (normalized) {
-      keys.add(normalized);
-    }
-  };
-
-  addKey(plugin.name);
-  addKey(plugin.pluginId);
-  addKey(plugin.skillHubSlug);
-
-  // Canonical "@handle/slug" identities also key by the bare slug — the
-  // installed package records only the slug in its `_meta.json`.
-  const bareSlug = plugin.skillHubSlug?.split('/').pop();
-  addKey(bareSlug);
-  if (bareSlug) {
-    addKey(`skillhub:${bareSlug}`);
-  }
-
-  // Marketplace alias ("name@source" → "name") only applies to
-  // claude-marketplace ids; skillhub ids are "skillhub:<canonical>".
-  if (plugin.catalogSource !== 'skillhub') {
-    addKey(plugin.pluginId?.split('@')[0]);
-  }
-
-  return [...keys];
-}
-
-/** Lookup keys identifying an installed skill for catalog installed-detection. */
-export function getInstalledSkillLookupKeys(skill: Skill): string[] {
-  const dirName = skill.path?.split(/[/\\]/).filter(Boolean).pop();
-  return [
-    skill.name,
-    skill.name?.toLowerCase(),
-    normalizePluginLookupKey(skill.name),
-    dirName,
-    normalizePluginLookupKey(dirName),
-    skill.skillHubSlug,
-    skill.skillHubSlug ? `skillhub:${skill.skillHubSlug}` : undefined,
-  ].filter((value): value is string => Boolean(value));
-}
 
 export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const [skillStatusFilter, setSkillStatusFilter] = useState<'all' | 'enabled' | 'disabled'>('all');
@@ -538,9 +440,6 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
   const selectedSkill = selectedItem?.kind === 'skill' ? selectedItem.raw : null;
   const selectedPlugin = selectedItem?.kind === 'plugin' ? selectedItem.raw : null;
   const selectedPluginInstalled = selectedItem?.kind === 'plugin' ? selectedItem.installed : false;
-  const SelectedIcon = selectedItem
-    ? getSkillVisualIcon(selectedItem.name, selectedItem.type)
-    : Package;
   const hasNextPage =
     safeCurrentPage < pageCount || (activeWorkspaceTab === 'market' && hasMorePlugins);
 
@@ -782,205 +681,17 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
               </div>
 
               {selectedItem && (
-                <aside className="hidden min-h-0 min-w-0 flex-col overflow-hidden border-l border-border-subtle xl:flex">
-                  <>
-                    <div className="min-h-0 flex-1 overflow-y-auto pb-3">
-                      <section className="ui-group bg-surface">
-                        <div className="flex min-h-10 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
-                          <SelectedIcon className="h-4 w-4 flex-shrink-0 text-text-muted" />
-                          <h3 className="min-w-0 truncate text-[14px] font-semibold text-text-primary">
-                            {selectedItem.name}
-                          </h3>
-                          <SkillTypeBadge item={selectedItem} />
-                          <SkillStatusBadge item={selectedItem} />
-                        </div>
-                        <div
-                          className="ui-form-row"
-                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
-                        >
-                          <span className="ui-form-label items-start pt-2.5">
-                            {t('skills.workspace.descriptionLabel')}
-                          </span>
-                          <div className="ui-form-value">
-                            <p className="line-clamp-4 break-words py-1 text-[12.5px] leading-5 text-text-secondary">
-                              {selectedItem.description || t('skills.installSkillsDesc')}
-                            </p>
-                          </div>
-                        </div>
-                      </section>
-
-                      {selectedItem.tags.length > 0 && (
-                        <section className="ui-group bg-surface">
-                          <h4 className="ui-group-title">
-                            {t('skills.workspace.supportedCapabilities')}
-                          </h4>
-                          {selectedItem.tags.map((tag) => (
-                            <div
-                              key={`${selectedItem.id}:${tag}`}
-                              className="flex h-9 min-w-0 items-center gap-2 border-b border-border-subtle px-3 text-[12.5px] text-text-secondary last:border-b-0"
-                            >
-                              <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0 text-accent" />
-                              <span className="min-w-0 flex-1 truncate" title={tag}>
-                                {tag}
-                              </span>
-                            </div>
-                          ))}
-                        </section>
-                      )}
-
-                      <section className="ui-group bg-surface">
-                        <h4 className="ui-group-title">{t('skills.workspace.detailsTitle')}</h4>
-                        {selectedSkill && (
-                          <div
-                            className="ui-form-row"
-                            style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
-                          >
-                            <span className="ui-form-label items-center">
-                              {t('skills.workspace.chatDisplay')}
-                            </span>
-                            <div className="ui-form-value">
-                              <span className="inline-flex h-6 items-center gap-1 self-start rounded-md border border-accent/20 bg-accent-muted px-2 text-[12px] text-accent-text">
-                                <SelectedIcon className="h-3 w-3" />
-                                {t('skills.workspace.usedSkillChip', { name: selectedSkill.name })}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                        <div
-                          className="ui-form-row"
-                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
-                        >
-                          <span className="ui-form-label items-center">
-                            {t('skills.workspace.source')}
-                          </span>
-                          <div className="ui-form-value text-[12.5px] text-text-secondary">
-                            {selectedItem.kind === 'plugin'
-                              ? t('skills.skillHubSource')
-                              : selectedItem.type === 'builtin'
-                                ? t('skills.workspace.systemBuiltin')
-                                : t('skills.customSkills')}
-                          </div>
-                        </div>
-                        <div
-                          className="ui-form-row"
-                          style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
-                        >
-                          <span className="ui-form-label items-center">
-                            {t('skills.workspace.table.updatedAt')}
-                          </span>
-                          <div className="ui-form-value font-mono text-[12px] text-text-secondary">
-                            {formatSkillDate(selectedItem.updatedAt)}
-                          </div>
-                        </div>
-                        {selectedSkill?.path && (
-                          <div
-                            className="ui-form-row"
-                            style={{ gridTemplateColumns: '112px minmax(0,1fr)' }}
-                          >
-                            <span className="ui-form-label items-center">
-                              {t('skills.workspace.directory')}
-                            </span>
-                            <div
-                              className="ui-form-value truncate font-mono text-[11.5px] text-text-secondary"
-                              title={selectedSkill.path}
-                            >
-                              <span className="truncate">{selectedSkill.path}</span>
-                            </div>
-                          </div>
-                        )}
-                      </section>
-
-                      <section className="ui-group bg-surface">
-                        <h4 className="ui-group-title">{t('skills.workspace.recentCallsTitle')}</h4>
-                        <div className="ui-form-row">
-                          <span className="ui-form-label items-center">
-                            {t('skills.workspace.recentCallsLabel')}
-                          </span>
-                          <div className="ui-form-value text-[13px] tabular-nums text-text-primary">
-                            {selectedSkill
-                              ? t('skills.workspace.recentCallsCount', {
-                                  count: skillUsageCount(usageCounts, selectedSkill),
-                                })
-                              : '—'}
-                          </div>
-                        </div>
-                      </section>
-                    </div>
-
-                    {selectedSkill && (
-                      <div className="grid h-[49px] flex-shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-t border-border-subtle">
-                        <Button
-                          variant="primary"
-                          className="h-full rounded-none"
-                          disabled={!selectedSkill.enabled}
-                          onClick={() => {
-                            const store = useAppStore.getState();
-                            store.setPendingSkillMention(selectedSkill.name);
-                            store.setMainView('chat');
-                            store.setActiveSession(null);
-                            store.setShowSettings(false);
-                          }}
-                        >
-                          <AtSign className="h-3.5 w-3.5" />
-                          {t('skills.workspace.useInChat')}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          className="h-full rounded-none border-l border-border-subtle"
-                          disabled={isLoading}
-                          onClick={() => void handleToggleEnabled(selectedSkill)}
-                        >
-                          {selectedSkill.enabled ? (
-                            <PowerOff className="h-3.5 w-3.5" />
-                          ) : (
-                            <Power className="h-3.5 w-3.5" />
-                          )}
-                          {selectedSkill.enabled
-                            ? t('skills.pluginDisable')
-                            : t('skills.pluginEnable')}
-                        </Button>
-                      </div>
-                    )}
-
-                    {(selectedPlugin || (selectedSkill && selectedSkill.type !== 'builtin')) && (
-                      <div
-                        className={
-                          selectedSkill
-                            ? 'border-t border-border-subtle'
-                            : 'border-t border-border-subtle'
-                        }
-                      >
-                        <button
-                          type="button"
-                          onClick={() => void handleSelectedDelete()}
-                          disabled={
-                            (!selectedPlugin &&
-                              (!selectedSkill || selectedSkill.type === 'builtin')) ||
-                            selectedPluginInstalled ||
-                            pluginActionKey !== null ||
-                            isLoading
-                          }
-                          className={`inline-flex h-12 w-full items-center justify-center gap-2 px-3 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                            selectedPlugin
-                              ? 'bg-accent-muted text-accent hover:bg-accent-muted'
-                              : 'text-error hover:bg-error/10'
-                          }`}
-                        >
-                          {selectedPlugin ? (
-                            <Plus className="h-3.5 w-3.5" />
-                          ) : (
-                            <Trash2 className="h-3.5 w-3.5" />
-                          )}
-                          {selectedPlugin
-                            ? selectedPluginInstalled
-                              ? t('skills.pluginInstalled')
-                              : t('skills.pluginInstall')
-                            : t('skills.pluginManageUninstall')}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                </aside>
+                <SkillDetailSidebar
+                  selectedItem={selectedItem}
+                  selectedSkill={selectedSkill}
+                  selectedPlugin={selectedPlugin}
+                  selectedPluginInstalled={selectedPluginInstalled}
+                  usageCounts={usageCounts}
+                  pluginActionKey={pluginActionKey}
+                  isLoading={isLoading}
+                  onToggleEnabled={(skill) => void handleToggleEnabled(skill)}
+                  onSelectedDeleteOrInstall={() => void handleSelectedDelete()}
+                />
               )}
             </div>
           </TabsContent>
@@ -988,217 +699,4 @@ export function SettingsSkills({ isActive }: { isActive: boolean }) {
       </section>
     </div>
   );
-}
-
-function SkillFilterCell({
-  value,
-  options,
-  onChange,
-}: {
-  value: string;
-  options: Array<[string, string]>;
-  onChange: (value: string) => void;
-}) {
-  const label = options.find(([key]) => key === value)?.[1] ?? '';
-  return (
-    <GlassDropdownMenu
-      align="end"
-      trigger={
-        <button
-          type="button"
-          className="inline-flex h-full min-w-[104px] flex-shrink-0 items-center justify-between gap-2 border-l border-border-subtle px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover"
-        >
-          {label}
-          <ChevronDown className="h-3.5 w-3.5 text-text-muted" />
-        </button>
-      }
-    >
-      {options.map(([key, text]) => (
-        <GlassMenuItem key={key} selected={value === key} onSelect={() => onChange(key)}>
-          {text}
-        </GlassMenuItem>
-      ))}
-    </GlassDropdownMenu>
-  );
-}
-
-function SkillTableRow({
-  item,
-  selected,
-  onSelect,
-}: {
-  item: SkillTableItem;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const Icon = getSkillVisualIcon(item.name, item.type);
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onSelect();
-        }
-      }}
-      className={`grid h-9 w-full cursor-pointer grid-cols-[minmax(0,1fr)_76px_86px_132px] items-center border-b border-border-muted/85 px-3 text-left transition-colors last:border-b-0 ${
-        selected
-          ? 'bg-accent-muted shadow-[inset_3px_0_0_var(--color-accent)]'
-          : 'hover:bg-surface-hover/35'
-      }`}
-    >
-      <span className="flex min-w-0 items-center gap-2.5">
-        <Icon className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="flex-shrink-0 truncate text-[13px] font-medium text-text-primary">
-            {item.name}
-          </span>
-          {item.description && (
-            <span className="min-w-0 truncate text-[12px] text-text-muted" title={item.description}>
-              {item.description}
-            </span>
-          )}
-        </span>
-      </span>
-      <span className="min-w-0">
-        <SkillTypeBadge item={item} />
-      </span>
-      <span className="min-w-0">
-        <SkillStatusBadge item={item} />
-      </span>
-      <span className="truncate font-mono text-[12px] text-text-secondary">
-        {formatSkillDate(item.updatedAt)}
-      </span>
-    </div>
-  );
-}
-
-function SkillTypeBadge({ item }: { item: SkillTableItem }) {
-  return (
-    <span
-      className={`inline-flex h-6 max-w-full items-center rounded-full px-2 text-xs font-medium ${
-        item.type === 'plugin'
-          ? 'bg-mcp/10 text-mcp'
-          : item.type === 'builtin'
-            ? 'bg-accent-muted text-accent'
-            : item.type === 'mcp'
-              ? 'bg-mcp/10 text-mcp'
-              : 'bg-success/10 text-success'
-      }`}
-    >
-      <span className="truncate">{item.typeLabel}</span>
-    </span>
-  );
-}
-
-function SkillStatusBadge({ item }: { item: SkillTableItem }) {
-  const { t } = useTranslation();
-  const installable = item.kind === 'plugin' && !item.installed;
-  const installedPlugin = item.kind === 'plugin' && item.installed;
-
-  return (
-    <span
-      className={`inline-flex h-6 max-w-full items-center gap-1 rounded-full px-2 text-xs font-medium ${
-        installable
-          ? 'bg-warning/10 text-warning'
-          : item.enabled
-            ? 'bg-success/10 text-success'
-            : 'bg-text-muted/10 text-text-muted'
-      }`}
-    >
-      <span
-        className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-          installable ? 'bg-warning' : item.enabled ? 'bg-success' : 'bg-text-muted'
-        }`}
-      />
-      <span className="truncate">
-        {installable
-          ? t('skills.workspace.installable')
-          : installedPlugin
-            ? t('skills.pluginInstalled')
-            : item.enabled
-              ? t('skills.workspace.enabled')
-              : t('skills.workspace.disabled')}
-      </span>
-    </span>
-  );
-}
-
-function getSkillVisualIcon(name: string, type: Skill['type'] | 'plugin'): LucideIcon {
-  const normalized = name.toLowerCase();
-  if (normalized.includes('github')) return GitBranch;
-  if (normalized.includes('pdf') || normalized.includes('document')) return FileText;
-  if (normalized.includes('table') || normalized.includes('excel') || normalized.includes('sheet'))
-    return Table2;
-  if (normalized.includes('data') || normalized.includes('分析')) return BarChart3;
-  if (type === 'plugin') return ShoppingBag;
-  if (type === 'builtin') return Layers;
-  return Package;
-}
-
-function normalizeSkillFeature(text: string): string {
-  return text
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function getSkillSupportFeatures(skill: Skill, fallbackDescription: string): string[] {
-  const features = (skill.supportFeatures ?? [])
-    .map(normalizeSkillFeature)
-    .filter((feature) => feature.length > 0)
-    .slice(0, 6);
-
-  if (features.length > 0) {
-    return features;
-  }
-
-  return fallbackDescription
-    .split(/,|;|；|、|\band\b/i)
-    .map(normalizeSkillFeature)
-    .filter((feature) => feature.length > 0)
-    .slice(0, 6);
-}
-
-function getPluginTags(
-  plugin: PluginCatalogItemV2,
-  t: ReturnType<typeof useTranslation>['t']
-): string[] {
-  const tags = [
-    t('skills.workspace.capabilities.onlineInstall'),
-    plugin.requiresApiKey
-      ? t('skills.workspace.capabilities.apiConfig')
-      : t('skills.workspace.capabilities.readyToUse'),
-  ];
-  if (plugin.componentCounts.skills > 0) tags.push(t('skills.workspace.capabilities.skillPackage'));
-  if (plugin.componentCounts.commands > 0)
-    tags.push(t('skills.workspace.capabilities.commandActions'));
-  return tags.slice(0, 4);
-}
-
-function formatSkillDate(value?: number): string {
-  if (!value) return '—';
-  return formatAppDateTime(value);
-}
-
-/** Usage is logged by skill name or skill directory name; match either, case-insensitively. */
-export function skillUsageCount(
-  counts: Record<string, number>,
-  skill: { name: string; path?: string }
-): number {
-  const keys = new Set(
-    [skill.name, skill.path?.replace(/\\/g, '/').split('/').filter(Boolean).pop()]
-      .filter((key): key is string => Boolean(key))
-      .map((key) => key.toLocaleLowerCase())
-  );
-  let total = 0;
-  for (const [name, count] of Object.entries(counts)) {
-    if (keys.has(name.toLocaleLowerCase())) total += count;
-  }
-  return total;
 }

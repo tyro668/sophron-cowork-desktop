@@ -6,23 +6,22 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Info, Loader2, Save, ScrollText } from 'lucide-react';
-import { X } from 'lucide-react';
+import { Info, Loader2, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Dialog, DialogTitle, DialogBody } from './ui/dialog';
 import { QrSetupDialog } from './remote/QrSetupDialog';
 import { AdditionalChannelSettings } from './remote/AdditionalChannelSettings';
-import { AdvancedConfigStep } from './remote/AdvancedConfigStep';
 import { AuthorizedUsersSection } from './remote/AuthorizedUsersSection';
+import { buildRemoteChannelViewModels } from './remote/build-channel-models';
 import { ChannelDetailPanel } from './remote/ChannelDetailPanel';
 import { ChannelList } from './remote/ChannelList';
-import { ChannelBrandIcon } from './remote/ChannelBrandIcon';
-import { CHANNEL_STATE_DOT_CLASS, getChannelState } from './remote/channel-state';
 import { GatewayControlCard } from './remote/GatewayControlCard';
 import { showToast } from '../utils/toast';
 import { remoteClient } from '../features/remote/api/remote-client';
 import { PairingGuideCard } from './remote/PairingGuideCard';
 import { PairingRequestsSection } from './remote/PairingRequestsSection';
+import { RemoteGlobalSettingsSection } from './remote/RemoteGlobalSettingsSection';
+import { RemoteLogsOverviewSection } from './remote/RemoteLogsOverviewSection';
 import { RemoteSectionNav } from './remote/RemoteSectionNav';
 import type {
   GatewayStatus,
@@ -30,7 +29,6 @@ import type {
   PairedUser,
   PairingRequest,
   RemoteChannelType,
-  RemoteChannelViewModel,
   RemoteConfig,
   RemoteSection,
   TunnelStatus,
@@ -519,22 +517,6 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     setTimeout(() => setSuccess(null), duration);
   }
 
-  const isFeishuConfigured = !!(feishuAppId && feishuAppSecret);
-  const isFeishuConnected =
-    status?.channels.some((channel) => channel.type === 'feishu' && channel.connected) ?? false;
-  const isDingtalkConfigured = !!(dingtalkAppKey && dingtalkAppSecret);
-  const isDingtalkConnected =
-    status?.channels.some((channel) => channel.type === 'dingtalk' && channel.connected) ?? false;
-  const isWecomConfigured =
-    wecomReceiveMode === 'webhook'
-      ? !!(wecomWebhookToken && wecomWebhookEncodingAESKey)
-      : !!(wecomBotId && wecomSecret);
-  const isWecomConnected =
-    status?.channels.some((channel) => channel.type === 'wecom' && channel.connected) ?? false;
-  const extraConfigured = [
-    !!(additionalConfig.lark?.appId && additionalConfig.lark.appSecret),
-    !!(additionalConfig.wechat?.botToken && additionalConfig.wechat.botId),
-  ];
   const serviceRunning = !!status?.running;
   const isPairingEnabled =
     (feishuEnabled && feishuDmPolicy === 'pairing') ||
@@ -542,103 +524,49 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
     (wecomEnabled && wecomDmPolicy === 'pairing') ||
     (additionalConfig.lark?.enabled !== false && additionalConfig.lark?.dm.policy === 'pairing');
 
-  const baseChannels = useMemo<RemoteChannelViewModel[]>(
-    () => [
-      {
-        type: 'feishu',
-        name: t('remote.channelName.feishu'),
-        description: isFeishuConfigured
-          ? t('remote.channelDesc.feishuConfigured', {
-              mode: useLongConnection ? t('remote.longConnection') : t('remote.webhookMode'),
-              count: pairedUsers.filter((user) => user.channelType === 'feishu').length,
-            })
-          : t('remote.channelDesc.feishu'),
-        configured: isFeishuConfigured,
-        enabled: feishuEnabled,
-        connected: isFeishuConnected,
-        backendAvailable: true,
-        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'feishu').length,
-        error: status?.channels.find((channel) => channel.type === 'feishu')?.error,
-      },
-      {
-        type: 'dingtalk',
-        name: t('remote.channelName.dingtalk'),
-        description: isDingtalkConfigured
-          ? t('remote.channelDesc.dingtalkConfigured', {
-              mode:
-                dingtalkReceiveMode === 'stream'
-                  ? t('remote.streamConnection')
-                  : t('remote.webhookMode'),
-              count: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
-            })
-          : t('remote.channelDesc.dingtalk'),
-        configured: isDingtalkConfigured,
-        enabled: dingtalkEnabled,
-        connected: isDingtalkConnected,
-        backendAvailable: true,
-        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'dingtalk').length,
-        error: status?.channels.find((channel) => channel.type === 'dingtalk')?.error,
-      },
-      {
-        type: 'wecom',
-        name: t('remote.channelName.wecom'),
-        description: isWecomConfigured
-          ? t('remote.channelDesc.wecomConfigured', {
-              mode:
-                wecomReceiveMode === 'websocket'
-                  ? t('remote.longConnection')
-                  : t('remote.webhookMode'),
-              count: pairedUsers.filter((user) => user.channelType === 'wecom').length,
-            })
-          : t('remote.channelDesc.wecom'),
-        configured: isWecomConfigured,
-        enabled: wecomEnabled,
-        connected: isWecomConnected,
-        backendAvailable: true,
-        authorizedUsers: pairedUsers.filter((user) => user.channelType === 'wecom').length,
-        error: status?.channels.find((channel) => channel.type === 'wecom')?.error,
-      },
-    ],
+  const channels = useMemo(
+    () =>
+      buildRemoteChannelViewModels({
+        t,
+        status,
+        pairedUsers,
+        feishuAppId,
+        feishuAppSecret,
+        feishuEnabled,
+        useLongConnection,
+        dingtalkAppKey,
+        dingtalkAppSecret,
+        dingtalkEnabled,
+        dingtalkReceiveMode,
+        wecomBotId,
+        wecomSecret,
+        wecomWebhookToken,
+        wecomWebhookEncodingAESKey,
+        wecomEnabled,
+        wecomReceiveMode,
+        additionalConfig,
+      }),
     [
-      isDingtalkConfigured,
-      isDingtalkConnected,
-      dingtalkReceiveMode,
+      additionalConfig,
+      dingtalkAppKey,
+      dingtalkAppSecret,
       dingtalkEnabled,
+      dingtalkReceiveMode,
+      feishuAppId,
+      feishuAppSecret,
       feishuEnabled,
-      isFeishuConfigured,
-      isFeishuConnected,
       pairedUsers,
+      status,
       t,
       useLongConnection,
+      wecomBotId,
       wecomEnabled,
-      isWecomConfigured,
-      isWecomConnected,
       wecomReceiveMode,
-      status?.channels,
+      wecomSecret,
+      wecomWebhookEncodingAESKey,
+      wecomWebhookToken,
     ]
   );
-
-  const extraChannels: RemoteChannelViewModel[] = (['lark', 'wechat'] as const).map(
-    (type, index) => ({
-      type,
-      name: t(`remote.channelName.${type}`),
-      description: t('remote.channelSummary', { channel: t(`remote.channelName.${type}`) }),
-      configured: extraConfigured[index],
-      enabled: additionalConfig[type]?.enabled !== false,
-      connected:
-        status?.channels.some((channel) => channel.type === type && channel.connected) || false,
-      backendAvailable: true,
-      authorizedUsers: pairedUsers.filter((user) => user.channelType === type).length,
-      error: status?.channels.find((channel) => channel.type === type)?.error,
-    })
-  );
-  const channels = [
-    baseChannels[1],
-    baseChannels[0],
-    extraChannels[0],
-    extraChannels[1],
-    baseChannels[2],
-  ];
   const openSetup = (type: RemoteChannelType, manual = false) => {
     setError(null);
     setSelectedChannel(type);
@@ -831,90 +759,19 @@ export function RemoteControlPanel({ isActive }: { isActive: boolean }) {
         )}
 
         {activeSection === 'global' && (
-          <section
-            id="remote-panel-global"
-            role="tabpanel"
-            aria-labelledby="remote-nav-tab-global"
-            className="overflow-hidden rounded-md border border-border-subtle"
-          >
-            <div className="p-4 sm:p-5">
-              <AdvancedConfigStep
-                defaultWorkingDirectory={defaultWorkingDirectory}
-                gatewayPort={gatewayPort}
-                autoApproveSafeTools={autoApproveSafeTools}
-                onWorkingDirectoryChange={setDefaultWorkingDirectory}
-                onGatewayPortChange={setGatewayPort}
-                onAutoApproveChange={setAutoApproveSafeTools}
-              />
-              <div className="mt-4 flex items-start gap-2 rounded-md border border-accent/20 bg-accent-muted p-3 text-xs leading-5 text-text-secondary">
-                <Info className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-                {t('remote.globalSettingsHint')}
-              </div>
-            </div>
-            <div className="flex justify-end border-t border-border-subtle p-4">
-              <button
-                type="button"
-                onClick={saveGatewayConfig}
-                disabled={isSaving}
-                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground transition-colors hover:bg-accent-hover disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                {t('remote.saveGlobalSettings')}
-              </button>
-            </div>
-          </section>
+          <RemoteGlobalSettingsSection
+            defaultWorkingDirectory={defaultWorkingDirectory}
+            gatewayPort={gatewayPort}
+            autoApproveSafeTools={autoApproveSafeTools}
+            isSaving={isSaving}
+            onWorkingDirectoryChange={setDefaultWorkingDirectory}
+            onGatewayPortChange={setGatewayPort}
+            onAutoApproveChange={setAutoApproveSafeTools}
+            onSave={() => void saveGatewayConfig()}
+          />
         )}
 
-        {activeSection === 'logs' && (
-          <section
-            id="remote-panel-logs"
-            role="tabpanel"
-            aria-labelledby="remote-nav-tab-logs"
-            className="rounded-md border border-border-subtle p-3"
-          >
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-accent-muted p-2.5">
-                <ScrollText className="h-5 w-5 text-accent" />
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">
-                  {t('remote.runtimeOverview')}
-                </h3>
-                <p className="mt-1 text-xs text-text-muted">{t('remote.runtimeOverviewDesc')}</p>
-              </div>
-            </div>
-            <div className="mt-5 space-y-2">
-              {channels.map((channel) => {
-                const channelState = getChannelState(channel);
-                return (
-                  <div
-                    key={channel.type}
-                    className="flex items-center justify-between gap-3 rounded-md bg-surface-hover p-2.5"
-                  >
-                    <div className="flex items-center gap-2.5 text-sm text-text-secondary">
-                      <ChannelBrandIcon type={channel.type} className="h-7 w-7" />
-                      {channel.name}
-                    </div>
-                    <span className="inline-flex items-center gap-1.5 text-xs text-text-muted">
-                      <span
-                        className={`h-1.5 w-1.5 rounded-full ${CHANNEL_STATE_DOT_CLASS[channelState]}`}
-                      />
-                      <span>{t(`remote.channelState.${channelState}`)}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 flex items-center gap-2 rounded-md border border-dashed border-border p-4 text-xs text-text-muted">
-              <Check className="h-4 w-4" />
-              {t('remote.fullLogsPending')}
-            </div>
-          </section>
-        )}
+        {activeSection === 'logs' && <RemoteLogsOverviewSection channels={channels} />}
       </div>
     </div>
   );
