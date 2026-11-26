@@ -32,6 +32,7 @@ import {
   BarChart3,
   FolderOpen,
   ArrowRight,
+  ArrowUp,
   Plus,
   BookOpen,
   Check,
@@ -265,8 +266,8 @@ export function WelcomeView() {
     if (textarea) {
       // Reset height to auto to get the correct scrollHeight
       textarea.style.height = 'auto';
-      // Set max height to 200px (about 8 lines), then scroll
-      const maxHeight = 200;
+      // Set max height to 220px (about 9 lines), then scroll
+      const maxHeight = 220;
       const newHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${newHeight}px`;
       // Show scrollbar if content exceeds max height
@@ -349,7 +350,7 @@ export function WelcomeView() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`chat-composer-panel relative mx-auto mt-5 w-full max-w-[860px] px-4 py-3 transition-colors sm:px-5 sm:py-4 ${
+          className={`chat-composer-panel relative mx-auto mt-6 flex w-full max-w-[860px] flex-col px-4 pb-3 pt-3.5 transition-colors ${
             isDragging ? 'ring-2 ring-accent bg-accent-muted' : ''
           }`}
         >
@@ -390,9 +391,9 @@ export function WelcomeView() {
             }}
             onPaste={handlePaste}
             placeholder={t('welcome.placeholder')}
-            rows={3}
-            style={{ minHeight: '76px', maxHeight: '140px' }}
-            className="w-full resize-none overflow-hidden border-none bg-transparent text-[14px] leading-6 text-text-primary outline-none placeholder:text-text-muted sm:text-[15px]"
+            rows={4}
+            style={{ minHeight: '96px', maxHeight: '220px' }}
+            className="w-full resize-none overflow-hidden border-none bg-transparent text-[14px] leading-6 text-text-primary outline-none placeholder:text-text-muted/85"
             onKeyDown={(e) => {
               if (skillMentions.handlePromptKeyDown(e)) {
                 return;
@@ -412,79 +413,92 @@ export function WelcomeView() {
           />
 
           {/* Bottom Actions */}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="flex min-w-max flex-1 items-center gap-1.5">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border-subtle/60 pt-2">
+            <div className="flex min-w-max flex-1 items-center gap-1">
               <button
                 type="button"
                 onClick={handleFileSelect}
-                className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                className="composer-flat-button flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
                 title={t('welcome.attachFiles')}
               >
-                <Plus className="h-5 w-5" />
+                <Plus className="h-4 w-4" />
               </button>
 
               <button
                 type="button"
                 onClick={skillMentions.insertMentionTrigger}
                 disabled={isSubmitting}
-                className="composer-flat-button flex h-9 w-9 shrink-0 items-center justify-center rounded-full"
+                className="composer-flat-button flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
                 title={t('welcome.mentionSkill')}
                 aria-label={t('welcome.mentionSkill')}
               >
-                <AtSign className="h-5 w-5" />
+                <AtSign className="h-4 w-4" />
               </button>
+
+              <span className="mx-0.5 h-3.5 w-px bg-border-subtle" aria-hidden="true" />
 
               <PermissionPolicySelector
                 open={showPermissionMenu}
                 onOpenChange={handlePermissionMenuOpenChange}
-                buttonClassName="composer-flat-pill inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                buttonClassName="composer-flat-pill inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium"
               />
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[11rem] shrink-0 items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                    className="composer-flat-pill group inline-flex h-7 min-w-0 max-w-[11.5rem] shrink-0 items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium"
                     title={workingDir || workingDirLabel}
                   >
-                    <FolderOpen className="h-[18px] w-[18px] shrink-0" />
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-text-muted" />
                     <span className="truncate">{workingDirLabel}</span>
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-65 transition-transform duration-150 group-data-[state=open]:rotate-180" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
                   side="top"
                   align="start"
-                  className="max-h-72 w-64 overflow-y-auto"
+                  sideOffset={6}
+                  className="scrollbar-hover max-h-72 w-64 overflow-y-auto rounded-xl border-border-muted p-1.5"
                 >
                   {projectOptions.length > 0 && (
                     <>
-                      <DropdownMenuLabel>{t('welcome.projectDirectory')}</DropdownMenuLabel>
-                      {projectOptions.map((project) => (
-                        <DropdownMenuItem
-                          key={project.id}
-                          title={project.cwd}
-                          onSelect={() => void handleSelectProjectDir(project.cwd)}
-                        >
-                          <Folder className="mr-2 h-4 w-4 shrink-0 text-text-muted" />
-                          <span className="min-w-0 flex-1 truncate">{project.label}</span>
-                          {project.active && (
-                            <Check className="ml-2 h-4 w-4 shrink-0 text-accent" />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-text-muted">
+                        {t('welcome.projectDirectory')}
+                      </DropdownMenuLabel>
+                      <div className="space-y-0.5">
+                        {projectOptions.map((project) => (
+                          <DropdownMenuItem
+                            key={project.id}
+                            title={project.cwd}
+                            onSelect={() => void handleSelectProjectDir(project.cwd)}
+                            className={`rounded-lg border-b-0 px-2.5 py-1.5 text-[12.5px] data-[highlighted]:bg-surface-hover ${
+                              project.active ? 'bg-accent-muted/75 font-medium' : ''
+                            }`}
+                          >
+                            <Folder className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                            <span className="min-w-0 flex-1 truncate">{project.label}</span>
+                            {project.active && (
+                              <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-accent" />
+                            )}
+                          </DropdownMenuItem>
+                        ))}
+                      </div>
+                      <DropdownMenuSeparator className="mx-0 my-1.5" />
                     </>
                   )}
-                  <DropdownMenuItem onSelect={() => void handleSelectFolder()}>
-                    <FolderOpen className="mr-2 h-4 w-4 shrink-0 text-text-muted" />
+                  <DropdownMenuItem
+                    onSelect={() => void handleSelectFolder()}
+                    className="rounded-lg border-b-0 px-2.5 py-1.5 text-[12.5px] text-text-secondary data-[highlighted]:bg-surface-hover data-[highlighted]:text-text-primary"
+                  >
+                    <FolderOpen className="mr-2 h-3.5 w-3.5 shrink-0 text-text-muted" />
                     <span>{t('welcome.openFolder')}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
 
-            <div className="ml-auto flex min-w-max items-center gap-2">
+            <div className="ml-auto flex min-w-max items-center gap-1.5">
               {hasConfiguredModel ? (
                 <AgentModelSelector
                   open={showModelMenu}
@@ -496,14 +510,14 @@ export function WelcomeView() {
                   }}
                   appConfig={appConfig}
                   fallbackLabel={modelLabel}
-                  triggerClassName="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                  triggerClassName="composer-flat-pill inline-flex h-7 min-w-0 max-w-[14rem] items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium"
                   onSelect={(configSetId) => void handleModelOptionClick(configSetId)}
                 />
               ) : (
                 <button
                   type="button"
                   onClick={handleModelButtonClick}
-                  className="composer-flat-pill inline-flex h-9 min-w-0 max-w-[13rem] items-center gap-2 rounded-full px-3 text-[13px] font-medium"
+                  className="composer-flat-pill inline-flex h-7 min-w-0 max-w-[14rem] items-center gap-1.5 rounded-lg px-2 text-[12.5px] font-medium"
                   title={modelLabel}
                 >
                   <span className="truncate">{modelLabel}</span>
@@ -513,15 +527,15 @@ export function WelcomeView() {
               <button
                 type="submit"
                 disabled={!canSubmit || isSubmitting}
-                className="composer-flat-pill inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-full px-3 text-[13px] font-medium text-accent disabled:cursor-not-allowed disabled:text-text-muted"
+                className="inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-accent px-2.5 text-[12.5px] font-medium text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
               >
                 <span>{isSubmitting ? t('welcome.starting') : t('welcome.letsGo')}</span>
-                <ArrowRight className="h-4 w-4" />
+                <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.25} />
               </button>
             </div>
           </div>
         </form>
-        <ComposerShortcutHint className="mx-auto mt-1.5 w-full max-w-[860px] px-1" />
+        <ComposerShortcutHint className="mx-auto mt-2 w-full max-w-[860px] px-1 opacity-85" />
         {/* Quick Action Tags */}
         <div className="mx-auto mt-4 flex w-full max-w-[860px] flex-wrap items-center justify-center gap-2">
           {quickTags.map((tag) => (
@@ -530,9 +544,9 @@ export function WelcomeView() {
               type="button"
               title={tag.description}
               onClick={() => handleTagClick(tag.prompt)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border-subtle px-3 py-1.5 text-[12px] text-text-secondary transition-colors hover:border-accent/30 hover:text-accent"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary"
             >
-              <tag.icon className="h-3.5 w-3.5" />
+              <tag.icon className="h-3.5 w-3.5 text-text-muted" />
               <span>{tag.label}</span>
             </button>
           ))}

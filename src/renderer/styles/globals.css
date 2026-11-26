@@ -1030,68 +1030,89 @@
   .chat-composer-panel {
     background: var(--color-surface);
     border: 1px solid var(--color-border-muted);
-    border-radius: 16px;
-    box-shadow: var(--shadow-soft);
-    transition: border-color 150ms ease;
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .chat-composer-panel:hover {
+    border-color: var(--color-border);
   }
 
   .chat-composer-panel:focus-within {
-    border-color: rgb(var(--color-accent-rgb) / 0.55);
+    border-color: rgb(var(--color-accent-rgb) / 0.65);
+    box-shadow:
+      var(--shadow-card),
+      0 0 0 3px rgb(var(--color-accent-rgb) / 0.12);
   }
 
   .composer-flat-button {
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
     color: var(--color-text-muted);
     transition:
-      background-color 140ms ease,
-      color 140ms ease,
-      opacity 140ms ease;
+      background-color 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease,
+      opacity 120ms ease;
   }
 
-  .composer-flat-button:hover:not(:disabled),
+  .composer-flat-button:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text-primary);
+  }
+
   .composer-flat-button[data-state='open'] {
-    background: rgb(var(--color-accent-rgb) / 0.1) !important;
-    color: var(--color-accent-hover) !important;
+    background: var(--color-surface-active);
+    color: var(--color-text-primary);
   }
 
   .composer-flat-button:disabled {
     cursor: not-allowed;
-    opacity: 0.46;
+    opacity: 0.45;
   }
 
   .composer-flat-pill {
-    border: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
+    border: 1px solid transparent;
+    background: transparent;
+    box-shadow: none;
     color: var(--color-text-secondary);
     transition:
-      background-color 140ms ease,
-      color 140ms ease,
-      opacity 140ms ease;
+      background-color 120ms ease,
+      color 120ms ease,
+      border-color 120ms ease,
+      opacity 120ms ease;
   }
 
-  .composer-flat-pill:hover:not(:disabled),
+  .composer-flat-pill:hover:not(:disabled) {
+    background: var(--color-surface-hover);
+    color: var(--color-text-primary);
+  }
+
   .composer-flat-pill[data-state='open'] {
-    background: rgb(var(--color-accent-rgb) / 0.1) !important;
-    color: var(--color-accent-hover) !important;
+    background: var(--color-surface-active);
+    color: var(--color-text-primary);
   }
 
   .composer-flat-pill.composer-pill-warning {
-    background: rgb(var(--color-warning-rgb) / 0.1) !important;
-    color: var(--color-warning) !important;
+    border-color: rgb(var(--color-warning-rgb) / 0.34);
+    background: rgb(var(--color-warning-rgb) / 0.08);
+    color: var(--color-warning);
   }
 
   .composer-flat-pill.composer-pill-warning:hover:not(:disabled),
   .composer-flat-pill.composer-pill-warning[data-state='open'] {
-    background: rgb(var(--color-warning-rgb) / 0.16) !important;
-    color: var(--color-warning) !important;
+    border-color: rgb(var(--color-warning-rgb) / 0.5);
+    background: rgb(var(--color-warning-rgb) / 0.14);
+    color: var(--color-warning);
   }
 
   .composer-flat-pill:disabled {
     cursor: not-allowed;
-    opacity: 0.46;
+    opacity: 0.45;
   }
 
   .glass-divider {
@@ -1609,6 +1630,9 @@
   border-radius: 0;
   box-shadow: none;
   padding: 8px 10px;
+}
+.ui-form-flush .ui-form-value > .chat-composer-panel.ui-composer-flush:focus-within {
+  box-shadow: none;
 }
 .ui-form-flush .ui-form-value > .chat-composer-panel.ui-composer-flush textarea {
   min-height: 40px;

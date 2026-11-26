@@ -1,6 +1,7 @@
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Settings2 } from 'lucide-react';
+import { Check, ChevronDown, Settings2 } from 'lucide-react';
 import { useAppStore } from '../store';
 import {
   BUILTIN_LLM_PROVIDER,
@@ -8,7 +9,7 @@ import {
   parseBuiltinLlmConfigSetId,
 } from '../../shared/builtin-llm';
 import type { ApiConfigSet, AppConfig, ProviderModelInfo } from '../types';
-import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
+import { cn } from './ui';
 
 export interface AgentModelOption {
   id: string;
@@ -220,97 +221,111 @@ export function AgentModelSelector({
     };
   }, [disabled, open]);
 
-  const renderOptionGroup = (title: string, groupOptions: AgentModelOption[]) => {
+  const renderOptionGroup = (
+    title: string,
+    groupOptions: AgentModelOption[],
+    withTopDivider: boolean
+  ) => {
     if (groupOptions.length === 0) return null;
     return (
-      <div className="py-1">
-        <div className="px-3 pb-1 pt-1.5 text-[11px] font-semibold text-text-muted">{title}</div>
-        {groupOptions.map((option) => {
-          const costMultiplier = formatCostMultiplier(option);
-          const secondaryModelText = getSecondaryModelText(option);
-          return (
-            <GlassMenuItem
-              key={option.id}
-              selected={option.isActive}
-              onSelect={() => onSelect(option.id)}
-            >
-              <span className="block min-w-0">
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="block truncate text-[13px] font-medium">
+      <div className={cn(withTopDivider && 'mt-1.5 border-t border-border-subtle pt-1.5')}>
+        <div className="px-2.5 pb-1 pt-1 text-[11px] font-medium text-text-muted">{title}</div>
+        <div className="space-y-0.5">
+          {groupOptions.map((option) => {
+            const costMultiplier = formatCostMultiplier(option);
+            const secondaryModelText = getSecondaryModelText(option);
+            return (
+              <DropdownMenu.Item
+                key={option.id}
+                onSelect={() => onSelect(option.id)}
+                className={cn(
+                  'flex w-full cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-left outline-none transition-colors',
+                  'data-[highlighted]:bg-surface-hover',
+                  option.isActive ? 'bg-accent-muted/75 text-text-primary' : 'text-text-primary'
+                )}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] font-medium leading-5">
                     {getPrimaryModelText(option)}
                   </span>
-                  {costMultiplier ? (
-                    <span className="shrink-0 rounded-full border border-border/70 px-1.5 py-0.5 text-[10px] leading-none opacity-80">
-                      {costMultiplier}
+                  {secondaryModelText ? (
+                    <span className="block truncate text-[11px] leading-4 text-text-muted">
+                      {secondaryModelText}
                     </span>
                   ) : null}
                 </span>
-                {secondaryModelText ? (
-                  <span className="block truncate text-xs opacity-80">{secondaryModelText}</span>
-                ) : null}
-              </span>
-            </GlassMenuItem>
-          );
-        })}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {costMultiplier ? (
+                    <span className="rounded border border-border-subtle bg-surface-muted px-1.5 py-0.5 font-mono text-[10.5px] font-medium leading-none tabular-nums text-text-muted">
+                      {costMultiplier}
+                    </span>
+                  ) : null}
+                  <span className="flex h-4 w-4 items-center justify-center">
+                    {option.isActive ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
+                  </span>
+                </span>
+              </DropdownMenu.Item>
+            );
+          })}
+        </div>
       </div>
     );
   };
 
   if (disabled) {
     return (
-      <button type="button" disabled className={triggerClassName} title={label}>
+      <button type="button" disabled className={cn('group', triggerClassName)} title={label}>
         <span className="truncate">{label}</span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
       </button>
     );
   }
 
   return (
-    <GlassDropdownMenu
-      open={open}
-      onOpenChange={onOpenChange}
-      side={side}
-      align={align}
-      contentClassName="w-[min(18rem,calc(100vw-2rem))]"
-      trigger={
-        <button type="button" className={triggerClassName} title={label}>
+    <DropdownMenu.Root open={open} onOpenChange={onOpenChange}>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className={cn('group', triggerClassName)} title={label}>
           <span className="truncate">{label}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-65 transition-transform duration-150 group-data-[state=open]:rotate-180" />
         </button>
-      }
-    >
-      <div className="max-h-56 overflow-y-auto">
-        {options.length > 0 ? (
-          <>
-            {renderOptionGroup(
-              t('chat.modelGroupCurrent'),
-              options.filter((option) => option.isActive)
-            )}
-            {renderOptionGroup(
-              t('chat.modelGroupBuiltin'),
-              builtinOptions.filter((option) => !option.isActive)
-            )}
-            {renderOptionGroup(
-              t('chat.modelGroupCustom'),
-              customOptions.filter((option) => !option.isActive)
-            )}
-          </>
-        ) : (
-          <div className="px-3 py-2 text-sm text-text-muted">{label}</div>
-        )}
-      </div>
-      <div className="border-t border-border-subtle py-1">
-        <GlassMenuItem
-          icon={<Settings2 className="h-3.5 w-3.5" />}
-          onSelect={() => {
-            const store = useAppStore.getState();
-            store.setSettingsTab('api');
-            store.setShowSettings(true);
-          }}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          side={side}
+          align={align}
+          sideOffset={6}
+          collisionPadding={12}
+          className="z-[10000] w-[min(17.5rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-border-muted bg-surface p-1.5 text-text-primary shadow-elevated"
         >
-          {t('chat.manageModels')}
-        </GlassMenuItem>
-      </div>
-    </GlassDropdownMenu>
+          <div className="scrollbar-hover max-h-[272px] overflow-y-auto">
+            {options.length > 0 ? (
+              <>
+                {renderOptionGroup(t('chat.modelGroupBuiltin'), builtinOptions, false)}
+                {renderOptionGroup(
+                  t('chat.modelGroupCustom'),
+                  customOptions,
+                  builtinOptions.length > 0
+                )}
+              </>
+            ) : (
+              <div className="px-2.5 py-2 text-[12.5px] text-text-muted">{label}</div>
+            )}
+          </div>
+          <div className="mt-1.5 border-t border-border-subtle pt-1.5">
+            <DropdownMenu.Item
+              onSelect={() => {
+                const store = useAppStore.getState();
+                store.setSettingsTab('api');
+                store.setShowSettings(true);
+              }}
+              className="flex w-full cursor-pointer select-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-text-secondary outline-none transition-colors data-[highlighted]:bg-surface-hover data-[highlighted]:text-text-primary"
+            >
+              <Settings2 className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+              <span className="truncate">{t('chat.manageModels')}</span>
+            </DropdownMenu.Item>
+          </div>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }

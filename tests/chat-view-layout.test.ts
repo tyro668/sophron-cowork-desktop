@@ -70,10 +70,10 @@ describe('ChatView layout', () => {
   it('uses a compact rounded composer shell with bottom toolbar controls', () => {
     const viewSource = readChatView();
     const composerSource = readChatComposer();
-    expect(composerSource).toContain('chat-composer-panel flex min-h-[120px]');
-    expect(composerSource).toContain('sm:min-h-[132px]');
-    expect(composerSource).toContain('min-h-[32px]');
-    expect(composerSource).toContain('sm:min-h-[36px]');
+    expect(composerSource).toContain('chat-composer-panel flex min-h-[128px]');
+    expect(composerSource).toContain('sm:min-h-[140px]');
+    expect(composerSource).toContain('min-h-[58px]');
+    expect(composerSource).toContain('sm:min-h-[68px]');
     expect(composerSource).not.toContain('min-h-[150px]');
     expect(composerSource).not.toContain('sm:min-h-[168px]');
     expect(composerSource).toContain('PermissionPolicySelector');

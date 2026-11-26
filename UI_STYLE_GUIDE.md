@@ -73,7 +73,7 @@
 ### 3.1 表面层级与阴影
 
 - **禁止嵌套卡片**：一个区域已有边界时，内部优先通过 `1px border-border-subtle` 分隔线或分组标题行组织，不再叠加卡片套卡片。
-- **圆角梯度**：分组块 `--radius-group: 6px`；常规按钮/输入框 `8px`（`rounded-lg`）；独立卡片 `10px–12px`；对话输入框 `16px`；用户气泡 `18px`；开关/胶囊/头像使用 `rounded-full`。
+- **圆角梯度**：分组块 `--radius-group: 6px`；常规按钮/输入框与输入口控件 `8px`（`rounded-lg`）；独立卡片与对话输入框 `10px–12px`；用户气泡 `18px`；开关/头像使用 `rounded-full`。
 - **阴影克制**：仅定义三档语义阴影——`shadow-soft`（轻控件）、`shadow-card`（需要轻微浮起的独立卡片）、`shadow-elevated`（弹窗、下拉菜单、浮层）。贴边配置区与贴边表格不使用阴影。
 - **间距 Token**（定义于 `globals.css` 与 `form-grid.css`）：`--space-inset: 12px`、`--space-inset-lg: 16px`、`--space-group: 10px`、`--radius-group: 6px`。
 
@@ -193,7 +193,7 @@
 - **静默标题栏**：高 `h-12`，采用 `glass-panel-header titlebar-drag` 网格居中显示会话标题，左侧不显示应用名，右侧仅展示必要状态（如 MCP 连接数）与辅助操作；滚动后在标题栏下方浮现「回到顶部」轻胶囊。
 - **阅读宽度**：消息流与底部输入栏统一最大宽度 `max-w-[980px]`。
 - **消息呈现**：用户消息为右对齐、无边框扁平浅底气泡（`.message-user`，`18px` 圆角、`bg-accent-muted`）；助手回复直接平铺排版（`.prose-chat`，`14px / 1.75` 行高），强调词与链接使用 `--color-accent-text` 系色值。
-- **底部输入壳**：`.chat-composer-panel`（`16px` 圆角、最小高度 `120px` / `sm:132px`、聚焦边框过渡至主色）；底部工具栏按钮使用无边框扁平样式（`.composer-flat-button` / `.composer-flat-pill`），集成附件、技能 `@` 提及、权限策略（默认 / 自动审查 / 完全访问）与模型切换器。
+- **底部输入壳**：`.chat-composer-panel`（`12px` 圆角、实底卡片阴影、聚焦时主色边框 + 轻外环；对话页最小高度 `128px` / `sm:140px`，欢迎页文本框 `96px–220px` 自适应）；底栏以浅分隔线承接统一 `h-7 rounded-lg` 的紧凑扁平控件（`.composer-flat-button` / `.composer-flat-pill`），附件与 `@` 技能后以竖线区分权限策略、工作目录与右侧模型选择器、主色发送按钮；权限策略与模型选择器浮层统一采用 `rounded-xl p-1.5` 卡片 + `rounded-lg` 选项行（内置/自定义稳定分组，权限菜单附单行说明）。
 
 ### 7.2 列表页与数据网格
 

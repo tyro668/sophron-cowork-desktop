@@ -161,7 +161,7 @@ export function LlmPromptComposer({
               align={modelMenuAlign}
               triggerClassName={
                 modelTriggerClassName ||
-                'composer-flat-pill inline-flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-full px-3 text-xs font-medium'
+                'composer-flat-pill inline-flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 text-xs font-medium'
               }
               onSelect={(configSetId) =>
                 onModelSelect({
@@ -176,7 +176,7 @@ export function LlmPromptComposer({
               type="button"
               onClick={onSubmit}
               disabled={disabled || submitDisabled}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-soft transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-active disabled:text-text-muted disabled:shadow-none"
               title={submitTitle ?? t('chat.sendMessage')}
             >
               <ArrowUp className="h-4 w-4" strokeWidth={2.25} />
