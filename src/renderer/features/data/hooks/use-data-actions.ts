@@ -413,6 +413,32 @@ export function useDataActions(deps: DataActionsDeps) {
         const sourcePath =
           sourceKind === 'cloud' ? undefined : await dataClient.pickRawTableSourcePath(sourceKind);
         if (sourceKind !== 'cloud' && !sourcePath) return null;
+        if (
+          rawTable.sourceId &&
+          sourceKind !== 'cloud' &&
+          sourceKind === rawTable.sourceKind &&
+          dataClient.has('changeRawSourcePath')
+        ) {
+          const result = await dataClient.changeRawSourcePath({
+            sourceId: rawTable.sourceId,
+            sourcePath: sourcePath!,
+          });
+          await loadRawTables({ preserveError: true });
+          const summary = String(
+            t('data.rawSources.detail.refreshed', {
+              refreshed: result.refreshed.length,
+              added: result.added.length,
+              missing: result.missing.length,
+            })
+          );
+          if (result.failed.length) {
+            const message = formatDataErrorMessage(result.failed[0].error, t);
+            showToast('error', `${summary}\n${message}`);
+            return message;
+          }
+          showToast('success', summary);
+          return null;
+        }
         const updated =
           config.sourceKind === 'cloud'
             ? (

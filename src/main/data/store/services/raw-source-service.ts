@@ -25,6 +25,7 @@ import type {
   DataRawTable,
   DataRawTableConfig,
   DataRebuildRawSourceInput,
+  DataChangeRawSourcePathInput,
   DataScanRawSourceInput,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
@@ -33,6 +34,7 @@ import {
   defaultExcelConfig,
   defaultFolderConfig,
   getWorkbookSheetNames,
+  isCsvLikeFile,
   isExcelFile,
   isFolderRangeFile,
   normalizeImportSourcePath,
@@ -490,6 +492,83 @@ export class RawSourceService {
       at: this.ctx.now(),
     });
     return this.sources.requireSource(id);
+  }
+
+  /**
+   * Point a saved local source at a new file / folder, then rematerialize with refreshSource.
+   * Table ids stay stable so result tables, automations and 云连接 refs keep working.
+   * Schema differences follow the existing refresh / updateRawTable path (the source's
+   * schemaStrategy, typically align_by_name with null fill) — no rebuild and no extra confirm.
+   * Added, missing and suspected-rename members use the same refresh result / dialog as 刷新.
+   */
+  async changeSourcePath(input: DataChangeRawSourcePathInput): Promise<DataRawSourceRefreshResult> {
+    await this.ctx.ensureReady();
+    const source = await this.sources.requireSource(input.sourceId);
+    if (source.sourceKind === 'cloud') {
+      throw new Error('E_CLOUD_SOURCE_CHANGE_PATH: 云端表不能更换本地文件夹');
+    }
+    let sourcePath: string;
+    try {
+      sourcePath = normalizeImportSourcePath(input.sourcePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/does not exist/i.test(message)) {
+        throw new Error(`E_SOURCE_UNREADABLE: 无法读取所选路径：${input.sourcePath}`, {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+    const stat = fs.statSync(sourcePath);
+    if (source.sourceKind === 'folder') {
+      if (!stat.isDirectory()) throw new Error('E_SOURCE_KIND_MISMATCH: 请选择一个文件夹');
+    } else if (!stat.isFile()) {
+      throw new Error('E_SOURCE_KIND_MISMATCH: 请选择一个文件');
+    } else if (source.sourceKind === 'excel' && !isExcelFile(sourcePath)) {
+      throw new Error('E_SOURCE_KIND_MISMATCH: 请选择一个 Excel 文件');
+    } else if (source.sourceKind === 'csv' && !isCsvLikeFile(sourcePath)) {
+      throw new Error('E_SOURCE_KIND_MISMATCH: 请选择一个 CSV 文件');
+    }
+
+    const scan = await this.scanSource({
+      sourcePath,
+      sheetSelector: source.config.sheetSelector,
+      fileSheetOverrides: source.config.fileSheetOverrides,
+      fileRange: source.config.fileRange,
+    });
+    if (scan.kind === 'folder') {
+      const ready = scan.files.filter((file) => file.status === 'ready');
+      if (scan.files.length === 0) {
+        throw new Error('E_SOURCE_EMPTY: 所选文件夹中没有可导入的 Excel 或 CSV 文件');
+      }
+      if (ready.length === 0) {
+        throw new Error('E_SOURCE_NO_READY_FILES: 所选文件夹中的文件不符合当前的格式或 Sheet 规则');
+      }
+    } else if (scan.kind === 'excel' && scan.sheets.length === 0) {
+      throw new Error('E_SOURCE_EMPTY: 所选工作簿中没有可导入的 Sheet');
+    }
+
+    if (sourcePath !== source.sourcePath) {
+      await this.sources.updateSource({
+        id: source.id,
+        sourcePath,
+        at: this.ctx.now(),
+      });
+      const members = await Promise.all(
+        source.memberIds.map((id) => this.rawTableRepo.requireRawTable(id))
+      );
+      for (const member of members) {
+        const nextPath =
+          source.buildMode === 'folder_per_file' && member.memberKey
+            ? join(sourcePath, member.memberKey)
+            : sourcePath;
+        if (nextPath !== member.sourcePath) {
+          await this.rawTableRepo.updateRawTableSourcePath(member.id, nextPath, this.ctx.now());
+        }
+      }
+    }
+
+    return this.refreshSource(source.id);
   }
 
   /** Re-imports every table of the source; per-sheet / per-file sources also pick up new

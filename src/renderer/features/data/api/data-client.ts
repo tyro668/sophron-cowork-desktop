@@ -107,6 +107,8 @@ export const dataClient = {
   createRawSource: (...args: Parameters<DataApi['createRawSource']>) =>
     dataApi().createRawSource(...args),
   refreshRawSource: (id: string) => dataApi().refreshRawSource(id),
+  changeRawSourcePath: (...args: Parameters<DataApi['changeRawSourcePath']>) =>
+    dataApi().changeRawSourcePath(...args),
   setRawSourceAutoInclude: (id: string, autoInclude: boolean) =>
     dataApi().setRawSourceAutoInclude(id, autoInclude),
   resolveRawSourceRenames: (...args: Parameters<DataApi['resolveRawSourceRenames']>) =>

@@ -7,12 +7,17 @@ const client = vi.hoisted(() => ({
   setRawSourceAutoInclude: vi.fn(),
   previewRawTable: vi.fn(),
   refreshRawSource: vi.fn(),
+  changeRawSourcePath: vi.fn(),
   scanRawSource: vi.fn(),
   rebuildRawSource: vi.fn(),
   getRawSourceRebuildImpact: vi.fn(),
   pickRawTableSourcePath: vi.fn(),
+  showItemInFolder: vi.fn(),
 }));
 vi.mock('../../src/renderer/features/data/api/data-client', () => ({ dataClient: client }));
+
+const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
+vi.mock('../../src/renderer/utils/toast', () => toast);
 
 import {
   RawSourceDetail,
@@ -78,7 +83,7 @@ describe('RawSourceDetail (方案 A)', () => {
   it('shows the source group and short member names with size and status', () => {
     renderDetail();
     expect(screen.getByText('数据来源')).toBeTruthy();
-    expect(screen.getByText('打开所在位置')).toBeTruthy();
+    expect(screen.getByTestId('raw-source-change-file').textContent).toContain('更换文件');
     expect(screen.getByText('修改将重建原始表')).toBeTruthy();
     expect(screen.getByTestId('raw-source-last-scan').textContent).toContain('2 个 Sheet，无变化');
     const rows = screen.getAllByTestId('raw-source-member-row');
@@ -229,6 +234,86 @@ describe('RawSourceDetail (方案 A)', () => {
       await waitFor(() => expect(h.onRebuilt).toHaveBeenCalledWith(result));
       expect(h.onChanged).toHaveBeenCalled();
       expect(screen.queryByTestId('raw-source-mode-change')).toBeNull();
+    });
+  });
+
+  describe('changing a saved source path', () => {
+    const folderSource = () =>
+      source({
+        id: 's-daily',
+        name: '门店日报',
+        sourcePath: '/d/日报',
+        sourceKind: 'folder',
+        buildMode: 'folder_per_file',
+        config: { autoInclude: true, knownMembers: ['1月.csv', '2月.csv'], lastScannedAt: 1 },
+      });
+    const folderTables = () => [
+      table('1月.csv', { name: '1月.csv', sourcePath: '/d/日报/1月.csv', sourceKind: 'folder' }),
+      table('2月.csv', { name: '2月.csv', sourcePath: '/d/日报/2月.csv', sourceKind: 'folder' }),
+    ];
+    const okResult = (path: string) => ({
+      source: { id: 's-daily', name: '门店日报', sourcePath: path },
+      refreshed: ['1月.csv', '2月.csv'],
+      added: [],
+      missing: [],
+      failed: [],
+      renames: [],
+      addedItems: [],
+      missingItems: [],
+      unchangedNames: ['1月.csv', '2月.csv'],
+    });
+
+    it('shows 更换文件夹 on a saved folder source', () => {
+      renderDetail(folderSource(), folderTables());
+      expect(screen.getByTestId('raw-source-change-folder').textContent).toContain('更换文件夹');
+      expect(screen.queryByTestId('raw-source-reveal')).toBeNull();
+    });
+
+    it('picks a folder, persists the new path and rematerializes', async () => {
+      client.pickRawTableSourcePath.mockResolvedValue('/d/新日报');
+      client.changeRawSourcePath.mockResolvedValue(okResult('/d/新日报'));
+      const h = renderDetail(folderSource(), folderTables());
+      fireEvent.click(screen.getByTestId('raw-source-change-folder'));
+      await waitFor(() => expect(client.pickRawTableSourcePath).toHaveBeenCalledWith('folder'));
+      await waitFor(() =>
+        expect(client.changeRawSourcePath).toHaveBeenCalledWith({
+          sourceId: 's-daily',
+          sourcePath: '/d/新日报',
+        })
+      );
+      expect(h.onChanged).toHaveBeenCalled();
+      expect(toast.showToast).toHaveBeenCalledWith('success', expect.any(String));
+    });
+
+    it('does nothing when the folder picker is cancelled', async () => {
+      client.pickRawTableSourcePath.mockResolvedValue(null);
+      const h = renderDetail(folderSource(), folderTables());
+      fireEvent.click(screen.getByTestId('raw-source-change-folder'));
+      await waitFor(() => expect(client.pickRawTableSourcePath).toHaveBeenCalled());
+      expect(client.changeRawSourcePath).not.toHaveBeenCalled();
+      expect(h.onChanged).not.toHaveBeenCalled();
+      expect(toast.showToast).not.toHaveBeenCalled();
+    });
+
+    it('toasts when changing the folder fails', async () => {
+      client.pickRawTableSourcePath.mockResolvedValue('/d/empty');
+      client.changeRawSourcePath.mockRejectedValue(
+        new Error('E_SOURCE_EMPTY: 所选文件夹中没有可导入的 Excel 或 CSV 文件')
+      );
+      renderDetail(folderSource(), folderTables());
+      fireEvent.click(screen.getByTestId('raw-source-change-folder'));
+      await waitFor(() =>
+        expect(toast.showToast).toHaveBeenCalledWith('error', expect.stringMatching(/没有可导入/))
+      );
+    });
+
+    it('hides the change control for a cloud source', () => {
+      renderDetail(
+        source({ sourceKind: 'cloud', buildMode: 'cloud_table', sourcePath: 'cloud://t' }),
+        [table('t1', { sourceKind: 'cloud', sourcePath: 'cloud://t' })]
+      );
+      expect(screen.queryByTestId('raw-source-change-folder')).toBeNull();
+      expect(screen.queryByTestId('raw-source-change-file')).toBeNull();
     });
   });
 

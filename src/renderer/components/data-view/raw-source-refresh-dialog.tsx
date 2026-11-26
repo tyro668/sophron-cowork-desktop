@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowRightLeft, ChevronRight, Plus, RefreshCw, TriangleAlert, X } from 'lucide-react';
-import type { DataRawSourceRefreshResult } from '../../types';
+import type { DataRawSource, DataRawSourceRefreshResult } from '../../types';
 import { Dialog } from '../ui/dialog';
 import { dataClient } from '../../features/data/api/data-client';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
@@ -194,18 +194,33 @@ export function useRawSourceRefresh(onChanged: () => void) {
         missing: result.missing.length,
       })
     );
+  const present = (result: DataRawSourceRefreshResult) => {
+    if (shouldShowRefreshDialog(result)) setPending(result);
+    else if (result.failed.length)
+      showToast(
+        'error',
+        `${summary(result)}\n${formatDataErrorMessage(result.failed[0].error, t)}`
+      );
+    else showToast('success', summary(result));
+    onChanged();
+  };
   const refresh = async (sourceId: string) => {
     setRefreshingId(sourceId);
     try {
-      const result = await dataClient.refreshRawSource(sourceId);
-      if (shouldShowRefreshDialog(result)) setPending(result);
-      else if (result.failed.length)
-        showToast(
-          'error',
-          `${summary(result)}\n${formatDataErrorMessage(result.failed[0].error, t)}`
-        );
-      else showToast('success', summary(result));
-      onChanged();
+      present(await dataClient.refreshRawSource(sourceId));
+    } catch (error) {
+      showToast('error', formatDataErrorMessage(error, t));
+    } finally {
+      setRefreshingId(null);
+    }
+  };
+  const changePath = async (source: DataRawSource) => {
+    if (source.sourceKind === 'cloud') return;
+    const picked = await dataClient.pickRawTableSourcePath(source.sourceKind);
+    if (!picked) return;
+    setRefreshingId(source.id);
+    try {
+      present(await dataClient.changeRawSourcePath({ sourceId: source.id, sourcePath: picked }));
     } catch (error) {
       showToast('error', formatDataErrorMessage(error, t));
     } finally {
@@ -249,5 +264,5 @@ export function useRawSourceRefresh(onChanged: () => void) {
       onApply={(decisions) => void apply(decisions)}
     />
   ) : null;
-  return { refresh, refreshingId, dialog };
+  return { refresh, changePath, refreshingId, dialog };
 }

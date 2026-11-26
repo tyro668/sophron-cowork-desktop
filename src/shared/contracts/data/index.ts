@@ -640,6 +640,12 @@ export interface DataRebuildRawSourceInput extends DataCreateRawSourceInput {
   confirmDeleteExistingTables: boolean;
 }
 
+/** Retarget a saved local file / folder source and rematerialize in place (stable table ids). */
+export interface DataChangeRawSourcePathInput {
+  sourceId: string;
+  sourcePath: string;
+}
+
 /** A missing member that looks like a renamed sheet / file (fingerprint match). */
 export interface DataRawSourceRenameCandidate {
   tableId: string;

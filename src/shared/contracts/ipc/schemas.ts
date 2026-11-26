@@ -898,6 +898,7 @@ export const IPC_INPUT_SCHEMAS: Record<string, readonly z.ZodType[]> = {
   ],
   'data.createRawSource': [z.looseObject({ sourcePath: str, buildMode: str, name: strOpt })],
   'data.refreshRawSource': [str],
+  'data.changeRawSourcePath': [z.looseObject({ sourceId: str, sourcePath: str })],
   'data.resolveRawSourceRenames': [
     z.looseObject({
       sourceId: str,

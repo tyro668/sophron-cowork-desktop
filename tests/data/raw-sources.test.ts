@@ -260,6 +260,142 @@ describe('raw-table sources (1:N)', () => {
   });
 });
 
+describe('changing a saved source path', () => {
+  it('retargets a folder_per_file source, keeps table ids and rematerializes', async () => {
+    const { store, root } = makeStore();
+    const folderA = path.join(root, '日报A');
+    const folderB = path.join(root, '日报B');
+    writeWorkbook(path.join(folderA, '1月.xlsx'), { 数据: [['k'], [1]] });
+    writeWorkbook(path.join(folderA, '2月.xlsx'), { 数据: [['k'], [2]] });
+    writeWorkbook(path.join(folderB, '1月.xlsx'), { 数据: [['k'], [10], [11]] });
+    writeWorkbook(path.join(folderB, '2月.xlsx'), { 数据: [['k'], [20]] });
+
+    const created = await store.createRawSource({
+      sourcePath: folderA,
+      buildMode: 'folder_per_file',
+    });
+    const ids = created.tables.map((table) => table.id);
+    const changed = await store.changeRawSourcePath({
+      sourceId: created.source.id,
+      sourcePath: folderB,
+    });
+    expect(changed.source.sourcePath).toBe(folderB);
+    expect(changed.source.id).toBe(created.source.id);
+    expect(changed.refreshed).toHaveLength(2);
+    const tables = await Promise.all(ids.map((id) => store.getRawTableRecord(id)));
+    expect(tables.map((table) => table?.id)).toEqual(ids);
+    expect(tables.map((table) => [table?.memberKey, table?.rowCount])).toEqual([
+      ['1月.xlsx', 2],
+      ['2月.xlsx', 1],
+    ]);
+    expect(tables.every((table) => table?.sourcePath.startsWith(folderB + path.sep))).toBe(true);
+  });
+
+  it('flags missing members and auto-includes new files in the new folder', async () => {
+    const { store, root } = makeStore();
+    const folderA = path.join(root, '旧');
+    const folderB = path.join(root, '新');
+    fs.mkdirSync(folderA, { recursive: true });
+    fs.mkdirSync(folderB, { recursive: true });
+    fs.writeFileSync(path.join(folderA, 'a.csv'), 'k\n1\n');
+    fs.writeFileSync(path.join(folderA, 'b.csv'), 'k\n2\n');
+    fs.writeFileSync(path.join(folderB, 'a.csv'), 'k\n10\n');
+    fs.writeFileSync(path.join(folderB, 'c.csv'), 'k\n30\n');
+
+    const created = await store.createRawSource({
+      sourcePath: folderA,
+      buildMode: 'folder_per_file',
+    });
+    const aId = created.tables.find((table) => table.memberKey === 'a.csv')!.id;
+    const bId = created.tables.find((table) => table.memberKey === 'b.csv')!.id;
+    const changed = await store.changeRawSourcePath({
+      sourceId: created.source.id,
+      sourcePath: folderB,
+    });
+    expect(changed.missing).toContain(bId);
+    expect(changed.added).toHaveLength(1);
+    expect(changed.refreshed).toContain(aId);
+    const a = await store.getRawTableRecord(aId);
+    const b = await store.getRawTableRecord(bId);
+    expect(a?.rowCount).toBe(1);
+    expect(a?.sourcePath).toBe(path.join(folderB, 'a.csv'));
+    expect(b?.memberStatus).toBe('missing');
+    expect(b?.id).toBe(bId);
+  });
+
+  it('keeps the merge table id when the new folder adds a column', async () => {
+    const { store, root } = makeStore();
+    const folderA = path.join(root, '合并A');
+    const folderB = path.join(root, '合并B');
+    fs.mkdirSync(folderA, { recursive: true });
+    fs.mkdirSync(folderB, { recursive: true });
+    fs.writeFileSync(path.join(folderA, '1.csv'), '日期,门店\n2026-09-01,S01\n');
+    fs.writeFileSync(path.join(folderB, '1.csv'), '日期,门店,备注\n2026-09-01,S01,ok\n');
+
+    const created = await store.createRawSource({
+      sourcePath: folderA,
+      buildMode: 'folder_merge',
+      tableName: '合并日报',
+    });
+    expect(created.tables).toHaveLength(1);
+    const tableId = created.tables[0].id;
+    const changed = await store.changeRawSourcePath({
+      sourceId: created.source.id,
+      sourcePath: folderB,
+    });
+    expect(changed.source.memberIds).toEqual([tableId]);
+    const preview = await store.previewRawTable({ id: tableId, limit: 10 });
+    expect(preview.columns).toEqual(expect.arrayContaining(['日期', '门店', '备注']));
+    expect(preview.rows[0]?.备注).toBe('ok');
+  });
+
+  it('rejects a file path, a missing path and an empty folder without changing the source', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '日报');
+    const empty = path.join(root, '空文件夹');
+    const missing = path.join(root, '不存在');
+    const file = path.join(root, 'not-a-folder.csv');
+    fs.mkdirSync(folder, { recursive: true });
+    fs.mkdirSync(empty, { recursive: true });
+    fs.writeFileSync(path.join(folder, 'a.csv'), 'k\n1\n');
+    fs.writeFileSync(file, 'k\n1\n');
+
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+    });
+    await expect(
+      store.changeRawSourcePath({ sourceId: created.source.id, sourcePath: file })
+    ).rejects.toThrow(/E_SOURCE_KIND_MISMATCH/);
+    await expect(
+      store.changeRawSourcePath({ sourceId: created.source.id, sourcePath: missing })
+    ).rejects.toThrow(/E_SOURCE_UNREADABLE/);
+    await expect(
+      store.changeRawSourcePath({ sourceId: created.source.id, sourcePath: empty })
+    ).rejects.toThrow(/E_SOURCE_EMPTY/);
+    const source = await store.getRawSource(created.source.id);
+    expect(source?.sourcePath).toBe(folder);
+  });
+
+  it('rejects a folder whose files do not match the current sheet selector', async () => {
+    const { store, root } = makeStore();
+    const folderA = path.join(root, '有数据');
+    const folderB = path.join(root, '无对应Sheet');
+    writeWorkbook(path.join(folderA, 'a.xlsx'), { 封面: [['x']], 数据: [['k'], [1]] });
+    writeWorkbook(path.join(folderB, 'a.xlsx'), { 封面: [['x']] });
+    const created = await store.createRawSource({
+      sourcePath: folderA,
+      buildMode: 'folder_per_file',
+      sheetSelector: { by: 'name', name: '数据' },
+    });
+    await expect(
+      store.changeRawSourcePath({ sourceId: created.source.id, sourcePath: folderB })
+    ).rejects.toThrow(/E_SOURCE_NO_READY_FILES/);
+    const source = await store.getRawSource(created.source.id);
+    expect(source?.sourcePath).toBe(folderA);
+  });
+});
+
 describe('merge compatibility helpers', () => {
   it('flags the minority type and lists filled columns', () => {
     const conflicts = findTypeConflicts([

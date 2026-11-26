@@ -1,6 +1,6 @@
 /**
  * Source detail page (design 方案 A): the same form grid as the new-source config page.
- * 数据来源 group — path (show in folder), build mode (changing it rebuilds via the wizard after
+ * 数据来源 group — path (change folder/file; reveal stays in the more menu), build mode (changing it rebuilds via the wizard after
  * an explicit delete confirmation), auto-include toggle (persisted), last scan summary.
  * 原始表 group — member tables with short names, size, pipelines, status and hover actions.
  * Bottom tabs: 配置 / 数据 (preview of the selected member table).
@@ -117,7 +117,7 @@ export function RawSourceDetail({
   const members = source.memberIds
     .map((id) => rawTables.find((table) => table.id === id))
     .filter((table): table is DataRawTable => !!table);
-  const { refresh, refreshingId, dialog } = useRawSourceRefresh(onChanged);
+  const { refresh, changePath, refreshingId, dialog } = useRawSourceRefresh(onChanged);
   const refreshing = refreshingId === source.id;
   const isCloud = source.sourceKind === 'cloud';
   const isFolder = source.sourceKind === 'folder';
@@ -271,12 +271,13 @@ export function RawSourceDetail({
                 {!isCloud && (
                   <button
                     type="button"
-                    onClick={() => void dataClient.showItemInFolder(source.sourcePath)}
-                    className="ui-accent-cell w-[128px] flex-shrink-0 whitespace-nowrap border-l border-border-subtle"
-                    data-testid="raw-source-reveal"
+                    disabled={refreshing}
+                    onClick={() => void changePath(source)}
+                    className="ui-accent-cell w-[128px] flex-shrink-0 whitespace-nowrap border-l border-border-subtle disabled:opacity-50"
+                    data-testid={isFolder ? 'raw-source-change-folder' : 'raw-source-change-file'}
                   >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    {tr('detail.openLocation')}
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                    {tr(isFolder ? 'config.changeFolder' : 'config.changeFile')}
                   </button>
                 )}
               </div>

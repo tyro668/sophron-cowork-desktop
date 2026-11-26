@@ -443,6 +443,12 @@ export class RawTableRepository {
       }
     );
   }
+  async updateRawTableSourcePath(id: string, sourcePath: string, at: number): Promise<void> {
+    await this.ctx.metaRunSql(
+      `UPDATE data_raw_tables SET source_path = $sourcePath, updated_at = $at WHERE id = $id`,
+      { id, sourcePath, at }
+    );
+  }
   async deleteRawTableRow(id: string): Promise<void> {
     await this.ctx.metaRunSql('DELETE FROM data_raw_tables WHERE id = $id', { id });
   }

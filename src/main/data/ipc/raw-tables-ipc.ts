@@ -18,6 +18,7 @@ import type {
   DataUpdateRawTableInput,
   DataCreateRawSourceInput,
   DataRebuildRawSourceInput,
+  DataChangeRawSourcePathInput,
   DataScanRawSourceInput,
 } from '../../../shared/contracts';
 import { appContext } from '../../app/context';
@@ -87,6 +88,12 @@ export function registerRawTablesIpc({
   );
   sourceChannel('data.refreshRawSource', 'refreshing raw source', (id: string) =>
     requireDataPipelineStore().refreshRawSource(id)
+  );
+  sourceChannel(
+    'data.changeRawSourcePath',
+    'changing raw source path',
+    (payload: DataChangeRawSourcePathInput) =>
+      requireDataPipelineStore().changeRawSourcePath(payload)
   );
   sourceChannel('data.getRawSourceRebuildImpact', 'reading rebuild impact', (id: string) =>
     requireDataPipelineStore().getRawSourceRebuildImpact(id)

@@ -79,6 +79,7 @@ import type {
   DataResolveRawSourceRenamesResult,
   DataRawSourceScan,
   DataRebuildRawSourceInput,
+  DataChangeRawSourcePathInput,
   DataScanRawSourceInput,
 } from '../../shared/contracts';
 import { NormalizerService } from './store/services/normalizer-service';
@@ -228,6 +229,9 @@ export class DataPipelineStore {
   }
   refreshRawSource(id: string): Promise<DataRawSourceRefreshResult> {
     return this.rawSources.refreshSource(id);
+  }
+  changeRawSourcePath(input: DataChangeRawSourcePathInput): Promise<DataRawSourceRefreshResult> {
+    return this.rawSources.changeSourcePath(input);
   }
   resolveRawSourceRenames(
     input: DataResolveRawSourceRenamesInput

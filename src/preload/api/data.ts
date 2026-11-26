@@ -26,6 +26,7 @@ import type {
   DataResolveRawSourceRenamesResult,
   DataRawSourceRebuildImpact,
   DataRebuildRawSourceInput,
+  DataChangeRawSourcePathInput,
   DataListRawTableNormalizerVersionsInput,
   DataListRawTableNormalizerVersionsResult,
   DataExportTableInput,
@@ -196,6 +197,10 @@ export function createDataApi(): ElectronApi['data'] {
       ipcRenderer.invoke('data.setRawSourceAutoInclude', id, autoInclude),
     refreshRawSource: (id: string): Promise<DataRawSourceRefreshResult> =>
       ipcRenderer.invoke('data.refreshRawSource', id),
+    changeRawSourcePath: (
+      payload: DataChangeRawSourcePathInput
+    ): Promise<DataRawSourceRefreshResult> =>
+      ipcRenderer.invoke('data.changeRawSourcePath', payload),
     getRawSourceRebuildImpact: (id: string): Promise<DataRawSourceRebuildImpact> =>
       ipcRenderer.invoke('data.getRawSourceRebuildImpact', id),
     rebuildRawSource: (payload: DataRebuildRawSourceInput): Promise<DataRawSourceCreateResult> =>
