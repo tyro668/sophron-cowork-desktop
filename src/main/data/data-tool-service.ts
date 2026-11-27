@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import {
   AGENT_RESULT_PREVIEW_MAX_ROWS,
+  formatNumericColumnTotals,
   formatPreviewCoverage,
   type PreviewCoverageTarget,
 } from './data-tool-preview-format';
@@ -1240,6 +1241,7 @@ function formatPreview(
   return [
     `${includeRows ? 'Preview' : 'Table schema'} totalRows=${preview.totalRows} columns=${preview.columns.join(', ') || '(none)'}${types ? ` types=${types}` : ''}`,
     includeRows && preview.rows.length ? JSON.stringify(preview.rows.slice(0, preview.limit)) : '',
+    includeRows ? formatNumericColumnTotals(preview) : '',
     formatPreviewCoverage(preview, includeRows, target),
   ]
     .filter(Boolean)
