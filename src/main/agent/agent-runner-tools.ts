@@ -110,3 +110,22 @@ export function replaceSessionToolRegistry(
   registry._customTools = definitions;
   registry._refreshToolRegistry();
 }
+
+/**
+ * Expand directly called tool names to every tool of the packs that contain
+ * them, so a multi-step task does not hit the next hidden sibling. Names that
+ * belong to no pack are kept as-is; the caller filters out unregistered ones.
+ */
+export function expandToolsToPacks(
+  toolNames: readonly string[],
+  packs: Record<string, AgentToolPack>
+): string[] {
+  const expanded = new Set<string>();
+  for (const name of toolNames) {
+    expanded.add(name);
+    for (const pack of Object.values(packs)) {
+      if (pack.tools.includes(name)) pack.tools.forEach((tool) => expanded.add(tool));
+    }
+  }
+  return [...expanded];
+}

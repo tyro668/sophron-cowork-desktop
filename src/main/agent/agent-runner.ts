@@ -83,6 +83,7 @@ import { AgentRunEventBridge } from './agent-runner-event-bridge';
 import { safeStringify, toErrorText } from './agent-runner-log-utils';
 import {
   activateSessionTools,
+  expandToolsToPacks,
   replaceSessionToolRegistry,
   buildMcpCustomTools,
   buildMcpToolPacks,
@@ -90,7 +91,7 @@ import {
 } from './agent-runner-tools';
 import { AgentRunnerSkills } from './agent-runner-skills';
 import { createCapabilitiesSearchTool } from './agent-capabilities-tool';
-import type { ToolActivationResult } from '../extensions/agent-runtime-extension';
+import type { AgentToolPack, ToolActivationResult } from '../extensions/agent-runtime-extension';
 import { AgentRequestContext } from './agent-request-context';
 import { installAgentPermissionGate } from './agent-permission-hook';
 import { checkAppDataAccess, resolveAppUserDataDir } from './app-data-guard';
@@ -1036,20 +1037,35 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       let mcpCustomTools = this.mcpManager ? buildMcpCustomTools(this.mcpManager) : [];
       let mcpToolPacks = this.mcpManager ? buildMcpToolPacks(this.mcpManager) : {};
       const extensionCustomTools = extensionResult.customTools || [];
+      const getCapabilityPacks = (): Record<string, AgentToolPack> => ({
+        ...mcpToolPacks,
+        ...(extensionResult.toolPacks ?? {}),
+        'results.read': {
+          description:
+            'Read complete stored tool results by resultRef, with text search and pagination',
+          tools: [RESULT_READ_TOOL],
+        },
+      });
       const capabilitiesTool = createCapabilitiesSearchTool({
         getTools: () => [...mcpCustomTools, ...extensionCustomTools],
         refresh: () => refreshMcpCatalog(),
-        getPacks: () => ({
-          ...mcpToolPacks,
-          ...(extensionResult.toolPacks ?? {}),
-          'results.read': {
-            description:
-              'Read complete stored tool results by resultRef, with text search and pagination',
-            tools: [RESULT_READ_TOOL],
-          },
-        }),
+        getPacks: getCapabilityPacks,
         activateTools: activateToolsForRun,
       });
+      // The model may call a registered-but-hidden tool it learned from prompts or
+      // earlier results. Load it with its pack for the rest of the session instead
+      // of failing with "Tool not found".
+      requestContext.onMissingToolCalls = (toolNames) => {
+        const { activated } = activateToolsForRun(
+          expandToolsToPacks(toolNames, getCapabilityPacks())
+        );
+        if (activated.length === 0) return;
+        requestContext.rememberStickyTools(activated);
+        log(
+          `[AgentRunner] Auto-activated tools called before exposure (${toolNames.join(', ')}):`,
+          activated.join(', ')
+        );
+      };
       const buildCustomTools = () => [
         ...resultStore.wrap([...mcpCustomTools, ...extensionCustomTools, capabilitiesTool], () => {
           activateToolsForRun([RESULT_READ_TOOL]);
@@ -1346,7 +1362,7 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
         piSession.getActiveToolNames(),
         registeredNames,
         hiddenCatalogs,
-        [...allowedExtensionTools, ...queuedToolActivations]
+        [...allowedExtensionTools, ...queuedToolActivations, ...requestContext.getStickyTools()]
       );
       queuedToolActivations.clear();
       activateSessionTools(piSession, nextActiveTools);

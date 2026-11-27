@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Value } from 'typebox/value';
 import type { Automation } from '../src/shared/automation/types';
-import { compileAutomationSchedule } from '../src/main/automation/tools/schedule-compiler';
+import {
+  compileAutomationSchedule,
+  mentionsReplacedScheduleTime,
+} from '../src/main/automation/tools/schedule-compiler';
 import { AutomationToolService } from '../src/main/automation/tools/service';
 import { AutomationDraftReceiptStore } from '../src/main/automation/tools/draft-receipt-store';
 import {
@@ -467,10 +470,96 @@ describe('automation conversation tools', () => {
         trigger: expect.objectContaining({ kind: 'daily', times: ['10:00'] }),
       })
     );
-    expect(Object.keys(update.mock.calls[0]?.[1] ?? {})).toEqual(['trigger']);
+    expect(Object.keys(update.mock.calls[0]?.[1] ?? {})).toEqual([
+      'trigger',
+      'name',
+      'description',
+    ]);
+    expect(update.mock.calls[0]?.[1]).toMatchObject({
+      name: 'Daily sales cleanup',
+      description: null,
+    });
     expect(onAutomationsChanged).toHaveBeenCalledTimes(1);
     expect(first.details).toMatchObject({ status: 'updated' });
     expect(second.details).toMatchObject({ status: 'already_updated' });
+  });
+
+  it('clears a description that names the replaced time and applies an explicit rename', () => {
+    const now = new Date(2026, 7, 17, 7, 0, 0, 0).getTime();
+    const { service, create, automations } = createServiceFixture({ now: () => now });
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    create({
+      name: '每日销售汇总',
+      description: '每天 08:00 运行数据流程「大区销售汇总」',
+      enabled: true,
+      trigger: { kind: 'daily', times: ['08:00'], startAt: null, endAt: null, timezone },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+
+    const prepared = service.prepareScheduleUpdate(
+      {
+        automationId: 'automation-1',
+        schedule: { kind: 'weekly', weekdays: ['monday'], times: ['09:00'] },
+        name: '每周一销售汇总',
+      },
+      { sessionId: 'session-1' }
+    );
+    const details = prepared.details as {
+      draftId: string;
+      summary: { nextName: string; descriptionChange: string };
+    };
+    expect(details.summary).toMatchObject({
+      nextName: '每周一销售汇总',
+      descriptionChange: 'cleared',
+    });
+    service.updateSchedule(
+      { draftId: details.draftId, confirmed: true },
+      { sessionId: 'session-1' }
+    );
+
+    expect(automations[0]).toMatchObject({
+      name: '每周一销售汇总',
+      description: null,
+      trigger: expect.objectContaining({ kind: 'weekly', weekdays: [1], times: ['09:00'] }),
+    });
+  });
+
+  it('keeps unrelated descriptions and the name unless explicitly changed', () => {
+    const now = new Date(2026, 7, 17, 7, 0, 0, 0).getTime();
+    const { service, create, automations } = createServiceFixture({ now: () => now });
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    create({
+      name: 'Sales digest',
+      description: 'Refresh the regional sales summary',
+      enabled: true,
+      trigger: { kind: 'daily', times: ['08:00'], startAt: null, endAt: null, timezone },
+      actionGraph: { version: 1, nodes: [], edges: [] },
+    });
+    const kept = service.prepareScheduleUpdate(
+      { automationId: 'automation-1', schedule: { kind: 'daily', times: ['09:30'] } },
+      { sessionId: 'session-1' }
+    );
+    const keptDraft = (kept.details as { draftId: string }).draftId;
+    service.updateSchedule({ draftId: keptDraft, confirmed: true }, { sessionId: 'session-1' });
+    expect(automations[0]).toMatchObject({
+      name: 'Sales digest',
+      description: 'Refresh the regional sales summary',
+    });
+
+    const rewritten = service.prepareScheduleUpdate(
+      {
+        automationId: 'automation-1',
+        schedule: { kind: 'daily', times: ['10:00'] },
+        description: 'Runs at 10:00 every day',
+      },
+      { sessionId: 'session-1' }
+    );
+    const rewrittenDraft = (rewritten.details as { draftId: string }).draftId;
+    service.updateSchedule(
+      { draftId: rewrittenDraft, confirmed: true },
+      { sessionId: 'session-1' }
+    );
+    expect(automations[0].description).toBe('Runs at 10:00 every day');
   });
 
   it('disables and re-enables an automation, rescheduling only on state changes', () => {
@@ -715,6 +804,27 @@ describe('saved data pipeline automation action', () => {
         dataRef: { kind: 'result_table', id: 'result-table-1' },
       })
     );
+  });
+});
+
+describe('mentionsReplacedScheduleTime', () => {
+  const tz = 'UTC';
+  const daily = (times: string[]) =>
+    ({ kind: 'daily', times, startAt: null, endAt: null, timezone: tz }) as const;
+  it('detects old times in either padded or unpadded form, ignoring kept times', () => {
+    expect(
+      mentionsReplacedScheduleTime('每天 08:00 运行', daily(['08:00']), daily(['09:00']))
+    ).toBe(true);
+    expect(
+      mentionsReplacedScheduleTime('runs at 8:00 daily', daily(['08:00']), daily(['09:00']))
+    ).toBe(true);
+    expect(
+      mentionsReplacedScheduleTime('每天 18:00 运行', daily(['08:00']), daily(['09:00']))
+    ).toBe(false);
+    expect(
+      mentionsReplacedScheduleTime('08:00 汇总', daily(['08:00']), daily(['08:00', '20:00']))
+    ).toBe(false);
+    expect(mentionsReplacedScheduleTime('汇总', daily(['08:00']), daily(['09:00']))).toBe(false);
   });
 });
 

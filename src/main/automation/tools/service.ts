@@ -1,13 +1,18 @@
 import { randomUUID } from 'crypto';
 import type { DataPipelineStore } from '../../data/data-pipeline-store';
 import { createDataResourceHref } from '../../../shared/data-resource-link';
-import type { Automation, AutomationActionNode } from '../../../shared/automation/types';
+import type {
+  Automation,
+  AutomationActionNode,
+  AutomationTrigger,
+} from '../../../shared/automation/types';
 import type { AutomationService } from '../automation-service';
 import { computeNextAutomationRunAt, normalizeAutomationTrigger } from '../automation-trigger';
 import {
   compileAutomationSchedule,
   formatAutomationTrigger,
   formatTimestamp,
+  mentionsReplacedScheduleTime,
 } from './schedule-compiler';
 import {
   AutomationDraftReceiptStore,
@@ -222,9 +227,14 @@ export class AutomationToolService {
       systemTimezone: this.systemTimezone(),
       nextRunCount: 3,
     });
+    const nextName = input.name?.trim() || automation.name;
+    const { description: nextDescription, change: descriptionChange } =
+      resolveScheduleUpdateDescription(automation, input.description, compiledSchedule.trigger);
     const summary = {
       automationId: automation.id,
       name: automation.name,
+      nextName,
+      descriptionChange,
       previousScheduleText: formatAutomationTrigger(automation.trigger),
       scheduleText: compiledSchedule.summary,
       timezone: compiledSchedule.timezone,
@@ -239,6 +249,8 @@ export class AutomationToolService {
       automationId,
       expectedTrigger: automation.trigger,
       trigger: compiledSchedule.trigger,
+      name: nextName,
+      description: nextDescription,
       summary,
     });
     const warnings = buildScheduleUpdateWarnings(automation, compiledSchedule.trigger);
@@ -247,6 +259,13 @@ export class AutomationToolService {
         `Automation schedule update draft is ready: ${automation.name} (${automation.id})`,
         `Previous schedule: ${summary.previousScheduleText}`,
         `New schedule: ${summary.scheduleText}`,
+        ...(nextName !== automation.name ? [`New name: ${nextName}`] : []),
+        ...(descriptionChange === 'updated' ? [`New description: ${nextDescription}`] : []),
+        ...(descriptionChange === 'cleared'
+          ? [
+              'Description mentioned the previous schedule and will be cleared; the list shows the schedule from the trigger. Pass description to keep a rewritten one.',
+            ]
+          : []),
         `Next runs: ${summary.nextRuns.map((run) => run.text).join('; ')}`,
         ...warnings.map((warning) => `Warning: ${warning}`),
         `Draft id: ${receipt.id}`,
@@ -293,11 +312,16 @@ export class AutomationToolService {
     const currentTriggerFingerprint = automationTriggerFingerprint(current.trigger);
     const expectedTriggerFingerprint = automationTriggerFingerprint(receipt.expectedTrigger);
     const nextTriggerFingerprint = automationTriggerFingerprint(receipt.trigger);
-    if (currentTriggerFingerprint === nextTriggerFingerprint) {
+    const detailsUnchanged =
+      current.name === receipt.name && (current.description ?? null) === receipt.description;
+    if (currentTriggerFingerprint === nextTriggerFingerprint && detailsUnchanged) {
       this.receiptStore.markScheduleUpdated(receipt.id, current);
       return this.formatScheduleUpdatedResult(current, receipt, 'unchanged');
     }
-    if (currentTriggerFingerprint !== expectedTriggerFingerprint) {
+    if (
+      currentTriggerFingerprint !== expectedTriggerFingerprint &&
+      currentTriggerFingerprint !== nextTriggerFingerprint
+    ) {
       throw new Error(
         'Automation schedule changed after this draft was prepared. Review the latest schedule and prepare the update again.'
       );
@@ -310,6 +334,8 @@ export class AutomationToolService {
 
     const updated = this.automationService.update(receipt.automationId, {
       trigger: receipt.trigger,
+      name: receipt.name,
+      description: receipt.description,
     });
     if (!updated) throw new Error(`Automation not found: ${receipt.automationId}`);
     this.receiptStore.markScheduleUpdated(receipt.id, updated);
@@ -646,4 +672,26 @@ function buildScheduleUpdateWarnings(
     warnings.push('This automation already uses the requested schedule.');
   }
   return warnings;
+}
+
+/**
+ * An explicit description wins (empty clears it). Otherwise a description that
+ * still names a replaced execution time is cleared so it cannot contradict the
+ * trigger; any other description is kept.
+ */
+function resolveScheduleUpdateDescription(
+  automation: Automation,
+  requested: string | undefined,
+  nextTrigger: AutomationTrigger
+): { description: string | null; change: 'kept' | 'updated' | 'cleared' } {
+  const current = automation.description?.trim() || null;
+  if (requested !== undefined) {
+    const description = requested.trim() || null;
+    if (description === current) return { description, change: 'kept' };
+    return { description, change: description ? 'updated' : 'cleared' };
+  }
+  if (current && mentionsReplacedScheduleTime(current, automation.trigger, nextTrigger)) {
+    return { description: null, change: 'cleared' };
+  }
+  return { description: current, change: 'kept' };
 }

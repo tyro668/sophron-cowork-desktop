@@ -44,3 +44,52 @@ export function formatPreviewCoverage(
     `Never describe, count or fill in rows you have not seen — say the data is incomplete, or read the rest with ${fetchHint(end >= total ? 0 : end)}.`
   );
 }
+
+const NUMERIC_FIELD_TYPES = new Set(['integer', 'float', 'decimal']);
+const DECIMAL_LITERAL = /^(-?)(\d+)(?:\.(\d+))?$/;
+/** Totals are only computed for small, fully returned result sets. */
+const COLUMN_TOTALS_MAX_ROWS = 200;
+
+/** Exact decimal sum of the literal values, avoiding binary float drift. */
+function sumDecimalLiterals(values: string[]): string | null {
+  const parsed = values.map((value) => DECIMAL_LITERAL.exec(value));
+  if (parsed.some((match) => !match)) return null;
+  const scale = Math.max(0, ...parsed.map((match) => match![3]?.length ?? 0));
+  let total = 0n;
+  for (const match of parsed) {
+    const [, sign, whole, fraction = ''] = match!;
+    const units = BigInt(whole + fraction.padEnd(scale, '0'));
+    total += sign ? -units : units;
+  }
+  const negative = total < 0n;
+  const digits = (negative ? -total : total).toString().padStart(scale + 1, '0');
+  const whole = digits.slice(0, digits.length - scale);
+  const fraction = scale ? `.${digits.slice(digits.length - scale)}` : '';
+  return `${negative ? '-' : ''}${whole}${fraction}`;
+}
+
+/**
+ * Exact totals of numeric columns when every row of a small table was returned,
+ * so the model quotes them instead of adding numbers itself.
+ */
+export function formatNumericColumnTotals(
+  preview: Pick<DataRawTablePreview, 'rows' | 'totalRows' | 'offset' | 'limit' | 'columnTypes'>
+): string {
+  const rows = preview.limit ? preview.rows.slice(0, preview.limit) : preview.rows;
+  const complete =
+    (preview.offset ?? 0) === 0 && rows.length > 1 && rows.length >= preview.totalRows;
+  if (!complete || rows.length > COLUMN_TOTALS_MAX_ROWS) return '';
+  const totals: Record<string, string> = {};
+  for (const column of preview.columnTypes) {
+    if (!NUMERIC_FIELD_TYPES.has(column.type)) continue;
+    const values = rows
+      .map((row) => row[column.name])
+      .filter((value) => value !== null && value !== undefined && value !== '');
+    if (values.length === 0) continue;
+    if (values.some((value) => typeof value !== 'number' && typeof value !== 'string')) continue;
+    const total = sumDecimalLiterals(values.map((value) => String(value).trim()));
+    if (total !== null) totals[column.name] = total;
+  }
+  if (Object.keys(totals).length === 0) return '';
+  return `Exact column totals over all ${rows.length} rows (computed by the app; quote these instead of adding values yourself; round half up only when converting units): ${JSON.stringify(totals)}`;
+}

@@ -4151,7 +4151,23 @@
     "runFilter7d": "Last 7 days",
     "runFilter30d": "Last 30 days",
     "runSearch": "Search runs…",
-    "runFailed": "Run failed"
+    "runFailed": "Run failed",
+    "triggerSummary": {
+      "manual": "Manual",
+      "once": "Once at {{time}}",
+      "interval": "Every {{every}} {{unit}}",
+      "daily": "Daily at {{times}}",
+      "weekly": "Every {{weekdays}} at {{times}}",
+      "monthly": "Monthly on {{days}} at {{times}}",
+      "lastDay": "last day",
+      "dayOfMonth": "day {{day}}",
+      "cron": "Cron {{expression}}",
+      "fileChange": "On file change",
+      "listSeparator": ", ",
+      "unitMinute": "minutes",
+      "unitHour": "hours",
+      "unitDay": "days"
+    }
   },
   "remote": {
     "title": "Remote Control",
