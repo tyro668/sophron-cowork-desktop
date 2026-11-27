@@ -10,6 +10,9 @@ describe('WelcomeView layout', () => {
     expect(source).toContain('max-w-[860px]');
     expect(source).toContain('max-w-[36rem] text-center');
     expect(source).toContain("t('welcome.title')");
+    expect(source).toContain("t('welcome.subtitle')");
+    expect(source).not.toContain('ComposerShortcutHint');
+    expect(source).not.toContain('quickTags');
     expect(source).not.toContain('welcomeLogoSrc');
     expect(source).not.toContain("t('welcome.logoAlt')");
     expect(source).not.toContain('sophron cowork');

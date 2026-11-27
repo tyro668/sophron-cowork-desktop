@@ -1,5 +1,4 @@
 import { handleNewlineShortcut } from '../utils/composer-keys';
-import { ComposerShortcutHint } from './ComposerShortcutHint';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../store';
@@ -32,14 +31,11 @@ import {
 import type { CloudTableChatAttachment } from '../types';
 import { getInitialSessionTitle } from '../../shared/session-title';
 import {
-  FileText,
-  BarChart3,
   FolderOpen,
   FolderPlus,
   ArrowRight,
   ArrowUp,
   Plus,
-  BookOpen,
   Check,
   ChevronDown,
   Folder,
@@ -257,15 +253,6 @@ export function WelcomeView() {
     }
   };
 
-  const handleTagClick = (tagPrompt: string) => {
-    setPrompt(tagPrompt);
-    if (textareaRef.current) {
-      textareaRef.current.value = tagPrompt;
-      adjustTextareaHeight();
-      textareaRef.current.focus();
-    }
-  };
-
   // Auto-adjust textarea height based on content
   const adjustTextareaHeight = () => {
     const textarea = textareaRef.current;
@@ -290,37 +277,6 @@ export function WelcomeView() {
   useEffect(() => {
     adjustTextareaHeight();
   }, [prompt]);
-
-  const quickTags = [
-    {
-      id: 'create',
-      label: t('welcome.createFile'),
-      description: t('welcome.createFileDesc'),
-      icon: FileText,
-      prompt: t('welcome.quickPromptCreate'),
-    },
-    {
-      id: 'crunch',
-      label: t('welcome.crunchData'),
-      description: t('welcome.crunchDataDesc'),
-      icon: BarChart3,
-      prompt: t('welcome.quickPromptCrunch'),
-    },
-    {
-      id: 'organize',
-      label: t('welcome.organizeFiles'),
-      description: t('welcome.organizeFilesDesc'),
-      icon: FolderOpen,
-      prompt: t('welcome.quickPromptOrganize'),
-    },
-    {
-      id: 'papers',
-      label: t('welcome.searchPapers'),
-      description: t('welcome.searchPapersDesc'),
-      icon: BookOpen,
-      prompt: t('welcome.quickPromptPapers'),
-    },
-  ];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto bg-transparent px-4 py-6 md:px-8">
@@ -568,22 +524,6 @@ export function WelcomeView() {
             </div>
           </div>
         </form>
-        <ComposerShortcutHint className="mx-auto mt-2 w-full max-w-[860px] px-1 opacity-85" />
-        {/* Quick Action Tags */}
-        <div className="mx-auto mt-4 flex w-full max-w-[860px] flex-wrap items-center justify-center gap-2">
-          {quickTags.map((tag) => (
-            <button
-              key={tag.id}
-              type="button"
-              title={tag.description}
-              onClick={() => handleTagClick(tag.prompt)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface px-2.5 py-1.5 text-[12px] font-medium text-text-secondary shadow-soft transition-colors hover:border-border hover:bg-surface-hover hover:text-text-primary"
-            >
-              <tag.icon className="h-3.5 w-3.5 text-text-muted" />
-              <span>{tag.label}</span>
-            </button>
-          ))}
-        </div>
       </div>
       <CreateProjectDialog
         open={showCreateProjectDialog}
