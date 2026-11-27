@@ -58,7 +58,6 @@ export function CloudConnectionPreviewDialog({
   preview,
   isLoading,
   error,
-  totalRowCount,
   onClose,
 }: {
   open: boolean;
@@ -66,27 +65,16 @@ export function CloudConnectionPreviewDialog({
   preview: DataRawTablePreview | null;
   isLoading: boolean;
   error: string | null;
-  /** 服务端给出的全表行数（可能多于本次预览样本）。 */
-  totalRowCount?: number;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   if (!open) return null;
-  const heading = title
-    ? `${t('cloudConnection.previewTitle')} · ${title}`
-    : t('cloudConnection.previewTitle');
-  const sample = preview?.rows.length ?? 0;
-  const total = totalRowCount ?? preview?.totalRows ?? sample;
-  const subtitle =
-    total > 0
-      ? `${t('cloudConnection.rowCount', { count: total })} · ${t('cloudConnection.previewRows', { count: sample })}`
-      : undefined;
+  const heading = title?.trim() || t('cloudConnection.previewTitle');
   return (
     <div data-testid="cloud-connection-preview">
       <RawTablePreviewDialog
         tableKind="raw"
         title={heading}
-        subtitle={subtitle}
         preview={preview}
         isLoading={isLoading}
         error={error}

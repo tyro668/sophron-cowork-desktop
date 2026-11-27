@@ -8,8 +8,10 @@ import type {
   DataAutomationOutputBinding,
   DataGeneratePipelineFromRequirementInput,
   DataGeneratePipelineFromRequirementResult,
+  DataRawTable,
   DataWorkflowSaveInput,
 } from '../../../types';
+import { isRawTableUnavailable } from '../../../../shared/contracts';
 import type { DataPipelineAuthoringRequest } from '../../../../shared/data-pipeline-authoring';
 import { Dialog, DialogBody, DialogFooter, DialogTitle } from '../../ui/dialog';
 import { Button } from '../../ui/button';
@@ -38,7 +40,11 @@ export function DataPipelineAiGenerateDialog({
   open: boolean;
   pipelineId?: string;
   workingDirectory?: string;
-  boundRawTable?: { id: string; name: string } | null;
+  boundRawTable?: {
+    id: string;
+    name: string;
+    memberStatus?: DataRawTable['memberStatus'];
+  } | null;
   initialSource?: DataAutomationSourceBinding | null;
   initialOutput?: DataAutomationOutputBinding;
   initialRequirement?: string;
@@ -60,28 +66,34 @@ export function DataPipelineAiGenerateDialog({
   const [outputName, setOutputName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const boundUnavailable = !initialSource?.tableId && isRawTableUnavailable(boundRawTable);
   const fixedSource = useMemo(
     () =>
       initialSource?.tableId
         ? initialSource
-        : boundRawTable
+        : boundRawTable && !boundUnavailable
           ? {
               location: 'local' as const,
               tableId: boundRawTable.id,
               tableName: boundRawTable.name,
             }
           : null,
-    [boundRawTable, initialSource]
+    [boundRawTable, boundUnavailable, initialSource]
   );
-  const inputs = usePipelineGenerationInputs(open && !pipelineId && !fixedSource);
-  const selectedInput = inputs.tables.find((table) => table.id === chosenInputId);
+  const inputs = usePipelineGenerationInputs(
+    open && !pipelineId && !fixedSource && !boundUnavailable
+  );
+  const selectedInput = inputs.tables.find(
+    (table) => table.id === chosenInputId && !isRawTableUnavailable(table)
+  );
+  const hasAvailableInputs = inputs.tables.some((table) => !isRawTableUnavailable(table));
   const source =
     fixedSource ??
     (selectedInput
       ? { location: 'local' as const, tableId: selectedInput.id, tableName: selectedInput.name }
       : null);
   const title = t(pipelineId ? 'data.workflow.aiGenerate' : 'data.aiPipelineGenerate');
-  const canSend = Boolean(source) && requirement.trim().length > 0 && !busy;
+  const canSend = Boolean(source) && !boundUnavailable && requirement.trim().length > 0 && !busy;
 
   useEffect(() => {
     if (!open) return;
@@ -142,20 +154,40 @@ export function DataPipelineAiGenerateDialog({
           <div className="ui-form-row">
             <div className="ui-form-label items-center">{t('data.workflow.aiInputLabel')}</div>
             <div className="ui-form-value">
-              {fixedSource || pipelineId ? (
+              {fixedSource || pipelineId || boundUnavailable ? (
                 <div className="flex items-center gap-2 text-[12px] text-text-muted">
                   <Database className="h-3.5 w-3.5" />
-                  {source
-                    ? t('data.workflow.aiInputBound', { name: source.tableName || source.tableId })
-                    : t('data.workflow.aiInputMissing')}
+                  {boundUnavailable && boundRawTable ? (
+                    <span className="text-error">
+                      {t('data.workflow.aiInputBound', { name: boundRawTable.name })} ·{' '}
+                      {t('data.rawTables.status.unavailable')}
+                    </span>
+                  ) : source ? (
+                    t('data.workflow.aiInputBound', { name: source.tableName || source.tableId })
+                  ) : (
+                    t('data.workflow.aiInputMissing')
+                  )}
                 </div>
               ) : (
                 <div className="grid gap-2">
                   <GlassSelect
                     value={chosenInputId}
-                    disabled={busy || inputs.loading}
-                    onValueChange={setChosenInputId}
-                    options={inputs.tables.map((table) => ({ value: table.id, label: table.name }))}
+                    disabled={busy || inputs.loading || !hasAvailableInputs}
+                    onValueChange={(nextId) => {
+                      const picked = inputs.tables.find((table) => table.id === nextId);
+                      if (picked && isRawTableUnavailable(picked)) return;
+                      setChosenInputId(nextId);
+                    }}
+                    options={inputs.tables.map((table) => {
+                      const unavailable = isRawTableUnavailable(table);
+                      return {
+                        value: table.id,
+                        label: table.name,
+                        disabled: unavailable,
+                        muted: unavailable,
+                        hint: unavailable ? t('data.rawTables.status.unavailable') : undefined,
+                      };
+                    })}
                     ariaLabel={t('data.aiPipelineRawTable')}
                     placeholder={t(inputs.loading ? 'common.loading' : 'data.aiPipelineRawTable')}
                     searchable
@@ -169,7 +201,7 @@ export function DataPipelineAiGenerateDialog({
                       {inputs.error}
                     </p>
                   )}
-                  {!inputs.loading && !inputs.error && inputs.tables.length === 0 && (
+                  {!inputs.loading && !inputs.error && !hasAvailableInputs && (
                     <p className="text-xs text-text-muted">{t('data.aiPipelineNoInputs')}</p>
                   )}
                 </div>

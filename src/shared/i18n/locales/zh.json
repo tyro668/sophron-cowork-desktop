@@ -442,6 +442,7 @@
       },
       "status": {
         "available": "可用",
+        "unavailable": "不可用",
         "draft": "待配置",
         "abnormal": "数据异常"
       },
@@ -2275,8 +2276,8 @@
         "tablesBadge": "{{count}} 张表",
         "mergeBadge": "合并",
         "mergeFiles": "合并 {{count}} 个文件",
-        "missingMembers": "{{count}} 张来源中已不存在",
-        "memberMissing": "来源中已不存在",
+        "missingMembers": "{{count}} 张不可用",
+        "memberMissing": "不可用",
         "refreshSource": "刷新数据源",
         "sourceDetail": "数据源详情",
         "deleteSource": "删除数据源",
@@ -2379,7 +2380,7 @@
         "applied": "已处理：改名 {{renamed}} 张，新增 {{added}} 张",
         "similarityTip": "结构与数据相似度",
         "sameTip": "保留原表，绑定改为新名称",
-        "newTip": "旧表标为不存在，另行导入"
+        "newTip": "旧表标为不可用，另行导入"
       },
       "config": {
         "pending": "待配置",

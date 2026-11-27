@@ -24,6 +24,7 @@ import type {
   DataDashboard,
 } from '../../../types';
 import { exportWorkflowJflow } from '../../../../shared/jflow';
+import { isRawTableUnavailable } from '../../../../shared/contracts';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import { GlassSelect } from '../../GlassSelect';
 import {
@@ -550,7 +551,11 @@ export function DataProcessActionEditor({
       <DataPipelineAiGenerateDialog
         open={generateOpen}
         workingDirectory={workingDirectory}
-        boundRawTable={selectedInput ? { id: selectedInput.id, name: selectedInput.name } : null}
+        boundRawTable={
+          selectedInput && !isRawTableUnavailable(selectedInput)
+            ? { id: selectedInput.id, name: selectedInput.name }
+            : null
+        }
         initialSource={legacySource}
         initialRequirement={legacyDraft?.processRequirement}
         initialOutput={legacyDraft ? { ...legacyDraft.output, location: 'local' } : undefined}
@@ -760,9 +765,22 @@ export function ActionConfigEditor({
         <ConfigRow label={tr('schedule.inputDataLabel')}>
           <SelectLine
             value={String(node.config.rawTableId ?? '')}
-            options={rawTables.map((table) => ({ value: table.id, label: table.name }))}
+            options={rawTables.map((table) => {
+              const unavailable = isRawTableUnavailable(table);
+              return {
+                value: table.id,
+                label: table.name,
+                disabled: unavailable,
+                muted: unavailable,
+                hint: unavailable ? tr('data.rawTables.status.unavailable') : undefined,
+              };
+            })}
             placeholder={tr('schedule.rawTablePlaceholder')}
-            onChange={(value) => setConfig({ ...node.config, rawTableId: value, limit: 20 })}
+            onChange={(value) => {
+              const picked = rawTables.find((table) => table.id === value);
+              if (picked && isRawTableUnavailable(picked)) return;
+              setConfig({ ...node.config, rawTableId: value, limit: 20 });
+            }}
           />
         </ConfigRow>
       )}

@@ -442,6 +442,7 @@
       },
       "status": {
         "available": "Available",
+        "unavailable": "Unavailable",
         "draft": "To configure",
         "abnormal": "Data issue"
       },
@@ -2275,8 +2276,8 @@
         "tablesBadge": "{{count}} tables",
         "mergeBadge": "Merged",
         "mergeFiles": "{{count}} files merged",
-        "missingMembers": "{{count}} no longer in source",
-        "memberMissing": "No longer in source",
+        "missingMembers": "{{count}} unavailable",
+        "memberMissing": "Unavailable",
         "refreshSource": "Refresh source",
         "sourceDetail": "Source details",
         "deleteSource": "Delete source",
@@ -2379,7 +2380,7 @@
         "applied": "Done: {{renamed}} renamed, {{added}} added",
         "similarityTip": "Structure and data similarity",
         "sameTip": "Keep the table and rebind to the new name",
-        "newTip": "Mark old as missing and import separately"
+        "newTip": "Mark old as unavailable and import separately"
       },
       "config": {
         "pending": "Not created",

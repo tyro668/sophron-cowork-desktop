@@ -2,6 +2,7 @@ import { useNormalizerVersions } from '../../features/data/hooks/use-normalizer-
 import { useGenerationLog } from '../../hooks/use-generation-log';
 import { formatIpcError } from '../../utils/ipc-error';
 import { isCancelledError } from '../../../shared/cancel';
+import { isRawTableUnavailable } from '../../../shared/contracts';
 import { modesForSource } from './raw-source-detail';
 import { useInlineModeChange } from './raw-source-mode-change';
 import { formatDataErrorMessage } from '../../features/data/model/errors';
@@ -1373,12 +1374,25 @@ export function RawTableEditorWorkbench({
                 label={
                   rawTable?.health
                     ? t('data.rawTables.status.abnormal')
-                    : isConfigured
-                      ? t('data.rawTables.status.available')
-                      : t('data.rawTables.status.draft')
+                    : isRawTableUnavailable(rawTable)
+                      ? t('data.rawTables.status.unavailable')
+                      : isConfigured
+                        ? t('data.rawTables.status.available')
+                        : t('data.rawTables.status.draft')
                 }
-                title={rawTable?.health?.reason}
-                tone={rawTable?.health ? 'error' : isConfigured ? 'success' : 'warning'}
+                title={
+                  rawTable?.health?.reason ??
+                  (isRawTableUnavailable(rawTable)
+                    ? t('data.rawSources.missing.inline')
+                    : undefined)
+                }
+                tone={
+                  rawTable?.health || isRawTableUnavailable(rawTable)
+                    ? 'error'
+                    : isConfigured
+                      ? 'success'
+                      : 'warning'
+                }
               />
               {isNameEditing ? (
                 <input
@@ -2190,7 +2204,7 @@ export function RawTableEditorWorkbench({
                     : 'fixError.previewFailedTitle',
                   { version: previewVersionLabel }
                 )
-              : undefined
+              : localName.trim() || rawTable?.name || undefined
           }
           preview={normalizerReport ? null : previewData}
           isLoading={previewLoading}

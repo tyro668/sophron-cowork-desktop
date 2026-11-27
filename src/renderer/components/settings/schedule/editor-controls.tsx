@@ -110,7 +110,7 @@ export function SelectLine({
   onChange,
 }: {
   value: string;
-  options: Array<{ value: string; label: string }>;
+  options: GlassSelectOption[];
   placeholder: string;
   onChange: (value: string) => void;
 }) {

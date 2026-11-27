@@ -62,12 +62,13 @@ import { getWorkflowDslReference, type DataDslReferenceTopic } from './data-dsl-
 import { sliceWorkflowCapabilityManifest } from './workflow/workflow-capability-manifest';
 import { createDataResourceHref, type DataResourceKind } from '../../shared/data-resource-link';
 import { dataFieldTypeLabel } from '../../shared/data-field-types';
-import type {
-  DataPipeline,
-  DataRawTable,
-  DataRawTablePreview,
-  DataResultTable,
-  DataPipelineWorkflow,
+import {
+  isRawTableUnavailable,
+  type DataPipeline,
+  type DataRawTable,
+  type DataRawTablePreview,
+  type DataResultTable,
+  type DataPipelineWorkflow,
 } from '../../shared/contracts';
 import type {
   PersonalAnalysisProject,
@@ -1077,7 +1078,8 @@ function formatGeneratedPipelineToolResult(
 }
 
 function formatRawTable(table: DataRawTable): string {
-  return `- ${formatDataResourceLink('raw_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}`;
+  const status = isRawTableUnavailable(table) ? ' status=unavailable' : '';
+  return `- ${formatDataResourceLink('raw_table', table.id, table.name)} (${table.id}) kind=${table.sourceKind} rows=${table.rowCount} columns=${table.columnCount}${status}`;
 }
 
 function formatCloudSpace(space: PersonalAnalysisSpace): string {

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { CircleAlert, CloudDownload, CloudUpload, Database } from 'lucide-react';
 import type { AutomationActionNode, DataRawTable, DataResultTable } from '../../../types';
+import { isRawTableUnavailable } from '../../../../shared/contracts';
 import { FlushSelect, FormRow, RequiredLabel, SubGroupRow } from './editor-controls';
 import {
   CloudConnectionRow,
@@ -113,7 +114,16 @@ export function CloudSyncEditor({
               options={[
                 { value: '__create__', label: t('schedule.cloudInput.create') },
                 ...withSavedOption(
-                  rawTables.map((table) => ({ value: table.id, label: table.name })),
+                  rawTables.map((table) => {
+                    const unavailable = isRawTableUnavailable(table);
+                    return {
+                      value: table.id,
+                      label: table.name,
+                      disabled: unavailable,
+                      muted: unavailable,
+                      hint: unavailable ? t('data.rawTables.status.unavailable') : undefined,
+                    };
+                  }),
                   String(config.rawTableId ?? ''),
                   String(config.rawTableName ?? '')
                 ),
@@ -121,6 +131,7 @@ export function CloudSyncEditor({
               placeholder={t('schedule.rawTablePlaceholder')}
               onChange={(value) => {
                 const table = rawTables.find((table) => table.id === value);
+                if (table && isRawTableUnavailable(table)) return;
                 update({
                   rawTableId: value === '__create__' ? undefined : value,
                   rawTableName: table?.name,

@@ -1,9 +1,10 @@
-import type { DataRawTable } from '../../shared/contracts';
-import type {
-  CreateRawTableCommand,
-  GeneratePipelineFromRequirementCommand,
-  RawTableResult,
-  UpdateRawTableCommand,
+import { isRawTableUnavailable, type DataRawTable } from '../../shared/contracts';
+import {
+  DataCommandError,
+  type CreateRawTableCommand,
+  type GeneratePipelineFromRequirementCommand,
+  type RawTableResult,
+  type UpdateRawTableCommand,
 } from './data-command-types';
 import { CloudAnalysisCommandService } from './cloud-analysis-command-service';
 import { DataCommandLockCoordinator } from './data-command-lock-coordinator';
@@ -55,6 +56,12 @@ export class AutomationInputResolver {
     const rawTable = await this.resources.requireRawTable(
       normalizeRequiredName(input.source.tableId, 'Input table id is required')
     );
+    if (isRawTableUnavailable(rawTable)) {
+      throw new DataCommandError(
+        'INVALID_ARGUMENT',
+        `E_SOURCE_MEMBER_MISSING: Input table "${rawTable.name}" is unavailable because its source no longer exists.`
+      );
+    }
     let columnsSnapshot = normalizeColumnSnapshot(undefined, input.source.columnsSnapshot);
     if (columnsSnapshot.length === 0) {
       try {

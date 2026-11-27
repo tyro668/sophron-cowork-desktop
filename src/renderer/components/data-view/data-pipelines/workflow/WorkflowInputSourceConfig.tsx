@@ -9,6 +9,7 @@ import type {
   DataRawTableSourceKind,
   DataWorkflowNode,
 } from '../../../../types';
+import { isRawTableUnavailable } from '../../../../../shared/contracts';
 import { GlassSelect, type GlassSelectOption } from '../../../GlassSelect';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { stringValue } from './workflow-summary';
@@ -41,14 +42,15 @@ export function rawTableOptionsBySource(
     }
   }
   const option = (table: DataRawTable, source?: DataRawSource): GlassSelectOption => {
-    const missing = table.memberStatus === 'missing';
+    const unavailable = isRawTableUnavailable(table);
     return {
       value: table.id,
       label: table.name,
-      hint: missing
-        ? String(t('data.rawSources.list.memberMissing'))
+      hint: unavailable
+        ? String(t('data.rawTables.status.unavailable'))
         : String(t('data.rawSources.done.rowsValue', { rows: table.rowCount.toLocaleString() })),
-      muted: missing,
+      disabled: unavailable,
+      muted: unavailable,
       ...(source
         ? {
             group: source.id,
@@ -110,9 +112,11 @@ export function WorkflowInputSourceConfig({
   const SelectedSourceIcon = selectedRawTable
     ? SOURCE_KIND_ICONS[selectedRawTable.sourceKind]
     : null;
+  const hasAvailableRawTables = rawTables.some((rawTable) => !isRawTableUnavailable(rawTable));
   const handleRawTableChange = useCallback(
     (rawTableId: string) => {
       const selectedRawTable = rawTables.find((rawTable) => rawTable.id === rawTableId);
+      if (selectedRawTable && isRawTableUnavailable(selectedRawTable)) return;
       onNodeChange((current) => {
         const nextConfig: Record<string, unknown> = { ...current.config };
         if (selectedRawTable) {
@@ -176,11 +180,11 @@ export function WorkflowInputSourceConfig({
             placeholder={
               isLoading
                 ? t('data.workflow.loadingRawTables')
-                : rawTables.length > 0
+                : hasAvailableRawTables
                   ? t('data.workflow.selectRawTable')
                   : t('data.workflow.noAvailableRawTables')
             }
-            disabled={isLoading || (!selectedRawTableId && rawTables.length === 0)}
+            disabled={isLoading || (!selectedRawTableId && !hasAvailableRawTables)}
             triggerIcon={<Database className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
             triggerClassName="w-full justify-between text-[13px] text-text-primary"
             contentClassName="w-[var(--radix-select-trigger-width)]"

@@ -5,7 +5,10 @@ import type {
   CloudConnectionTablePreview,
   CloudConnectionTableRef,
 } from '../../../shared/contracts';
-import { isCloudConnectionRefNameConfirmed } from '../../../shared/contracts';
+import {
+  isCloudConnectionRefNameConfirmed,
+  isRawTableUnavailable,
+} from '../../../shared/contracts';
 import type { DataColumnTypeInfo } from '../../../shared/data-field-types';
 import type { ExcelMetaPayload } from '../../local-agent/excel/analyzer';
 import type { ExcelTableInfo, TableRows } from '../../local-agent/excel/local-excel-source';
@@ -100,6 +103,16 @@ export async function resolveTableRef(
       const raw = await store.getRawTableRecord(ref.tableId);
       if (!raw) {
         return { ...ref, status: 'missing', statusReason: '原始表已删除' };
+      }
+      if (isRawTableUnavailable(raw)) {
+        return {
+          ...ref,
+          displayName: raw.name,
+          status: 'missing',
+          statusReason: 'E_SOURCE_MEMBER_MISSING',
+          rowCount: raw.rowCount,
+          columnCount: raw.columnCount,
+        };
       }
       if (raw.health) {
         return {
@@ -234,6 +247,14 @@ export class ReferencedTableSource {
     return infoOf(ref, index);
   }
 
+  private async assertRawTableAvailable(ref: StoredTableRef): Promise<void> {
+    if (ref.kind !== 'raw') return;
+    const raw = await this.requireStore().getRawTableRecord(ref.tableId);
+    if (isRawTableUnavailable(raw)) {
+      throw new Error(`E_SOURCE_MEMBER_MISSING: Raw table "${ref.reportName}" is unavailable`);
+    }
+  }
+
   private async load(ref: StoredTableRef, refresh = true) {
     const store = this.requireStore();
     if (refresh && ref.kind === 'raw') {
@@ -243,6 +264,7 @@ export class ReferencedTableSource {
         // 刷新失败时仍读上次物化结果（原始表会保留旧数据并标异常）。
       }
     }
+    await this.assertRawTableAvailable(ref);
     return store.describeBoundTable(ref.kind, ref.tableId);
   }
 
@@ -322,6 +344,7 @@ export class ReferencedTableSource {
       } catch {
         /* keep last snapshot */
       }
+      await this.assertRawTableAvailable(ref);
     }
     const preview = await store.previewBoundTable(ref.kind, ref.tableId, limit, 0);
     if (!preview.materialized) throw new Error(`结果表尚未物化，无法上报：${ref.reportName}`);
@@ -363,6 +386,7 @@ export class ReferencedTableSource {
       } catch {
         /* keep last snapshot */
       }
+      await this.assertRawTableAvailable(ref);
     }
     const headerSize = typeof header === 'number' ? header : header.length;
     const result = await store.iterateBoundTableRows(ref.kind, ref.tableId, async (row) => {

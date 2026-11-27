@@ -121,7 +121,9 @@ describe('input picker grouped by source (4.4)', () => {
     ]);
     expect(sections[1].meta).toBe('data.rawSources.list.mergeBadge');
     const missing = options.find((option) => option.label === '九月目标')!;
+    expect(missing.disabled).toBe(true);
     expect(missing.muted).toBe(true);
+    expect(missing.hint).toBe('data.rawTables.status.unavailable');
     expect(missing.searchText).toBe('9月经营数据.xlsx');
   });
 });

@@ -16,6 +16,7 @@ import {
   Table2,
 } from 'lucide-react';
 import type { DataRawTable, DataRawSource } from '../../types';
+import { isRawTableUnavailable } from '../../../shared/contracts';
 import type { RawTableDraft } from '../../features/data/model/types';
 import { ExcelMultiSheetIcon } from './excel-multi-sheet-icon';
 import {
@@ -317,7 +318,7 @@ export function RawTableTree({
   const toggleSelected = (tableId: string) => {
     if (disabled.has(tableId)) return;
     const table = rawTables.find((item) => item.id === tableId);
-    if (!table) return;
+    if (!table || isRawTableUnavailable(table)) return;
     if (selectionMode === 'single') {
       onSelectedIdsChange?.([tableId]);
       onSelect?.(table);
@@ -660,15 +661,18 @@ function renderPageTableRow(
               ? ctx.t('data.rawTables.status.draft')
               : rawTable?.health
                 ? ctx.t('data.rawTables.status.abnormal')
-                : rawTable?.memberStatus === 'missing'
-                  ? ctx.t('data.rawSources.list.memberMissing')
+                : isRawTableUnavailable(rawTable)
+                  ? ctx.t('data.rawTables.status.unavailable')
                   : ctx.t('data.rawTables.status.available')
           }
-          title={rawTable?.health?.reason}
+          title={
+            rawTable?.health?.reason ??
+            (isRawTableUnavailable(rawTable) ? ctx.t('data.rawSources.missing.inline') : undefined)
+          }
           tone={
-            rawTable?.health
+            rawTable?.health || isRawTableUnavailable(rawTable)
               ? 'error'
-              : draft || rawTable?.memberStatus === 'missing'
+              : draft
                 ? 'warning'
                 : 'success'
           }
@@ -695,7 +699,7 @@ function renderSourceRow(
     t: (key: string, options?: Record<string, unknown>) => string;
   }
 ) {
-  const missing = members.filter((member) => member.memberStatus === 'missing').length;
+  const missing = members.filter((member) => isRawTableUnavailable(member)).length;
   const abnormal = members.filter((member) => member.health);
   const merged = source.buildMode === 'folder_merge' || source.buildMode === 'excel_merge_sheets';
   const updatedAt = Math.max(...members.map((member) => member.updatedAt));
@@ -802,8 +806,14 @@ function renderSourceRow(
                   ? ctx.t('data.rawSources.list.missingMembers', { count: missing })
                   : ctx.t('data.rawTables.status.available')
             }
-            title={abnormal.map((member) => `${member.name}：${member.health?.reason}`).join('\n')}
-            tone={abnormal.length > 0 ? 'error' : missing > 0 ? 'warning' : 'success'}
+            title={
+              abnormal.length > 0
+                ? abnormal.map((member) => `${member.name}：${member.health?.reason}`).join('\n')
+                : missing > 0
+                  ? ctx.t('data.rawSources.missing.inline')
+                  : undefined
+            }
+            tone={abnormal.length > 0 || missing > 0 ? 'error' : 'success'}
           />
           <button
             type="button"
@@ -835,19 +845,23 @@ function rawPickerIcon(sourceKind: string | undefined) {
 function rawPickerTableNode(
   table: DataRawTable,
   disabled: Set<string>,
+  t: (key: string, options?: Record<string, unknown>) => string,
   sourceName?: string
 ): TablePickerTreeNode {
   const kind = table.sourceKind ?? 'excel';
   const name = sourceName ? childDisplayName(table, sourceName) : table.name;
-  const isDisabled = disabled.has(table.id);
+  const isReferenced = disabled.has(table.id);
+  const isUnavailable = isRawTableUnavailable(table);
   return {
     id: table.id,
     kind: 'table',
     tableId: table.id,
     name,
     icon: rawPickerIcon(kind),
-    disabled: isDisabled,
-    referenced: isDisabled,
+    disabled: isReferenced || isUnavailable,
+    referenced: isReferenced || isUnavailable,
+    referencedLabel:
+      isUnavailable && !isReferenced ? t('data.rawTables.status.unavailable') : undefined,
   };
 }
 
@@ -871,11 +885,11 @@ function buildRawPickerNodes(
           name: row.source.name,
           icon: rawPickerIcon(sourceKind),
           children: row.members.map((table) =>
-            rawPickerTableNode(table, disabled, row.source.name)
+            rawPickerTableNode(table, disabled, t, row.source.name)
           ),
         });
       } else if (row.kind === 'rawTable' && !row.child) {
-        children.push(rawPickerTableNode(row.rawTable, disabled));
+        children.push(rawPickerTableNode(row.rawTable, disabled, t));
       }
     }
     return {

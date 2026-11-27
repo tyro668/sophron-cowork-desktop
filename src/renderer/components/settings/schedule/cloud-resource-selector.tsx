@@ -78,11 +78,11 @@ export function CloudConnectionRow({ compact = false }: { compact?: boolean } = 
   );
 }
 
-export function withSavedOption(
-  options: Array<{ value: string; label: string }>,
+export function withSavedOption<T extends { value: string; label: string }>(
+  options: T[],
   value: string,
   label?: string
-) {
+): Array<T | { value: string; label: string }> {
   return value && !options.some((option) => option.value === value)
     ? [{ value, label: label || value }, ...options]
     : options;

@@ -126,6 +126,7 @@ export function TablePickerTree({
             role="treeitem"
             aria-expanded={childful ? expanded : undefined}
             aria-selected={isLeaf ? isSelected : undefined}
+            aria-disabled={node.disabled ? true : undefined}
             aria-level={level + 1}
             data-testid={testId}
             data-table-id={node.tableId}

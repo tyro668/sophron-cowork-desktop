@@ -1,10 +1,13 @@
 import { formatIpcError } from '../../../utils/ipc-error';
 import { useEffect, useState } from 'react';
+import type { DataRawTable } from '../../../types';
 import { dataClient } from '../api/data-client';
+
+export type PipelineGenerationInputTable = Pick<DataRawTable, 'id' | 'name' | 'memberStatus'>;
 
 /** Load all selectable input tables, independently of workspace filters/pages. */
 export function usePipelineGenerationInputs(enabled: boolean) {
-  const [tables, setTables] = useState<Array<{ id: string; name: string }>>([]);
+  const [tables, setTables] = useState<PipelineGenerationInputTable[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -13,7 +16,7 @@ export function usePipelineGenerationInputs(enabled: boolean) {
     setLoading(true);
     setError(null);
     const load = async () => {
-      const result: Array<{ id: string; name: string }> = [];
+      const result: PipelineGenerationInputTable[] = [];
       for (;;) {
         const page = await dataClient.getDashboard({
           includeSummary: false,

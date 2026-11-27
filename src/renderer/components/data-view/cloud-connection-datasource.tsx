@@ -150,7 +150,6 @@ export function DatasourceManager({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [preview, setPreview] = useState<DataRawTablePreview | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
-  const [previewTotalRows, setPreviewTotalRows] = useState<number | undefined>(undefined);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
 
@@ -197,17 +196,18 @@ export function DatasourceManager({
   const confirm = async (message: string) =>
     confirmDialog ? confirmDialog.confirmDelete({ message }) : true;
 
-  const showPreview = async (load: () => Promise<CloudConnectionTablePreview>) => {
+  const showPreview = async (
+    load: () => Promise<CloudConnectionTablePreview>,
+    initialTitle: string
+  ) => {
     setPreview(null);
     setPreviewError(null);
-    setPreviewTitle('');
-    setPreviewTotalRows(undefined);
+    setPreviewTitle(initialTitle);
     setPreviewOpen(true);
     setPreviewing(true);
     try {
       const raw = await load();
-      setPreviewTitle(raw.tableName);
-      setPreviewTotalRows(raw.rowCount);
+      setPreviewTitle(raw.tableName || initialTitle);
       setPreview(toDataRawTablePreview(raw));
     } catch (error) {
       const message = errorText(error);
@@ -528,8 +528,9 @@ export function DatasourceManager({
               table={selectedGroup.tables.find((tb) => tb.reportName === selection.reportName)}
               busy={busy}
               onPreview={() =>
-                void showPreview(() =>
-                  cloudConnectionClient.previewTable(selectedGroup.id, selection.reportName)
+                void showPreview(
+                  () => cloudConnectionClient.previewTable(selectedGroup.id, selection.reportName),
+                  selection.reportName
                 )
               }
               onConfirmName={async (reportName) => {
@@ -564,7 +565,6 @@ export function DatasourceManager({
         preview={preview}
         isLoading={previewing && !preview}
         error={previewError}
-        totalRowCount={previewTotalRows}
         onClose={() => {
           setPreviewOpen(false);
           setPreview(null);

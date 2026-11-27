@@ -725,6 +725,11 @@ export interface DataRawTable {
   updatedAt: number;
 }
 
+/** Whether a raw table's source member is missing and cannot be used normally. */
+export function isRawTableUnavailable(table?: Pick<DataRawTable, 'memberStatus'> | null): boolean {
+  return table?.memberStatus === 'missing';
+}
+
 export interface DataResultTable {
   id: string;
   name: string;

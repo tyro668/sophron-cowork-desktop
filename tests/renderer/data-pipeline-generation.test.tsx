@@ -47,16 +47,18 @@ vi.mock('../../src/renderer/components/GlassSelect', () => ({
   GlassSelect: ({
     value,
     options,
+    disabled,
     onValueChange,
   }: {
     value: string;
-    options: Array<{ value: string; label: string }>;
+    options: Array<{ value: string; label: string; disabled?: boolean; hint?: string }>;
+    disabled?: boolean;
     onValueChange: (value: string) => void;
   }) => (
-    <select value={value} onChange={(e) => onValueChange(e.target.value)}>
+    <select value={value} disabled={disabled} onChange={(e) => onValueChange(e.target.value)}>
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
+        <option key={option.value} value={option.value} disabled={option.disabled}>
+          {option.hint ? `${option.label} (${option.hint})` : option.label}
         </option>
       ))}
     </select>
@@ -359,5 +361,41 @@ describe('automation pipeline references', () => {
       type: 'data.pipeline.run',
       config: { pipelineId: '', outputMode: 'persisted' },
     });
+  });
+
+  it('disables unavailable raw tables in AI pipeline generation dialog and blocks sending', async () => {
+    getDashboard.mockResolvedValue({
+      rawTables: [
+        { id: 'broken', name: 'Broken table', memberStatus: 'missing' },
+        { id: 'ok', name: 'Healthy table', memberStatus: 'ok' },
+      ],
+    });
+    render(<DataPipelineAiGenerateDialog open onOpenChange={vi.fn()} />);
+    const brokenOption = (await screen.findByRole('option', {
+      name: /Broken table/,
+    })) as HTMLOptionElement;
+    const healthyOption = screen.getByRole('option', {
+      name: 'Healthy table',
+    }) as HTMLOptionElement;
+    expect(brokenOption.disabled).toBe(true);
+    expect(brokenOption.textContent).toContain('不可用');
+    expect(healthyOption.disabled).toBe(false);
+
+    // Even if onChange fires with the unavailable id, selection is ignored and composer stays disabled.
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'broken' } });
+    expect((screen.getByLabelText('requirement') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByText('发送') as HTMLButtonElement).disabled).toBe(true);
+
+    cleanup();
+    render(
+      <DataPipelineAiGenerateDialog
+        open
+        boundRawTable={{ id: 'broken', name: 'Broken table', memberStatus: 'missing' }}
+        onOpenChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/不可用/)).toBeTruthy();
+    expect((screen.getByLabelText('requirement') as HTMLTextAreaElement).disabled).toBe(true);
+    expect((screen.getByText('发送') as HTMLButtonElement).disabled).toBe(true);
   });
 });

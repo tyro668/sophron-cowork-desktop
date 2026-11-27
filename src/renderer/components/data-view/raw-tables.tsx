@@ -17,6 +17,7 @@ import {
   Workflow,
 } from 'lucide-react';
 import type { DataRawTable, DataGroup, DataRawSource } from '../../types';
+import { isRawTableUnavailable } from '../../../shared/contracts';
 import { Button } from '../ui/button';
 import { Dialog } from '../ui/dialog';
 import { cn } from '../ui';
@@ -279,14 +280,18 @@ export function RawTablesPanel({
                 key: 'create-pipeline',
                 label: t('data.rawTables.actions.createPipelineMenu'),
                 icon: <Workflow className="h-3.5 w-3.5" />,
-                disabled: !selectedRawTable || bulkBusy || actionId === 'create',
+                disabled:
+                  !selectedRawTable ||
+                  isRawTableUnavailable(selectedRawTable) ||
+                  bulkBusy ||
+                  actionId === 'create',
                 children: [
                   {
                     key: 'create-pipeline-manual',
                     label: t('data.rawTables.actions.createPipelineManual'),
                     icon: <Workflow className="h-3.5 w-3.5" />,
                     onClick: () => {
-                      if (selectedRawTable) {
+                      if (selectedRawTable && !isRawTableUnavailable(selectedRawTable)) {
                         onCreatePipelineFromTable(selectedRawTable);
                       }
                     },
@@ -298,7 +303,7 @@ export function RawTablesPanel({
                           label: t('data.rawTables.actions.createPipelineAi'),
                           icon: <Sparkles className="h-3.5 w-3.5" />,
                           onClick: () => {
-                            if (selectedRawTable) {
+                            if (selectedRawTable && !isRawTableUnavailable(selectedRawTable)) {
                               onAiGeneratePipelineFromTable(selectedRawTable);
                             }
                           },

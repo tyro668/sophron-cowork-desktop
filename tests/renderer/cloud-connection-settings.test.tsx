@@ -180,6 +180,30 @@ describe('数据 → 云连接', () => {
     });
   });
 
+  it('shows only the table name as title with no extra description in the preview dialog', async () => {
+    api.previewTable.mockResolvedValue({
+      tableName: '销售合并',
+      columns: ['日期', '金额'],
+      columnTypes: [9, 5],
+      rowCount: 120,
+      rows: [['2026-01-01', '100']],
+    });
+    render(<CloudConnectionPanel />);
+    fireEvent.click(await screen.findByText('本地文件'));
+    fireEvent.click(await screen.findByText('销售合并'));
+    fireEvent.click(await screen.findByTestId('cloud-connection-preview-table'));
+
+    const dialog = await screen.findByRole('dialog', { name: '销售合并' });
+    expect(dialog.className).toContain('rounded-none');
+    expect(dialog.className).toContain('p-0');
+    expect(dialog.querySelector('.ui-group')).toBeNull();
+    const header = dialog.querySelector('[data-testid="raw-table-preview-header"]') as HTMLElement;
+    expect(header.className).toContain('h-10');
+    expect(header.textContent?.trim()).toBe('销售合并');
+    expect(header.textContent).not.toContain(t('cloudConnection.previewTitle'));
+    expect(header.textContent).not.toContain('120');
+  });
+
   it('creates a group through 添加分组', async () => {
     render(<CloudConnectionPanel />);
     fireEvent.click(await screen.findByTestId('cloud-connection-add-group'));

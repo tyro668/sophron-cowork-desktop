@@ -1314,7 +1314,7 @@ export function CloudAnalysisPanel({ focusTarget }: { focusTarget?: CloudFocusTa
       {preview && !serverUnavailable && (
         <RawTablePreviewDialog
           tableKind="raw"
-          title={t('cloudData.previewTitle', { name: preview.name })}
+          title={preview.name}
           preview={preview.data}
           isLoading={preview.loading}
           error={preview.error}

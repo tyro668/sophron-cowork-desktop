@@ -87,6 +87,8 @@ describe('data resource chat links', () => {
     const dataView = fs.readFileSync(dataViewPagePath, 'utf8');
     const previewDialog = fs.readFileSync(rawTablePreviewDialogPath, 'utf8');
     expect(dataView).toContain("tableKind={preview.storedPreviewTarget?.kind ?? 'raw'}");
+    expect(dataView).toContain('preview.storedPreviewTarget.rawTable.name');
+    expect(dataView).toContain('preview.storedPreviewTarget.resultTable.name');
     expect(previewDialog).toContain("t('data.resultTables.previewTitle')");
     expect(previewDialog).toContain("t('data.resultTables.previewEmpty')");
   });

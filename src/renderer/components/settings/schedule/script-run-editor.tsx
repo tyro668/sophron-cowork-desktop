@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileSearch, FolderOpen, PencilLine, Play } from 'lucide-react';
 import type { AutomationActionNode, DataRawTable } from '../../../types';
+import { isRawTableUnavailable } from '../../../../shared/contracts';
+import type { GlassSelectOption } from '../../GlassSelect';
 import {
   DEFAULT_SCRIPT_TIMEOUT_MS,
   SCRIPT_TIMEOUT_OPTIONS_MS,
@@ -92,17 +94,23 @@ export function ScriptRunEditor({
     ? SCRIPT_TIMEOUT_OPTIONS_MS
     : [...SCRIPT_TIMEOUT_OPTIONS_MS, timeoutMs].sort((a, b) => a - b);
 
-  const tableOptions = [
+  const tableOptions: GlassSelectOption[] = [
     {
       value: CREATE_TABLE,
       label: t('schedule.script.createTable', {
         name: selected?.name ?? t('schedule.script.package'),
       }),
     },
-    ...rawTables.map((table) => ({
-      value: table.id,
-      label: t('schedule.script.rawTableOption', { name: table.name }),
-    })),
+    ...rawTables.map((table) => {
+      const unavailable = isRawTableUnavailable(table);
+      return {
+        value: table.id,
+        label: t('schedule.script.rawTableOption', { name: table.name }),
+        disabled: unavailable,
+        muted: unavailable,
+        hint: unavailable ? t('data.rawTables.status.unavailable') : undefined,
+      };
+    }),
   ];
   if (rawTableId && !rawTables.some((table) => table.id === rawTableId)) {
     tableOptions.push({
@@ -273,6 +281,7 @@ export function ScriptRunEditor({
           onChange={(value) => {
             if (!value) return;
             const table = rawTables.find((item) => item.id === value);
+            if (table && isRawTableUnavailable(table)) return;
             update(
               value === CREATE_TABLE
                 ? { rawTableId: undefined, rawTableName: undefined }

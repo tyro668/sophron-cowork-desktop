@@ -7,7 +7,7 @@ import type { AutomationStore } from './automation-store';
 import type { DataPipelineStore } from '../data/data-pipeline-store';
 import type { DataCommandService } from '../data/data-command-service';
 import type { SessionManager } from '../session/session-manager';
-import type { AgentRuntimeConfig } from '../../shared/contracts';
+import { isRawTableUnavailable, type AgentRuntimeConfig } from '../../shared/contracts';
 import { buildScheduledTaskFallbackTitle } from '../../shared/schedule/task-title';
 import {
   getPermissionRulesForPolicy,
@@ -311,8 +311,15 @@ export function createDefaultAutomationActionRegistry(
       ['rawTableId']
     ),
     execute: async (config, context, node) => {
+      const rawTableId = String(config.rawTableId);
+      const rawTable = await options.dataPipelineStore.getRawTableRecord(rawTableId);
+      if (isRawTableUnavailable(rawTable)) {
+        throw new Error(
+          `E_SOURCE_MEMBER_MISSING: Input table "${rawTable!.name}" is unavailable because its source no longer exists.`
+        );
+      }
       const preview = await options.dataPipelineStore.previewRawTable({
-        id: String(config.rawTableId),
+        id: rawTableId,
         limit: Number(config.limit) || 20,
       });
       context.emitArtifact({

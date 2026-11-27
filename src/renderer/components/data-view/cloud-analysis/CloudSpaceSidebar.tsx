@@ -52,7 +52,10 @@ export function CloudSpaceSidebar({
       style={{ width: fixedTabGroupWidth(3) }}
       data-testid="cloud-tree"
     >
-      <div className="flex h-10 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2">
+      <div
+        className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border-subtle pl-3 pr-2"
+        data-testid="cloud-space-tree-header"
+      >
         <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-text-secondary">
           {t('cloudData.spaceProject')}
           <Badge tone={usesStoredConnection ? 'accent' : 'success'}>

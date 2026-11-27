@@ -12,6 +12,8 @@ vi.mock('../../src/renderer/components/data-view/raw-tables', () => ({
 
 const listCloudSpaces = vi.fn();
 const listCloudProjects = vi.fn();
+const listCloudTables = vi.fn();
+const listCloudDriveFiles = vi.fn();
 
 beforeEach(() => {
   useAppStore.setState({
@@ -22,11 +24,25 @@ beforeEach(() => {
     desktopAuthStatus: { authenticated: false, updatedAt: 1 },
   });
   (window as { electronAPI?: unknown }).electronAPI = {
-    data: { listCloudSpaces, listCloudProjects },
+    data: { listCloudSpaces, listCloudProjects, listCloudTables, listCloudDriveFiles },
     auth: { login: vi.fn() },
   };
   listCloudSpaces.mockResolvedValue({ spaces: [{ spaceId: 's1', spaceName: 'Private space' }] });
   listCloudProjects.mockResolvedValue({ projects: [] });
+  listCloudTables.mockResolvedValue({
+    tables: [],
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    hasMore: false,
+  });
+  listCloudDriveFiles.mockResolvedValue({
+    files: [],
+    page: 1,
+    pageSize: 10,
+    total: 0,
+    hasMore: false,
+  });
 });
 afterEach(cleanup);
 
@@ -185,5 +201,47 @@ describe('cloud analysis account gate', () => {
     expect(screen.queryByText('Stale space')).toBeNull();
     expect(listCloudProjects).not.toHaveBeenCalled();
     expect(listCloudSpaces).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses unified h-12 flush pane header and DataListTable when a project is selected', async () => {
+    listCloudProjects.mockResolvedValue({
+      projects: [{ projectId: 'p1', projectName: '经营分析项目' }],
+    });
+    listCloudTables.mockResolvedValue({
+      tables: [
+        {
+          tableId: 't1',
+          tableName: '月度销售表',
+          kind: 'analysis',
+          rowCount: 120,
+          updatedAt: '2026-01-01T00:00:00Z',
+        },
+      ],
+      page: 1,
+      pageSize: 10,
+      total: 1,
+      hasMore: false,
+    });
+    signIn();
+    render(createElement(CloudAnalysisPanel));
+
+    await screen.findByText('Private space');
+    const leftHeader = screen.getByTestId('cloud-space-tree-header');
+    const rightHeader = screen.getByTestId('cloud-content-header');
+    expect(leftHeader.className).toContain('h-12');
+    expect(rightHeader.className).toContain('h-12');
+    expect(screen.queryByTestId('cloud-analysis-preview')).toBeNull();
+
+    fireEvent.click(screen.getByText('Private space'));
+    fireEvent.click(await screen.findByText('经营分析项目'));
+
+    expect(rightHeader.textContent).toContain('经营分析项目');
+    expect(screen.getByTestId('cloud-analysis-preview')).toBeTruthy();
+    expect(screen.getByTestId('cloud-analysis-batch-select')).toBeTruthy();
+
+    const listShell = await screen.findByTestId('cloud-table-list-table');
+    expect(listShell.querySelector('table')?.className).toContain('data-list-table-fill');
+    expect(screen.getByTestId('data-list-filler')).toBeTruthy();
+    expect(screen.getByText('月度销售表')).toBeTruthy();
   });
 });

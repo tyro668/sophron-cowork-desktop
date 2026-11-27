@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import './i18n-test';
 import { RawTablesPanel } from '../../src/renderer/components/data-view/raw-tables';
+import { RawTableTree } from '../../src/renderer/components/data-view/raw-table-tree';
 import { useAppStore } from '../../src/renderer/store';
 import { ResultTablesPanel } from '../../src/renderer/components/data-view/result-tables';
 import type { DataResultTable, DataGroup, DataRawSource } from '../../src/shared/contracts';
@@ -22,7 +23,7 @@ const source: DataRawSource = {
   updatedAt: 1,
 };
 
-const member = (id: string, name: string) =>
+const member = (id: string, name: string, patch: Record<string, unknown> = {}) =>
   ({
     id,
     name,
@@ -39,6 +40,7 @@ const member = (id: string, name: string) =>
     memberStatus: 'ok',
     createdAt: 1,
     updatedAt: 1,
+    ...patch,
   }) as never;
 
 const resultTable: DataResultTable = {
@@ -215,5 +217,49 @@ describe('reusable table trees in existing views', () => {
     } finally {
       useAppStore.setState({ navigateToTableAutomation: previous });
     }
+  });
+
+  it('marks missing raw tables as unavailable in list and disables them in picker mode', () => {
+    const unavailableTable = member('t1', '经营 / 目标', { memberStatus: 'missing' });
+    const availableTable = member('t2', '经营 / 销售');
+    const onSelectedIdsChange = vi.fn();
+
+    const { container, unmount } = render(
+      <RawTableTree
+        variant="picker"
+        rawTables={[unavailableTable, availableTable]}
+        sources={[source]}
+        groups={[rawGroup]}
+        selectionMode="multi"
+        selectedIds={[]}
+        onSelectedIdsChange={onSelectedIdsChange}
+      />
+    );
+    const unavailableRow = container.querySelector('[data-table-id="t1"]') as HTMLElement;
+    const availableRow = container.querySelector('[data-table-id="t2"]') as HTMLElement;
+    expect(unavailableRow.getAttribute('aria-disabled')).toBe('true');
+    expect(unavailableRow.textContent).toMatch(/Unavailable|不可用/);
+    expect(
+      (unavailableRow.querySelector('input[type="checkbox"]') as HTMLInputElement).disabled
+    ).toBe(true);
+    fireEvent.click(unavailableRow);
+    expect(onSelectedIdsChange).not.toHaveBeenCalled();
+
+    // Selecting the parent source only picks available children, never unavailable ones.
+    const sourceCheckbox = screen.getByLabelText('经营.xlsx') as HTMLInputElement;
+    fireEvent.click(sourceCheckbox);
+    expect(onSelectedIdsChange).toHaveBeenLastCalledWith(['t2']);
+
+    onSelectedIdsChange.mockClear();
+    fireEvent.click(availableRow);
+    expect(onSelectedIdsChange).toHaveBeenLastCalledWith(['t2']);
+    unmount();
+
+    renderRawTablesPanel({
+      rawTables: [unavailableTable, availableTable],
+      onCreatePipelineFromTable: vi.fn(),
+    });
+    const childRows = screen.getAllByTestId('raw-source-child-row');
+    expect(childRows[0].textContent).toMatch(/Unavailable|不可用/);
   });
 });

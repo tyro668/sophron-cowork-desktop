@@ -12,6 +12,11 @@ import {
   makeFingerprint,
 } from '../../src/main/data/store/services/raw-source-service';
 import { isCloudRawTableConfig } from '../../src/main/data/store/services/raw-table-service';
+import {
+  ReferencedTableSource,
+  resolveTableRef,
+  type CloudTableStorePort,
+} from '../../src/main/features/cloud-connection/referenced-source';
 
 const tempRoots: string[] = [];
 const stores: DataPipelineStore[] = [];
@@ -216,6 +221,41 @@ describe('E_SOURCE_MEMBER_MISSING (design 4.5)', () => {
       (t) => t.id === output.id
     )!;
     expect(result.rowCount).toBe(3);
+
+    const cloudPort: CloudTableStorePort = {
+      importRawTable: (input) => store.importRawTable(input),
+      getRawTableRecord: (id) => store.getRawTableRecord(id),
+      getResultTableRecord: (id) => store.getResultTableRecord(id),
+      describeBoundTable: (kind, id) => store.describeBoundTable(kind, id),
+      previewBoundTable: (kind, id, limit, offset) =>
+        store.previewBoundTable(kind, id, limit, offset),
+      iterateBoundTableRows: (kind, id, writeRow) =>
+        store.iterateBoundTableRows(kind, id, writeRow),
+      refreshRawTableIfSourceChanged: async () => undefined,
+    };
+    const resolvedRef = await resolveTableRef(cloudPort, {
+      reportName: '目标报表',
+      kind: 'raw',
+      tableId: target.id,
+      nameConfirmed: true,
+    });
+    expect(resolvedRef.status).toBe('missing');
+    expect(resolvedRef.statusReason).toBe('E_SOURCE_MEMBER_MISSING');
+    const referencedSource = new ReferencedTableSource(
+      '本地数据',
+      [{ reportName: '目标报表', kind: 'raw', tableId: target.id, nameConfirmed: true }],
+      cloudPort
+    );
+    expect(await referencedSource.listTables()).toEqual([]);
+    await expect(
+      referencedSource.rowCount({
+        id: '目标报表',
+        manual: true,
+        type: 'excel',
+        directoryPath: '',
+        sortIndex: 0,
+      })
+    ).rejects.toThrow(/E_SOURCE_MEMBER_MISSING/);
   });
 });
 

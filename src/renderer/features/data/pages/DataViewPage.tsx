@@ -592,6 +592,13 @@ export function DataViewPage() {
             {preview.storedPreviewOpen && (
               <RawTablePreviewDialog
                 tableKind={preview.storedPreviewTarget?.kind ?? 'raw'}
+                title={
+                  preview.storedPreviewTarget?.kind === 'raw'
+                    ? preview.storedPreviewTarget.rawTable.name
+                    : preview.storedPreviewTarget?.kind === 'result'
+                      ? preview.storedPreviewTarget.resultTable.name
+                      : undefined
+                }
                 preview={preview.storedPreviewData}
                 isLoading={preview.storedPreviewLoading}
                 error={preview.storedPreviewError}
