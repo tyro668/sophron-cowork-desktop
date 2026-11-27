@@ -10,6 +10,7 @@ import {
   cellSelectClass,
   groupClass,
   NameField,
+  OptionLabelWithTip,
   panelClass,
   primaryButton,
   secondaryButton,
@@ -514,7 +515,11 @@ export function ImportOptionsPanel(props: {
             </div>
           </div>
           <div className="ui-form-row">
-            <div className="ui-form-label items-center">{tr('importOptions.sheetAll')}</div>
+            <OptionLabelWithTip
+              label={tr('importOptions.sheetAll')}
+              tip={tr('importOptions.sheetAllHint')}
+              testId="raw-source-sheet-all-tip"
+            />
             <div className="ui-form-value">
               <div className="flex flex-1 items-center px-2.5">
                 <Toggle
@@ -578,7 +583,11 @@ export function ImportOptionsPanel(props: {
         </>
       )}
       <div className="ui-form-row">
-        <div className="ui-form-label items-center">{tr('importOptions.allText')}</div>
+        <OptionLabelWithTip
+          label={tr('importOptions.allText')}
+          tip={tr('importOptions.allTextHint')}
+          testId="raw-source-all-text-tip"
+        />
         <div className="ui-form-value">
           <div className="flex flex-1 items-center px-2.5">
             <Toggle

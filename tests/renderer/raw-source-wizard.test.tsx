@@ -210,6 +210,17 @@ describe('RawSourceWizard', () => {
     await scanPath('/d/门店');
     fireEvent.click(screen.getByTestId('raw-source-next'));
     expect(screen.getByTestId('raw-source-sheet-strategy')).toBeTruthy();
+    const sheetAllTip = screen.getByTestId('raw-source-sheet-all-tip');
+    const allTextTip = screen.getByTestId('raw-source-all-text-tip');
+    expect(sheetAllTip.parentElement?.className).toContain('whitespace-nowrap');
+    expect(allTextTip.parentElement?.className).toContain('whitespace-nowrap');
+    fireEvent.mouseEnter(sheetAllTip);
+    expect(screen.getByRole('tooltip').textContent).toBeTruthy();
+    fireEvent.mouseLeave(sheetAllTip);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.focus(allTextTip);
+    expect(screen.getByRole('tooltip').textContent).toBeTruthy();
+    fireEvent.blur(allTextTip);
     expect(screen.getByTestId('raw-source-filled-notice').textContent).toContain('金额');
     expect(screen.getByText('无“明细”')).toBeTruthy();
     // Index stepper never goes below 1.

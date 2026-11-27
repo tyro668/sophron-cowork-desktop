@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, FileSpreadsheet, Folder, Info, Layers, RefreshCw } from 'lucide-react';
 import type { DataRawSourceScan } from '../../../types';
 import { Switch } from '../../ui';
@@ -246,6 +247,56 @@ export function InfoTip({ label }: { label: string }) {
         {label}
       </span>
     </span>
+  );
+}
+
+/** Single-line form label with an info icon whose tooltip portals out of `.ui-group`. */
+export function OptionLabelWithTip({
+  label,
+  tip,
+  testId,
+}: {
+  label: string;
+  tip: string;
+  testId?: string;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const open = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPos({ top: rect.top + rect.height / 2, left: rect.right + 8 });
+  };
+  const close = () => setPos(null);
+  return (
+    <div className="ui-form-label items-center gap-1 whitespace-nowrap">
+      <span>{label}</span>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-label={tip}
+        data-testid={testId}
+        onMouseEnter={open}
+        onMouseLeave={close}
+        onFocus={open}
+        onBlur={close}
+        className="inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full text-text-muted transition-colors hover:text-accent focus:text-accent focus:outline-none"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      {pos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              role="tooltip"
+              style={{ top: pos.top, left: pos.left }}
+              className="pointer-events-none fixed z-[9999] max-w-[260px] -translate-y-1/2 rounded-md border border-border-muted bg-surface px-2.5 py-1.5 text-[12px] font-normal leading-5 text-text-secondary shadow-elevated"
+            >
+              {tip}
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
   );
 }
 
