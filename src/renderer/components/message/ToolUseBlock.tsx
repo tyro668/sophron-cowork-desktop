@@ -8,7 +8,13 @@ import {
   shouldRenderToolResultText,
   shouldUseScreenshotSummary,
 } from '../../utils/tool-result-summary';
-import type { ToolUseContent, ToolResultContent, ContentBlock, Message } from '../../types';
+import type {
+  ToolUseContent,
+  ToolResultContent,
+  ContentBlock,
+  Message,
+  TraceStep,
+} from '../../types';
 import { AskUserQuestionBlock } from './AskUserQuestionBlock';
 import { TodoWriteBlock } from './TodoWriteBlock';
 import { getToolIcon, getToolLabel } from './toolHelpers';
@@ -16,6 +22,12 @@ import { DataLinkedText } from './DataLinkedText';
 
 // Only allow safe image MIME types for data: URI rendering
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+/** Collapsed error rows wrap to two lines; the full text stays available on hover. */
+const ERROR_SUMMARY_MAX_CHARS = 200;
+const ERROR_TITLE_MAX_CHARS = 1000;
+/** Stable fallbacks so store selectors do not return a new array on every render. */
+const EMPTY_TRACE_STEPS: TraceStep[] = [];
+const EMPTY_MESSAGES: Message[] = [];
 
 interface ToolUseBlockProps {
   block: ToolUseContent;
@@ -30,10 +42,14 @@ export const ToolUseBlock = memo(function ToolUseBlock({
 }: ToolUseBlockProps) {
   const { t } = useTranslation();
   const traceSteps = useAppStore((s) =>
-    message?.sessionId ? (s.sessionStates[message.sessionId]?.traceSteps ?? []) : []
+    message?.sessionId
+      ? (s.sessionStates[message.sessionId]?.traceSteps ?? EMPTY_TRACE_STEPS)
+      : EMPTY_TRACE_STEPS
   );
   const allMessages = useAppStore((s) =>
-    message?.sessionId ? (s.sessionStates[message.sessionId]?.messages ?? []) : []
+    message?.sessionId
+      ? (s.sessionStates[message.sessionId]?.messages ?? EMPTY_MESSAGES)
+      : EMPTY_MESSAGES
   );
   const activeTurn = useAppStore((s) =>
     message?.sessionId ? (s.sessionStates[message.sessionId]?.activeTurn ?? null) : null
@@ -81,8 +97,10 @@ export const ToolUseBlock = memo(function ToolUseBlock({
     if (!toolResult) return '';
     const content = typeof toolResult.content === 'string' ? toolResult.content : '';
     if (toolResult.isError) {
-      const firstLine = content.split(/\r?\n/)[0];
-      return firstLine.length > 60 ? firstLine.substring(0, 57) + '...' : firstLine;
+      const firstLine = content.split(/\r?\n/)[0].trim();
+      return firstLine.length > ERROR_SUMMARY_MAX_CHARS
+        ? `${firstLine.substring(0, ERROR_SUMMARY_MAX_CHARS - 1)}…`
+        : firstLine;
     }
     if (shouldUseScreenshotSummary(block.name, content)) return t('messageCard.screenshotCaptured');
     if (content.length < 60) return content.trim();
@@ -91,6 +109,10 @@ export const ToolUseBlock = memo(function ToolUseBlock({
   };
 
   const summary = getSummary();
+  const errorText =
+    isError && typeof toolResult?.content === 'string'
+      ? toolResult.content.trim().slice(0, ERROR_TITLE_MAX_CHARS)
+      : undefined;
   const validImages =
     toolResult?.images?.filter(
       (image) => image?.mimeType && image?.data && ALLOWED_IMAGE_TYPES.has(image.mimeType)
@@ -149,7 +171,13 @@ export const ToolUseBlock = memo(function ToolUseBlock({
         <span className="flex-shrink-0 text-text-muted">{getToolIcon(block.name)}</span>
 
         {/* Label */}
-        <span className="min-w-0 truncate font-mono text-[12px] text-text-secondary">{label}</span>
+        <span
+          className={`min-w-0 truncate font-mono text-[12px] text-text-secondary ${
+            isError && summary && !expanded ? 'max-w-[40%] flex-shrink-0' : ''
+          }`}
+        >
+          {label}
+        </span>
 
         {/* MCP badge */}
         {isMCPTool && mcpServerName && (
@@ -165,7 +193,12 @@ export const ToolUseBlock = memo(function ToolUseBlock({
           </span>
         )}
         {isError && summary && !expanded && (
-          <span className="min-w-0 max-w-[260px] truncate text-[11px] text-error">{summary}</span>
+          <span
+            className="line-clamp-2 min-w-0 flex-1 whitespace-normal break-words text-[11px] leading-4 text-error"
+            title={errorText}
+          >
+            {summary}
+          </span>
         )}
         {isError && !expanded && (
           <span className="flex-shrink-0 text-[11px] text-accent-text">
