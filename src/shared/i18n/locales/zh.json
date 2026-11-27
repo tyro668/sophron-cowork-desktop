@@ -2299,6 +2299,8 @@
         "colCols": "列",
         "colPipelines": "关联数据加工",
         "colStatus": "状态",
+        "saveConfig": "保存配置",
+        "configSaved": "文件夹配置已更新",
         "refreshed": "刷新完成：更新 {{refreshed}} 张，新增 {{added}} 张，{{missing}} 张已不存在",
         "openLocation": "打开所在位置",
         "rebuildHint": "修改将重建原始表",
@@ -2439,7 +2441,8 @@
         "allText": "文本读取",
         "allTextHint": "开启后将所有列按文本格式读取，避免前导零丢失、长数字变为科学计数法或日期自动转换。",
         "password": "工作簿密码",
-        "passwordPlaceholder": "如文件已加密请填写"
+        "passwordPlaceholder": "如文件已加密请填写",
+        "passwordSavedPlaceholder": "已设置密码，留空保持不变"
       },
       "mergedNameSuffix": "（合并）"
     }

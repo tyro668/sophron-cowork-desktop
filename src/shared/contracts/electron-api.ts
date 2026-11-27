@@ -80,6 +80,7 @@ import type {
   DataRawSourceRebuildImpact,
   DataRebuildRawSourceInput,
   DataChangeRawSourcePathInput,
+  DataUpdateRawSourceConfigInput,
   DataRawTableSourceKind,
   DataRawTableSourceSelection,
   DataImportRawTableInput,
@@ -265,6 +266,9 @@ export interface ElectronApi {
     refreshRawSource: (id: string) => Promise<RawTableResult<DataRawSourceRefreshResult>>;
     changeRawSourcePath: (
       payload: DataChangeRawSourcePathInput
+    ) => Promise<RawTableResult<DataRawSourceRefreshResult>>;
+    updateRawSourceConfig: (
+      payload: DataUpdateRawSourceConfigInput
     ) => Promise<RawTableResult<DataRawSourceRefreshResult>>;
     setRawSourceAutoInclude: (
       id: string,

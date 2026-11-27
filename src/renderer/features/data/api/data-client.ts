@@ -122,6 +122,10 @@ export const dataClient = {
     dataApi()
       .changeRawSourcePath(...args)
       .then(unwrapRawTableResult),
+  updateRawSourceConfig: (...args: Parameters<DataApi['updateRawSourceConfig']>) =>
+    dataApi()
+      .updateRawSourceConfig(...args)
+      .then(unwrapRawTableResult),
   setRawSourceAutoInclude: (id: string, autoInclude: boolean) =>
     dataApi().setRawSourceAutoInclude(id, autoInclude).then(unwrapRawTableResult),
   resolveRawSourceRenames: (...args: Parameters<DataApi['resolveRawSourceRenames']>) =>

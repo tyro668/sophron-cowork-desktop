@@ -143,8 +143,9 @@ describe('expandable merged sources', () => {
     ]);
   });
 
-  it('lists included and excluded files of a folder merge when expanded', () => {
+  it('keeps folder_merge as a single row without listing directory files in the raw tables list', () => {
     const merged = table('门店（合并）', {
+      sourceKind: 'folder',
       inputConfig: {
         sourceKind: 'folder',
         mergeReport: {
@@ -162,7 +163,7 @@ describe('expandable merged sources', () => {
     const sources = [source({ memberIds: ['门店（合并）'], buildMode: 'folder_merge' })];
     expect(groupBySource([merged] as never, sources as never)).toHaveLength(1);
     const expanded = groupBySource([merged] as never, sources as never, new Set(['门店（合并）']));
-    expect(expanded.map((row) => row.kind)).toEqual(['rawTable', 'part', 'part', 'part']);
+    expect(expanded.map((row) => row.kind)).toEqual(['rawTable']);
     expect(mergeParts(table('plain') as never)).toBeNull();
   });
 });

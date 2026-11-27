@@ -2299,6 +2299,8 @@
         "colCols": "Columns",
         "colPipelines": "Pipelines",
         "colStatus": "Status",
+        "saveConfig": "Save config",
+        "configSaved": "Folder configuration updated",
         "refreshed": "Refreshed {{refreshed}}, added {{added}}, {{missing}} no longer in source",
         "openLocation": "Show in folder",
         "rebuildHint": "Changing rebuilds tables",
@@ -2439,7 +2441,8 @@
         "allText": "Text only",
         "allTextHint": "Read every column as plain text to preserve leading zeros, long IDs, and original formatting.",
         "password": "Workbook password",
-        "passwordPlaceholder": "Required if the workbook is encrypted"
+        "passwordPlaceholder": "Required if the workbook is encrypted",
+        "passwordSavedPlaceholder": "Password saved — leave blank to keep"
       },
       "mergedNameSuffix": " (Merged)"
     }

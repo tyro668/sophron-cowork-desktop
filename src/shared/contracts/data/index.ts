@@ -648,6 +648,22 @@ export interface DataChangeRawSourcePathInput {
   sourcePath: string;
 }
 
+/** Update a saved source's import options in place and refresh member tables (stable table ids). */
+export interface DataUpdateRawSourceConfigInput {
+  sourceId: string;
+  fileRange?: DataRawTableFolderConfig['fileRange'];
+  sheetSelector?: DataRawSheetSelector;
+  recursive?: boolean;
+  sortBy?: DataRawFolderSortBy;
+  schemaStrategy?: DataRawFolderSchemaStrategy;
+  sheetStrategy?: DataRawSheetMergeStrategy;
+  headerMode?: 'auto' | 'manual';
+  headerRow?: number;
+  fieldStrategy?: DataRawFieldStrategy;
+  systemFields?: DataRawSystemFields;
+  password?: string;
+}
+
 /** A missing member that looks like a renamed sheet / file (fingerprint match). */
 export interface DataRawSourceRenameCandidate {
   tableId: string;

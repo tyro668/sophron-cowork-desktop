@@ -613,4 +613,104 @@ describe('merge compatibility helpers', () => {
     expect(merged.rawTable.rowCount).toBe(4);
     await expect(commands.refreshRawSource({ id: 'nope' })).rejects.toThrow(/not found/i);
   });
+
+  it('updates folder_merge config in place and syncs raw_source.config without changing table id', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '多表合并');
+    const sub = path.join(folder, 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    writeWorkbook(path.join(folder, 'a.xlsx'), {
+      Sheet1: [
+        ['code', 'val'],
+        ['001', 10],
+      ],
+      Sheet2: [
+        ['code', 'val'],
+        ['002', 20],
+      ],
+    });
+    writeWorkbook(path.join(sub, 'b.xlsx'), {
+      Sheet1: [
+        ['code', 'val'],
+        ['003', 30],
+      ],
+    });
+
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_merge',
+      tableName: '多表合并表',
+      recursive: true,
+      sheetStrategy: 'selector',
+      sheetSelector: { by: 'index', index: 1 },
+    });
+    const tableId = created.tables[0].id;
+    expect(created.tables[0].rowCount).toBe(2); // a.xlsx Sheet1 + sub/b.xlsx Sheet1
+
+    const updated = await store.updateRawTable({
+      id: tableId,
+      sourceKind: 'folder',
+      config: {
+        ...(created.tables[0].inputConfig as Extract<
+          (typeof created.tables)[0]['inputConfig'],
+          { sourceKind: 'folder' }
+        >),
+        recursive: false,
+        sheetStrategy: 'all',
+        fieldStrategy: 'all_text',
+      },
+    });
+    expect(updated.id).toBe(tableId);
+    expect(updated.rowCount).toBe(2); // a.xlsx Sheet1 + a.xlsx Sheet2, sub/b.xlsx excluded
+    const syncedSource = (await store.getRawSource(created.source.id))!;
+    expect(syncedSource.config.recursive).toBe(false);
+    expect(syncedSource.config.sheetStrategy).toBe('all');
+    expect(syncedSource.config.fieldStrategy).toBe('all_text');
+  });
+
+  it('updates folder_per_file source config in place and keeps existing member table ids', async () => {
+    const { store, root } = makeStore();
+    const folder = path.join(root, '多文件');
+    const sub = path.join(folder, 'sub');
+    fs.mkdirSync(sub, { recursive: true });
+    writeWorkbook(path.join(folder, 'root.xlsx'), {
+      S1: [
+        ['k', 'v'],
+        ['a', 1],
+      ],
+      S2: [
+        ['k', 'v'],
+        ['b', 2],
+        ['c', 3],
+      ],
+    });
+    writeWorkbook(path.join(sub, 'nested.xlsx'), {
+      S1: [
+        ['k', 'v'],
+        ['d', 4],
+      ],
+    });
+
+    const created = await store.createRawSource({
+      sourcePath: folder,
+      buildMode: 'folder_per_file',
+      sheetSelector: { by: 'index', index: 1 },
+    });
+    const rootTable = created.tables.find((t) => t.memberKey === 'root.xlsx')!;
+    expect(rootTable.rowCount).toBe(1);
+    expect(created.tables).toHaveLength(2);
+
+    const refreshed = await store.updateRawSourceConfig({
+      sourceId: created.source.id,
+      recursive: false,
+      sheetSelector: { by: 'index', index: 2 },
+      fieldStrategy: 'all_text',
+    });
+    expect(refreshed.source.config.recursive).toBe(false);
+    expect(refreshed.source.config.sheetSelector).toEqual({ by: 'index', index: 2 });
+    expect(refreshed.source.config.fieldStrategy).toBe('all_text');
+    const afterRoot = (await store.getRawTableRecord(rootTable.id))!;
+    expect(afterRoot.id).toBe(rootTable.id);
+    expect(afterRoot.rowCount).toBe(2); // switched to S2 in place
+  });
 });

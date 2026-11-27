@@ -27,6 +27,7 @@ import type {
   DataRawTableConfig,
   DataRebuildRawSourceInput,
   DataChangeRawSourcePathInput,
+  DataUpdateRawSourceConfigInput,
   DataScanRawSourceInput,
 } from '../../../../shared/contracts';
 import { DataStoreContext } from '../data-store-context';
@@ -449,6 +450,13 @@ export class RawSourceService {
             ? ({
                 ...defaultExcelConfig(file.path),
                 sheetName: sheet ?? file.sheetNames[0],
+                ...(input.headerMode === 'manual'
+                  ? { headerMode: 'manual' as const, headerRow: input.headerRow ?? 1 }
+                  : {}),
+                ...(input.fieldStrategy === 'all_text'
+                  ? { fieldStrategy: 'all_text' as const }
+                  : {}),
+                ...(input.password ? { password: input.password } : {}),
               } as DataRawTableConfig)
             : undefined,
         memberKey: file.relativePath,
@@ -467,7 +475,11 @@ export class RawSourceService {
     try {
       if (buildMode === 'excel_per_sheet') return getWorkbookSheetNames(sourcePath);
       if (buildMode === 'folder_per_file' && sourceKind === 'folder') {
-        return listFolderEntries(sourcePath, config.fileRange ?? 'excel_csv')
+        return listFolderEntries(
+          sourcePath,
+          config.fileRange ?? 'excel_csv',
+          config.recursive !== false
+        )
           .map((file) => relative(sourcePath, file))
           .filter((file) => !basename(file).startsWith('~$'));
       }
@@ -570,6 +582,116 @@ export class RawSourceService {
       }
     }
 
+    return this.refreshSource(source.id);
+  }
+
+  /**
+   * Update a saved folder / local source's import options in place and re-import existing
+   * member tables without changing their IDs.
+   */
+  async updateSourceConfig(
+    input: DataUpdateRawSourceConfigInput
+  ): Promise<DataRawSourceRefreshResult> {
+    await this.ctx.ensureReady();
+    const source = await this.sources.requireSource(input.sourceId);
+    if (source.sourceKind === 'cloud') {
+      throw new Error('E_CLOUD_SOURCE_UPDATE_CONFIG: 云端表不支持修改本地导入配置');
+    }
+    const nextSelector =
+      'sheetSelector' in input
+        ? normalizeSheetSelector(input.sheetSelector)
+        : source.config.sheetSelector;
+    const nextConfig: DataRawSourceConfig = {
+      ...source.config,
+      ...(input.fileRange !== undefined ? { fileRange: input.fileRange } : {}),
+      ...('sheetSelector' in input ? { sheetSelector: nextSelector } : {}),
+      ...(input.recursive !== undefined ? { recursive: input.recursive } : {}),
+      ...(input.sortBy !== undefined ? { sortBy: input.sortBy } : {}),
+      ...(input.schemaStrategy !== undefined ? { schemaStrategy: input.schemaStrategy } : {}),
+      ...(input.sheetStrategy !== undefined ? { sheetStrategy: input.sheetStrategy } : {}),
+      ...(input.headerMode !== undefined
+        ? input.headerMode === 'manual'
+          ? { headerMode: 'manual' as const, headerRow: Math.max(1, input.headerRow ?? 1) }
+          : { headerMode: 'auto' as const, headerRow: undefined }
+        : {}),
+      ...(input.fieldStrategy !== undefined ? { fieldStrategy: input.fieldStrategy } : {}),
+      ...(input.systemFields !== undefined ? { systemFields: input.systemFields } : {}),
+    };
+    const now = this.ctx.now();
+    await this.sources.updateSource({ id: source.id, config: nextConfig, at: now });
+
+    const members = await Promise.all(
+      source.memberIds.map((memberId) => this.rawTableRepo.requireRawTable(memberId))
+    );
+    for (const member of members) {
+      if (source.buildMode === 'folder_merge' && member.inputConfig.sourceKind === 'folder') {
+        const nextFolderConfig: DataRawTableConfig = {
+          ...member.inputConfig,
+          fileRange: nextConfig.fileRange ?? member.inputConfig.fileRange,
+          sheetSelector: nextConfig.sheetSelector,
+          recursive: nextConfig.recursive !== false,
+          sortBy: nextConfig.sortBy,
+          schemaStrategy: nextConfig.schemaStrategy ?? member.inputConfig.schemaStrategy,
+          sheetStrategy: nextConfig.sheetStrategy,
+          headerMode: nextConfig.headerMode === 'manual' ? 'manual' : undefined,
+          headerRow: nextConfig.headerMode === 'manual' ? (nextConfig.headerRow ?? 1) : undefined,
+          fieldStrategy: nextConfig.fieldStrategy,
+          systemFields: nextConfig.systemFields,
+          keepSourceFileName: nextConfig.systemFields !== 'none',
+          ...(input.password ? { password: input.password, hasPassword: true } : {}),
+        };
+        await this.rawTables.updateRawTable({ id: member.id, config: nextFolderConfig });
+        continue;
+      }
+      if (source.buildMode === 'folder_per_file' && member.inputConfig.sourceKind === 'excel') {
+        let nextSheetName = member.inputConfig.sheetName;
+        if (
+          'sheetSelector' in input &&
+          !(member.memberKey && nextConfig.fileSheetOverrides?.[member.memberKey]) &&
+          isExcelFile(member.sourcePath)
+        ) {
+          try {
+            const sheets = getWorkbookSheetNames(
+              member.sourcePath,
+              input.password || member.inputConfig.password
+            );
+            const resolved = resolveSheetBySelector(nextSelector, sheets);
+            if (resolved) nextSheetName = resolved;
+          } catch {
+            // Keep existing sheet name; refreshSource will surface any read error.
+          }
+        }
+        const nextExcelConfig: DataRawTableConfig = {
+          ...member.inputConfig,
+          sheetName: nextSheetName,
+          headerMode: nextConfig.headerMode === 'manual' ? 'manual' : 'auto',
+          headerRow: nextConfig.headerMode === 'manual' ? (nextConfig.headerRow ?? 1) : 1,
+          fieldStrategy: nextConfig.fieldStrategy,
+          ...(input.password ? { password: input.password, hasPassword: true } : {}),
+        };
+        await this.rawTables.updateRawTable({ id: member.id, config: nextExcelConfig });
+      }
+    }
+    if (source.buildMode === 'folder_merge') {
+      await this.sources.updateSource({
+        id: source.id,
+        config: { ...nextConfig, lastScannedAt: this.ctx.now() },
+        at: this.ctx.now(),
+      });
+      return {
+        source: await this.sources.requireSource(source.id),
+        refreshed: members.map((member) => member.id),
+        added: [],
+        missing: [],
+        failed: [],
+        renames: [],
+        addedItems: [],
+        missingItems: [],
+        removed: [],
+        removedItems: [],
+        unchangedNames: members.map((member) => member.name),
+      };
+    }
     return this.refreshSource(source.id);
   }
 
@@ -858,6 +980,10 @@ export class RawSourceService {
         sheetSelector: source.config.sheetSelector,
         fileSheetOverrides: source.config.fileSheetOverrides,
         fileRange: source.config.fileRange,
+        recursive: source.config.recursive,
+        headerMode: source.config.headerMode,
+        headerRow: source.config.headerRow,
+        fieldStrategy: source.config.fieldStrategy,
       },
       skipped
     ).catch(() => []);
@@ -1086,7 +1212,8 @@ function inspectLocalFolder(folderPath: string): 'ok' | 'missing' | 'unreadable'
 
 function listFolderEntries(
   folderPath: string,
-  fileRange: NonNullable<DataRawSourceConfig['fileRange']>
+  fileRange: NonNullable<DataRawSourceConfig['fileRange']>,
+  recursive = true
 ): string[] {
   const out: string[] = [];
   const visit = (directory: string) => {
@@ -1096,8 +1223,11 @@ function listFolderEntries(
       .sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const entryPath = join(directory, entry.name);
-      if (entry.isDirectory()) visit(entryPath);
-      else if (entry.isFile() && isFolderRangeFile(entryPath, fileRange)) out.push(entryPath);
+      if (entry.isDirectory()) {
+        if (recursive) visit(entryPath);
+      } else if (entry.isFile() && isFolderRangeFile(entryPath, fileRange)) {
+        out.push(entryPath);
+      }
     }
   };
   visit(folderPath);

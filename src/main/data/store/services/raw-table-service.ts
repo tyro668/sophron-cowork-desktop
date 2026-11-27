@@ -83,6 +83,23 @@ function isRefreshOf(
   );
 }
 
+function mergePreservedPassword(
+  next: DataRawTableConfig | undefined,
+  previous: DataRawTableConfig
+): DataRawTableConfig | undefined {
+  if (!next) return next;
+  if (
+    (next.sourceKind === 'excel' || next.sourceKind === 'folder') &&
+    (previous.sourceKind === 'excel' || previous.sourceKind === 'folder') &&
+    !next.password &&
+    next.hasPassword !== false &&
+    previous.password
+  ) {
+    return { ...next, password: previous.password, hasPassword: true };
+  }
+  return next;
+}
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -234,14 +251,15 @@ export class RawTableService {
         input.sourceKind ?? rawTable.sourceKind,
         sourcePath
       );
-      const refresh = isRefreshOf(rawTable, sourcePath, sourceKind, input.config);
+      const incomingConfig = mergePreservedPassword(input.config, rawTable.inputConfig);
+      const refresh = isRefreshOf(rawTable, sourcePath, sourceKind, incomingConfig);
       let prepared: PreparedRawTableImport;
       try {
         prepared = await this.createRawTableTableFromSource(
           replacementTable,
           sourcePath,
           sourceKind,
-          input.config ?? rawTable.inputConfig
+          incomingConfig ?? rawTable.inputConfig
         );
       } catch (error) {
         // A failed refresh (normalizer crash, unreadable file) keeps the old rows: 数据异常.
@@ -275,6 +293,29 @@ export class RawTableService {
       });
       if (this.sources && isCloudRawTableConfig(prepared.config)) {
         await this.sources.markCloudSource(rawTable.id);
+      }
+      if (this.sources && rawTable.sourceId && prepared.config.sourceKind === 'folder') {
+        const owner = await this.sources.getSource(rawTable.sourceId);
+        if (owner && owner.buildMode === 'folder_merge') {
+          const fc = prepared.config;
+          await this.sources.updateSource({
+            id: owner.id,
+            config: {
+              ...owner.config,
+              fileRange: fc.fileRange,
+              sheetSelector: fc.sheetSelector,
+              recursive: fc.recursive !== false,
+              sortBy: fc.sortBy,
+              schemaStrategy: fc.schemaStrategy,
+              sheetStrategy: fc.sheetStrategy,
+              headerMode: fc.headerMode,
+              headerRow: fc.headerRow,
+              fieldStrategy: fc.fieldStrategy,
+              systemFields: fc.systemFields,
+            },
+            at: now,
+          });
+        }
       }
       if (rawTable.health) await this.rawTables.setRawTableHealth(rawTable.id, null);
       return this.rawTables.requireRawTable(rawTable.id);

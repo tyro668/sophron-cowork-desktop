@@ -105,6 +105,10 @@ export type RawTableSourceRow =
       rawTable: DataRawTable;
     };
 
+function isFolderRawTable(table: DataRawTable | null | undefined): boolean {
+  return table?.sourceKind === 'folder' || table?.inputConfig?.sourceKind === 'folder';
+}
+
 /**
  * Layout A: a source with more than one member table becomes a header row followed by its
  * members as flush child rows; single-table sources stay one plain row.
@@ -116,7 +120,7 @@ export function groupBySource(
   collapsedSources: ReadonlySet<string> = new Set()
 ): RawTableSourceRow[] {
   const pushParts = (rows: RawTableSourceRow[], table: DataRawTable, child: boolean) => {
-    if (!expandedMerges.has(table.id)) return;
+    if (isFolderRawTable(table) || !expandedMerges.has(table.id)) return;
     (mergeParts(table) ?? []).forEach((part, index) =>
       rows.push({ kind: 'part', id: `part:${table.id}:${index}`, rawTable: table, part, child })
     );
@@ -562,10 +566,11 @@ function renderPageTableRow(
   const sourceKind = rawTable ? rawTable.sourceKind : 'draft';
   const cloudMirror = getCloudMirror(rawTable);
   const sourceMeta = cloudMirror ? getCloudMirrorSourceMeta() : getRawTableSourceMeta(sourceKind);
-  const parts = rawTable && !isChild ? mergeParts(rawTable) : null;
+  const isFolderMerge = isFolderRawTable(rawTable);
+  const parts = rawTable && !isChild && !isFolderMerge ? mergeParts(rawTable) : null;
   const typeIcon = cloudMirror ? (
     <CloudDownload className="h-4 w-4 flex-shrink-0 text-accent" />
-  ) : parts && sourceKind === 'folder' ? (
+  ) : sourceKind === 'folder' ? (
     <Folder className="h-4 w-4 flex-shrink-0 text-text-secondary" />
   ) : sourceKind === 'excel' ? (
     <FileSpreadsheet className="h-4 w-4 flex-shrink-0 text-accent" />

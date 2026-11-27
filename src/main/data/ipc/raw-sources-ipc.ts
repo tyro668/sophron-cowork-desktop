@@ -3,6 +3,7 @@ import type {
   DataCreateRawSourceInput,
   DataRebuildRawSourceInput,
   DataChangeRawSourcePathInput,
+  DataUpdateRawSourceConfigInput,
   DataScanRawSourceInput,
 } from '../../../shared/contracts';
 import type { IpcChannel } from '../../../shared/contracts/ipc/schemas';
@@ -62,6 +63,11 @@ export function registerRawSourcesIpc(
     'data.changeRawSourcePath',
     'changing raw source path',
     (payload: DataChangeRawSourcePathInput) => getSources().changeSourcePath(payload)
+  );
+  sourceChannel(
+    'data.updateRawSourceConfig',
+    'updating raw source config',
+    (payload: DataUpdateRawSourceConfigInput) => getSources().updateSourceConfig(payload)
   );
   sourceChannel('data.getRawSourceRebuildImpact', 'reading rebuild impact', (id: string) =>
     getSources().getRebuildImpact(id)

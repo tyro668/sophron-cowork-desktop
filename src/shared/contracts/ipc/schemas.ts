@@ -905,6 +905,7 @@ export const IPC_INPUT_SCHEMAS = {
   'data.setRawSourceAutoInclude': [str.trim().min(1), bool],
   'data.refreshRawSource': [str],
   'data.changeRawSourcePath': [z.looseObject({ sourceId: str, sourcePath: str })],
+  'data.updateRawSourceConfig': [z.looseObject({ sourceId: str.trim().min(1) })],
   'data.resolveRawSourceRenames': [
     z.looseObject({
       sourceId: str,

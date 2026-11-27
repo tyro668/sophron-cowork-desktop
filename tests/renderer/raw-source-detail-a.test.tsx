@@ -5,6 +5,7 @@ import i18n from './i18n-test';
 
 const client = vi.hoisted(() => ({
   setRawSourceAutoInclude: vi.fn(),
+  updateRawSourceConfig: vi.fn(),
   previewRawTable: vi.fn(),
   refreshRawSource: vi.fn(),
   changeRawSourcePath: vi.fn(),
@@ -23,6 +24,11 @@ import {
   RawSourceDetail,
   memberShortName,
 } from '../../src/renderer/components/data-view/raw-source-detail';
+import { ParsingDetailSection } from '../../src/renderer/components/data-view/raw-table-editor/ParsingDetailSection';
+import {
+  getDefaultExcelRawTableConfig,
+  getDefaultFolderRawTableConfig,
+} from '../../src/renderer/components/data-view/raw-table-normalizer-utils';
 
 const source = (patch: Record<string, unknown> = {}) =>
   ({
@@ -410,6 +416,81 @@ describe('RawSourceDetail (方案 A)', () => {
         table('m1'),
       ]);
       expect(screen.queryByTestId('raw-source-detail-current')).toBeNull();
+    });
+  });
+
+  describe('inline folder configuration editing', () => {
+    it('lets folder_per_file source detail edit folder options and save via updateRawSourceConfig', async () => {
+      client.updateRawSourceConfig.mockResolvedValue({
+        source: source({
+          id: 'sf1',
+          sourceKind: 'folder',
+          buildMode: 'folder_per_file',
+          config: { autoInclude: true, recursive: false, fieldStrategy: 'all_text' },
+        }),
+        refreshed: ['t1'],
+      });
+      const onChanged = vi.fn();
+      renderDetail(
+        source({
+          id: 'sf1',
+          name: '日报目录',
+          sourcePath: '/d/日报目录',
+          sourceKind: 'folder',
+          buildMode: 'folder_per_file',
+          config: { autoInclude: true, fileRange: 'excel_csv', recursive: true },
+        }),
+        [table('t1')],
+        { onChanged }
+      );
+      expect(screen.getByTestId('raw-source-folder-options')).toBeTruthy();
+      expect(screen.queryByTestId('raw-source-save-config')).toBeNull();
+
+      fireEvent.click(screen.getByTestId('raw-source-folder-recursive'));
+      fireEvent.click(screen.getByTestId('raw-source-folder-all-text'));
+      const saveBtn = screen.getByTestId('raw-source-save-config');
+      fireEvent.click(saveBtn);
+
+      await waitFor(() =>
+        expect(client.updateRawSourceConfig).toHaveBeenCalledWith(
+          expect.objectContaining({
+            sourceId: 'sf1',
+            recursive: false,
+            fieldStrategy: 'all_text',
+          })
+        )
+      );
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('renders complete folder options in ParsingDetailSection for folder_merge raw tables', () => {
+      const folderConfig = getDefaultFolderRawTableConfig();
+      const onUpdateConfig = vi.fn();
+      render(
+        <ParsingDetailSection
+          localSourceKind="folder"
+          localConfig={folderConfig}
+          excelConfig={getDefaultExcelRawTableConfig()}
+          folderConfig={folderConfig}
+          disabled={false}
+          onUpdateConfig={onUpdateConfig}
+          loadSourceColumns={async () => []}
+        />
+      );
+      expect(screen.getByTestId('raw-table-folder-options')).toBeTruthy();
+      expect(screen.getByTestId('raw-table-folder-sheet-index')).toBeTruthy();
+      expect(screen.getByTestId('raw-table-folder-sheet-all-tip')).toBeTruthy();
+      expect(screen.getByTestId('raw-table-folder-all-text-tip')).toBeTruthy();
+
+      fireEvent.click(screen.getByTestId('raw-table-folder-sheet-all'));
+      expect(onUpdateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sheetStrategy: 'all' })
+      );
+
+      fireEvent.click(screen.getByTestId('raw-table-folder-all-text'));
+      expect(onUpdateConfig).toHaveBeenLastCalledWith(
+        expect.objectContaining({ fieldStrategy: 'all_text' })
+      );
     });
   });
 });

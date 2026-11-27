@@ -32,9 +32,16 @@ import type {
   DataRawTablePreview,
 } from '../../types';
 import { dataClient } from '../../features/data/api/data-client';
+import { showToast } from '../../utils/toast';
 import { GlassDataGridPreview } from '../GlassDataGridPreview';
 import { useRawSourceRefresh } from './raw-source-refresh-dialog';
 import { useInlineModeChange } from './raw-source-mode-change';
+import {
+  buildUpdateRawSourceConfigInput,
+  folderOptionsFromSource,
+  FolderSourceOptionsSection,
+  isFolderOptionsDirty,
+} from './raw-source-folder-options';
 import {
   SELECT_CHEVRON,
   Toggle,
@@ -154,6 +161,31 @@ export function RawSourceDetail({
   const [autoBusy, setAutoBusy] = useState(false);
   const [autoError, setAutoError] = useState<string | null>(null);
   useEffect(() => setAutoInclude(!!source.config.autoInclude), [source.config.autoInclude]);
+  const [folderDraft, setFolderDraft] = useState(() => folderOptionsFromSource(source));
+  const [savingFolderConfig, setSavingFolderConfig] = useState(false);
+  const [folderConfigError, setFolderConfigError] = useState<string | null>(null);
+  useEffect(() => {
+    setFolderDraft(folderOptionsFromSource(source));
+    setFolderConfigError(null);
+  }, [source]);
+  const folderDirty = isFolder && !changingMode && isFolderOptionsDirty(folderDraft, source);
+  const saveFolderConfig = async () => {
+    if (!folderDirty || savingFolderConfig) return;
+    setSavingFolderConfig(true);
+    setFolderConfigError(null);
+    try {
+      await dataClient.updateRawSourceConfig(
+        buildUpdateRawSourceConfigInput(source.id, folderDraft, merge)
+      );
+      setFolderDraft((current) => ({ ...current, password: '' }));
+      showToast('success', tr('detail.configSaved'));
+      onChanged();
+    } catch (err) {
+      setFolderConfigError(formatIpcError(err, String(err)));
+    } finally {
+      setSavingFolderConfig(false);
+    }
+  };
   const toggleAutoInclude = async (on: boolean) => {
     setAutoInclude(on);
     setAutoBusy(true);
@@ -226,6 +258,32 @@ export function RawSourceDetail({
         </div>
         <div className="flex items-stretch">
           {modeChange.actions}
+          {folderDirty && (
+            <>
+              <button
+                type="button"
+                disabled={savingFolderConfig}
+                onClick={() => {
+                  setFolderDraft(folderOptionsFromSource(source));
+                  setFolderConfigError(null);
+                }}
+                data-testid="raw-source-cancel-config"
+                className={`${titleCellClass} text-text-secondary`}
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={savingFolderConfig}
+                onClick={() => void saveFolderConfig()}
+                data-testid="raw-source-save-config"
+                className={`${titleCellClass} text-accent`}
+              >
+                <Check className="h-3.5 w-3.5" />
+                {tr('detail.saveConfig')}
+              </button>
+            </>
+          )}
           {!isCloud && !changingMode && (
             <button
               type="button"
@@ -357,133 +415,144 @@ export function RawSourceDetail({
           {changingMode ? (
             modeChange.editor
           ) : (
-            <section
-              className="ui-group ui-form-flush bg-surface"
-              data-testid="raw-source-detail-tables"
-            >
-              <div className="ui-group-title">
-                {tr('detail.tables')}
-                <span className="ml-2 text-[12px] font-normal text-text-muted">
-                  {tr('detail.tablesCount', { count: members.length })}
-                </span>
-              </div>
-              <table className="w-full table-fixed border-collapse text-[12.5px]">
-                <colgroup>
-                  <col />
-                  <col className="w-[24%]" />
-                  <col className="w-[96px]" />
-                  <col className="w-[20%]" />
-                  <col className="w-[80px]" />
-                  <col className="w-[68px]" />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th className={th}>{tr('detail.colTable')}</th>
-                    <th className={th}>{merge ? tr('detail.mergedFrom') : memberLabel}</th>
-                    <th className={`${th} text-right`}>{tr('detail.colSize')}</th>
-                    <th className={th}>{tr('detail.colPipelines')}</th>
-                    <th className={th}>{tr('detail.colStatus')}</th>
-                    <th className={`${th} border-r-0`} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((table) => {
-                    const parts = merge ? mergedParts(table) : [];
-                    const missingRow = table.memberStatus === 'missing';
-                    const active = selected?.id === table.id;
-                    return (
-                      <Fragment key={table.id}>
-                        <tr
-                          data-testid="raw-source-member-row"
-                          onClick={() => setSelectedId(table.id)}
-                          onDoubleClick={() => openRow(table)}
-                          className={`group cursor-default ${active ? 'bg-accent-muted/40' : 'hover:bg-surface-hover'}`}
-                        >
-                          <td className={td}>
-                            <span className="flex min-w-0 items-center gap-1.5 text-text-primary">
-                              <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
-                              <span className="truncate" title={table.name}>
-                                {memberShortName(table, source)}
-                              </span>
-                            </span>
-                          </td>
-                          <td className={`${td} truncate text-text-secondary`}>
-                            {merge
-                              ? tr('detail.mergedFiles', { count: parts.length })
-                              : (table.memberKey ?? baseName(table.sourcePath))}
-                          </td>
-                          <td className={`${td} text-right tabular-nums text-text-secondary`}>
-                            {table.rowCount} × {table.columnCount}
-                          </td>
-                          <td className={`${td} truncate text-text-secondary`}>
-                            {table.relatedPipelineNames.join('、') || '—'}
-                          </td>
-                          <td className={td}>
-                            <span
-                              className={`inline-flex items-center gap-1.5 ${missingRow ? 'text-warning' : 'text-text-primary'}`}
-                            >
-                              <span
-                                className={`h-1.5 w-1.5 rounded-full ${missingRow ? 'bg-warning' : 'bg-success'}`}
-                              />
-                              {missingRow ? tr('list.memberMissing') : tr('statusOk')}
-                            </span>
-                          </td>
-                          <td className={`${td} border-r-0`}>
-                            <span
-                              className={`flex items-center justify-center gap-2.5 ${active ? '' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
-                            >
-                              <button
-                                type="button"
-                                title={tr('detail.preview')}
-                                aria-label={tr('detail.preview')}
-                                data-testid="raw-source-member-preview"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  previewRow(table);
-                                }}
-                                className="text-text-muted hover:text-accent"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                title={tr('detail.open')}
-                                aria-label={tr('detail.open')}
-                                data-testid="raw-source-member-open"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  openRow(table);
-                                }}
-                                className="text-text-muted hover:text-accent"
-                              >
-                                <ExternalLink className="h-3.5 w-3.5" />
-                              </button>
-                            </span>
-                          </td>
-                        </tr>
-                        {parts.map((part) => (
-                          <tr key={`${table.id}:${part}`} data-testid="raw-source-merged-part">
-                            <td className={`${td} pl-8 text-text-muted`} colSpan={2}>
-                              <span className="flex min-w-0 items-center gap-1.5">
-                                {isFolder ? (
-                                  <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
-                                ) : (
-                                  <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
-                                )}
-                                <span className="truncate" title={part}>
-                                  {part}
+            <>
+              {isFolder && (
+                <FolderSourceOptionsSection
+                  draft={folderDraft}
+                  isMerge={merge}
+                  disabled={savingFolderConfig || refreshing}
+                  error={folderConfigError}
+                  onChange={setFolderDraft}
+                />
+              )}
+              <section
+                className="ui-group ui-form-flush bg-surface"
+                data-testid="raw-source-detail-tables"
+              >
+                <div className="ui-group-title">
+                  {tr('detail.tables')}
+                  <span className="ml-2 text-[12px] font-normal text-text-muted">
+                    {tr('detail.tablesCount', { count: members.length })}
+                  </span>
+                </div>
+                <table className="w-full table-fixed border-collapse text-[12.5px]">
+                  <colgroup>
+                    <col />
+                    <col className="w-[24%]" />
+                    <col className="w-[96px]" />
+                    <col className="w-[20%]" />
+                    <col className="w-[80px]" />
+                    <col className="w-[68px]" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th className={th}>{tr('detail.colTable')}</th>
+                      <th className={th}>{merge ? tr('detail.mergedFrom') : memberLabel}</th>
+                      <th className={`${th} text-right`}>{tr('detail.colSize')}</th>
+                      <th className={th}>{tr('detail.colPipelines')}</th>
+                      <th className={th}>{tr('detail.colStatus')}</th>
+                      <th className={`${th} border-r-0`} />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((table) => {
+                      const parts = merge ? mergedParts(table) : [];
+                      const missingRow = table.memberStatus === 'missing';
+                      const active = selected?.id === table.id;
+                      return (
+                        <Fragment key={table.id}>
+                          <tr
+                            data-testid="raw-source-member-row"
+                            onClick={() => setSelectedId(table.id)}
+                            onDoubleClick={() => openRow(table)}
+                            className={`group cursor-default ${active ? 'bg-accent-muted/40' : 'hover:bg-surface-hover'}`}
+                          >
+                            <td className={td}>
+                              <span className="flex min-w-0 items-center gap-1.5 text-text-primary">
+                                <Table2 className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />
+                                <span className="truncate" title={table.name}>
+                                  {memberShortName(table, source)}
                                 </span>
                               </span>
                             </td>
-                            <td className={td} colSpan={4} />
+                            <td className={`${td} truncate text-text-secondary`}>
+                              {merge
+                                ? tr('detail.mergedFiles', { count: parts.length })
+                                : (table.memberKey ?? baseName(table.sourcePath))}
+                            </td>
+                            <td className={`${td} text-right tabular-nums text-text-secondary`}>
+                              {table.rowCount} × {table.columnCount}
+                            </td>
+                            <td className={`${td} truncate text-text-secondary`}>
+                              {table.relatedPipelineNames.join('、') || '—'}
+                            </td>
+                            <td className={td}>
+                              <span
+                                className={`inline-flex items-center gap-1.5 ${missingRow ? 'text-warning' : 'text-text-primary'}`}
+                              >
+                                <span
+                                  className={`h-1.5 w-1.5 rounded-full ${missingRow ? 'bg-warning' : 'bg-success'}`}
+                                />
+                                {missingRow ? tr('list.memberMissing') : tr('statusOk')}
+                              </span>
+                            </td>
+                            <td className={`${td} border-r-0`}>
+                              <span
+                                className={`flex items-center justify-center gap-2.5 ${active ? '' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'}`}
+                              >
+                                <button
+                                  type="button"
+                                  title={tr('detail.preview')}
+                                  aria-label={tr('detail.preview')}
+                                  data-testid="raw-source-member-preview"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    previewRow(table);
+                                  }}
+                                  className="text-text-muted hover:text-accent"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  title={tr('detail.open')}
+                                  aria-label={tr('detail.open')}
+                                  data-testid="raw-source-member-open"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openRow(table);
+                                  }}
+                                  className="text-text-muted hover:text-accent"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </button>
+                              </span>
+                            </td>
                           </tr>
-                        ))}
-                      </Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </section>
+                          {parts.map((part) => (
+                            <tr key={`${table.id}:${part}`} data-testid="raw-source-merged-part">
+                              <td className={`${td} pl-8 text-text-muted`} colSpan={2}>
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {isFolder ? (
+                                    <FileSpreadsheet className="h-3.5 w-3.5 flex-shrink-0" />
+                                  ) : (
+                                    <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                  )}
+                                  <span className="truncate" title={part}>
+                                    {part}
+                                  </span>
+                                </span>
+                              </td>
+                              <td className={td} colSpan={4} />
+                            </tr>
+                          ))}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </section>
+            </>
           )}
         </div>
       ) : (
