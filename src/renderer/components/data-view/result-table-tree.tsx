@@ -199,6 +199,7 @@ export function ResultTableTree({
           nodes={pickerNodes}
           selectedIds={selectedIds}
           onSelectedIdsChange={onSelectedIdsChange}
+          selectionMode={selectionMode === 'single' ? 'single' : 'multi'}
           leafTestId="result-table-tree-row"
           referencedLabel={t('cloudConnection.ds.pickerReferenced')}
         />

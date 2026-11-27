@@ -6,6 +6,7 @@ import { RawTablesPanel } from '../../src/renderer/components/data-view/raw-tabl
 import { RawTableTree } from '../../src/renderer/components/data-view/raw-table-tree';
 import { useAppStore } from '../../src/renderer/store';
 import { ResultTablesPanel } from '../../src/renderer/components/data-view/result-tables';
+import { ResultTableCreateDialog } from '../../src/renderer/components/data-view/result-tables/ResultTableCreateDialog';
 import type { DataResultTable, DataGroup, DataRawSource } from '../../src/shared/contracts';
 
 const rawGroup: DataGroup = { id: 'rg1', scope: 'raw', name: '销售组', createdAt: 1 };
@@ -261,5 +262,128 @@ describe('reusable table trees in existing views', () => {
     });
     const childRows = screen.getAllByTestId('raw-source-child-row');
     expect(childRows[0].textContent).toMatch(/Unavailable|不可用/);
+  });
+
+  it('renders ResultTableCreateDialog with fixed height, purpose select and hover info tooltip', () => {
+    (window as { electronAPI?: unknown }).electronAPI = { data: {} };
+    const onSubmit = vi.fn();
+    render(
+      <ResultTableCreateDialog
+        open
+        onOpenChange={vi.fn()}
+        suggestedName="新的结果表 6"
+        onSubmit={onSubmit}
+      />
+    );
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.className).toContain('rounded-none');
+    expect(dialog.className).toContain('p-0');
+    expect(dialog.className).toContain('h-[216px]');
+    expect(dialog.querySelector('.ui-group')).toBeNull();
+    expect(screen.getByTestId('result-table-create-header').className).toContain('h-11');
+    expect(screen.getByRole('combobox')).toBeTruthy();
+    expect(screen.queryByTestId('result-table-purpose-desc')).toBeNull();
+
+    // Hovering the info icon after the purpose dropdown shows descriptions for both options.
+    const infoBtn = screen.getByTestId('result-table-purpose-info');
+    expect(screen.queryByTestId('result-table-purpose-tooltip')).toBeNull();
+    fireEvent.mouseEnter(infoBtn);
+    const tooltip = screen.getByTestId('result-table-purpose-tooltip');
+    expect(tooltip.textContent).toMatch(/Receive pipeline output|接收加工结果/);
+    expect(tooltip.textContent).toMatch(/Copy from a raw table|从原始表复制/);
+    fireEvent.mouseLeave(infoBtn);
+    expect(screen.queryByTestId('result-table-purpose-tooltip')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('result-table-create-confirm'));
+    expect(onSubmit).toHaveBeenCalledWith({ name: '新的结果表 6', sourceRawTableId: null });
+  });
+
+  it('opens the cloud connection RawTableTree picker in a dropdown popover when copying a raw table', async () => {
+    const unavailableTable = member('t1', '经营 / 目标', { memberStatus: 'missing' });
+    const availableTable = member('t2', '经营 / 销售');
+    const otherTable = member('t3', '订单汇总', { sourceId: null, groupId: null });
+    (window as { electronAPI?: unknown }).electronAPI = {
+      data: {
+        getDashboard: vi.fn().mockResolvedValue({
+          rawTables: [unavailableTable, availableTable, otherTable],
+          groups: [rawGroup],
+        }),
+        listRawSources: vi.fn().mockResolvedValue([source]),
+      },
+    };
+    const onSubmit = vi.fn();
+    render(
+      <ResultTableCreateDialog
+        open
+        onOpenChange={vi.fn()}
+        suggestedName="复制结果表"
+        onSubmit={onSubmit}
+      />
+    );
+
+    const dialog = screen.getByRole('dialog');
+    const purposeSelect = screen.getByRole('combobox');
+    await act(async () => {
+      fireEvent.click(purposeSelect);
+    });
+    const copyOption = await screen.findByRole('option', {
+      name: /Copy from a raw table|从原始表复制/,
+    });
+    await act(async () => {
+      fireEvent.click(copyOption);
+    });
+
+    // Tree is NOT embedded inline before opening the dropdown popover.
+    expect(screen.queryByTestId('raw-table-tree-select-popover')).toBeNull();
+    const trigger = screen.getByTestId('raw-table-tree-select-trigger');
+    const confirmBtn = screen.getByTestId('result-table-create-confirm') as HTMLButtonElement;
+    expect(confirmBtn.disabled).toBe(true);
+
+    // Click dropdown trigger -> opens portal popover outside the dialog body.
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    const popover = await screen.findByTestId('raw-table-tree-select-popover');
+    expect(dialog.contains(popover)).toBe(false);
+    expect(screen.getByTestId('raw-table-tree')).toBeTruthy();
+    expect(popover.querySelector('[role="tree"]')?.getAttribute('aria-multiselectable')).toBe(
+      'false'
+    );
+    expect(popover.querySelectorAll('input[type="checkbox"]')).toHaveLength(0);
+    expect(screen.getByText('销售组')).toBeTruthy();
+    expect(screen.getByTestId('raw-source-group-row').textContent).toContain('经营.xlsx');
+
+    // Unavailable table cannot be selected and keeps popover open.
+    const unavailableRow = popover.querySelector('[data-table-id="t1"]') as HTMLElement;
+    fireEvent.click(unavailableRow);
+    expect(confirmBtn.disabled).toBe(true);
+    expect(screen.getByTestId('raw-table-tree-select-popover')).toBeTruthy();
+
+    // Selecting an available table closes the popover and displays its name on the trigger.
+    const availableRow = popover.querySelector('[data-table-id="t2"]') as HTMLElement;
+    fireEvent.click(availableRow);
+    expect(screen.queryByTestId('raw-table-tree-select-popover')).toBeNull();
+    expect(trigger.textContent).toContain('经营 / 销售');
+    expect(confirmBtn.disabled).toBe(false);
+
+    // Reopen -> active single-selected row shows trailing check, search & pick another replaces it.
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    const reopenedPopover = await screen.findByTestId('raw-table-tree-select-popover');
+    const selectedRow = reopenedPopover.querySelector('[data-table-id="t2"]') as HTMLElement;
+    expect(selectedRow.getAttribute('aria-selected')).toBe('true');
+    expect(selectedRow.querySelector('[data-testid="table-picker-single-check"]')).toBeTruthy();
+    fireEvent.change(screen.getByTestId('raw-table-tree-select-search'), {
+      target: { value: '订单' },
+    });
+    expect(reopenedPopover.querySelector('[data-table-id="t2"]')).toBeNull();
+    const otherRow = reopenedPopover.querySelector('[data-table-id="t3"]') as HTMLElement;
+    fireEvent.click(otherRow);
+    expect(screen.queryByTestId('raw-table-tree-select-popover')).toBeNull();
+    expect(trigger.textContent).toContain('订单汇总');
+
+    fireEvent.click(confirmBtn);
+    expect(onSubmit).toHaveBeenCalledWith({ name: '复制结果表', sourceRawTableId: 't3' });
   });
 });

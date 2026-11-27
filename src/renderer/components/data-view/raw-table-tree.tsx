@@ -383,6 +383,7 @@ export function RawTableTree({
           nodes={pickerNodes}
           selectedIds={selectedIds}
           onSelectedIdsChange={onSelectedIdsChange}
+          selectionMode={selectionMode === 'single' ? 'single' : 'multi'}
           leafTestId="raw-table-tree-row"
           sourceTestId="raw-source-group-row"
           referencedLabel={t('cloudConnection.ds.pickerReferenced')}

@@ -1,10 +1,12 @@
 /**
  * Hierarchical picker tree used by RawTableTree / ResultTableTree in `variant="picker"`.
  * Groups (and raw-source file nodes) are expandable parents; only table leaves are
- * independently selectable. Parent checkboxes are tri-state and apply to selectable children.
+ * independently selectable.
+ * - `selectionMode="multi"`: shows tri-state parent checkboxes and leaf checkboxes.
+ * - `selectionMode="single"`: hides checkboxes, highlights the active leaf with a trailing check.
  */
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { Check, ChevronRight } from 'lucide-react';
 import { cn } from '../ui';
 import { PickerCheck } from './picker-check';
 
@@ -27,6 +29,7 @@ export function TablePickerTree({
   nodes,
   selectedIds,
   onSelectedIdsChange,
+  selectionMode = 'multi',
   leafTestId,
   sourceTestId,
   groupTestId = 'table-picker-tree-group',
@@ -35,12 +38,17 @@ export function TablePickerTree({
   nodes: TablePickerTreeNode[];
   selectedIds: readonly string[];
   onSelectedIdsChange?: (ids: string[]) => void;
+  selectionMode?: 'single' | 'multi';
   leafTestId: string;
   sourceTestId?: string;
   groupTestId?: string;
   referencedLabel: string;
 }) {
-  const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const isSingle = selectionMode === 'single';
+  const selected = useMemo(
+    () => new Set(isSingle ? selectedIds.slice(0, 1) : selectedIds),
+    [isSingle, selectedIds]
+  );
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [focusedId, setFocusedId] = useState<string | null>(null);
 
@@ -57,6 +65,10 @@ export function TablePickerTree({
 
   const applyTableIds = (ids: string[], mode: 'select' | 'clear' | 'toggle') => {
     if (!onSelectedIdsChange || ids.length === 0) return;
+    if (isSingle) {
+      onSelectedIdsChange([ids[0]]);
+      return;
+    }
     const next = new Set(selected);
     if (mode === 'clear') {
       for (const id of ids) next.delete(id);
@@ -94,18 +106,22 @@ export function TablePickerTree({
       else if (node.parentId) setFocusedId(node.parentId);
     } else if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
-      const selectable = selectableChildIds(node.node);
       if (node.node.kind === 'table' && node.node.tableId && !node.node.disabled) {
         applyTableIds([node.node.tableId], 'toggle');
-      } else if (selectable.length > 0) {
-        const allOn = selectable.every((id) => selected.has(id));
-        applyTableIds(selectable, allOn ? 'clear' : 'select');
+      } else if (isSingle) {
+        if (hasChildren(node.node)) toggleCollapsed(node.node.id);
+      } else {
+        const selectable = selectableChildIds(node.node);
+        if (selectable.length > 0) {
+          const allOn = selectable.every((id) => selected.has(id));
+          applyTableIds(selectable, allOn ? 'clear' : 'select');
+        }
       }
     }
   };
 
   return (
-    <div role="tree" aria-multiselectable="true" className="py-1 pb-2">
+    <div role="tree" aria-multiselectable={isSingle ? 'false' : 'true'} className="py-1 pb-2">
       {visible.map((item) => {
         const { node, level, isLastByLevel } = item;
         const childful = hasChildren(node);
@@ -168,32 +184,40 @@ export function TablePickerTree({
                 />
               ) : null}
             </span>
-            <PickerCheck
-              checked={isChecked}
-              indeterminate={isIndeterminate}
-              disabled={checkDisabled}
-              label={node.name}
-              onChange={() => {
-                setFocusedId(node.id);
-                if (isLeaf && node.tableId && !node.disabled) {
-                  applyTableIds([node.tableId], 'toggle');
-                  return;
-                }
-                if (selectable.length === 0) return;
-                applyTableIds(selectable, isChecked ? 'clear' : 'select');
-              }}
-            />
+            {!isSingle && (
+              <PickerCheck
+                checked={isChecked}
+                indeterminate={isIndeterminate}
+                disabled={checkDisabled}
+                label={node.name}
+                onChange={() => {
+                  setFocusedId(node.id);
+                  if (isLeaf && node.tableId && !node.disabled) {
+                    applyTableIds([node.tableId], 'toggle');
+                    return;
+                  }
+                  if (selectable.length === 0) return;
+                  applyTableIds(selectable, isChecked ? 'clear' : 'select');
+                }}
+              />
+            )}
             <span
               className={cn(
                 'flex flex-shrink-0 items-center justify-center',
-                node.kind === 'group' && 'text-accent'
+                node.kind === 'group' && 'text-accent',
+                node.disabled && 'opacity-50'
               )}
             >
               {node.icon}
             </span>
             <div
               className={cn(
-                'min-w-0 flex-1 truncate text-text-primary',
+                'min-w-0 flex-1 truncate',
+                node.disabled
+                  ? 'text-text-muted'
+                  : isSingle && isSelected
+                    ? 'text-accent'
+                    : 'text-text-primary',
                 node.kind === 'table' ? 'font-medium' : 'font-semibold'
               )}
             >
@@ -203,6 +227,13 @@ export function TablePickerTree({
               <span className="flex-shrink-0 border border-border-subtle bg-surface-muted px-1.5 py-0.5 text-[11px] font-medium text-text-secondary">
                 {node.referencedLabel ?? referencedLabel}
               </span>
+            )}
+            {isSingle && isLeaf && isSelected && !node.disabled && (
+              <Check
+                className="h-3.5 w-3.5 flex-shrink-0 text-accent"
+                data-testid="table-picker-single-check"
+                aria-hidden
+              />
             )}
             {childful && (
               <span className="inline-flex h-5 min-w-[1.25rem] flex-shrink-0 items-center justify-center bg-background px-1.5 text-[11px] font-medium tabular-nums text-text-secondary">
