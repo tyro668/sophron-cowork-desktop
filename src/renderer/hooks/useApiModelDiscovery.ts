@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch } from 'react';
 import { isLoopbackBaseUrl } from '../../shared/network/loopback';
 import { DEFAULT_OLLAMA_BASE_URL, normalizeOllamaBaseUrl } from '../../shared/ollama-base-url';
 import { configClient } from '../features/config/api/config-client';
+import { formatIpcError } from '../utils/ipc-error';
 import type {
   ProviderModelInfo,
   ProviderPresets,
@@ -88,88 +89,90 @@ export function useApiModelDiscovery({
     });
   }, [activeProfileKey, baseUrl, provider, presets, dispatch]);
 
-  const refreshModelOptions = useCallback(async () => {
-    if (!isElectron || !canProviderRefreshModels(provider)) {
-      return [];
-    }
-
-    const requestedProfileKey = activeProfileKey;
-    const requestedBaseUrl = baseUrl.trim();
-    const requestId = ++ollamaRefreshRequestIdRef.current;
-
-    dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: true });
-    clearError();
-    try {
-      const models = await configClient.listModels({
-        provider,
-        apiKey: apiKey.trim(),
-        baseUrl: requestedBaseUrl || undefined,
-      });
-
-      const latestTarget = latestOllamaTargetRef.current;
-      if (
-        requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== provider ||
-        latestTarget.activeProfileKey !== requestedProfileKey ||
-        latestTarget.baseUrl !== requestedBaseUrl
-      ) {
-        return models;
-      }
-
-      dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: requestedProfileKey, models });
-
-      dispatch({
-        type: 'UPDATE_PROFILE_FN',
-        profileKey: requestedProfileKey,
-        updater: (current) => {
-          const explicitManualModel = current.useCustomModel ? current.customModel.trim() : '';
-          const currentModel = explicitManualModel || current.model.trim();
-          const hasDiscoveredMatch = models.some((item) => item.id === currentModel);
-          const shouldAutoSelectModel =
-            Boolean(models[0]?.id) &&
-            !explicitManualModel &&
-            (!currentModel || !hasDiscoveredMatch);
-
-          return {
-            ...current,
-            model: shouldAutoSelectModel ? models[0]!.id : current.model,
-            useCustomModel: shouldAutoSelectModel ? false : current.useCustomModel,
-          };
-        },
-      });
-      return models;
-    } catch (refreshError) {
-      const latestTarget = latestOllamaTargetRef.current;
-      if (
-        requestId !== ollamaRefreshRequestIdRef.current ||
-        latestTarget.provider !== provider ||
-        latestTarget.activeProfileKey !== requestedProfileKey ||
-        latestTarget.baseUrl !== requestedBaseUrl
-      ) {
+  const refreshModelOptions = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!isElectron || !canProviderRefreshModels(provider)) {
         return [];
       }
-      dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
-      if (refreshError instanceof Error) {
-        showErrorText(refreshError.message);
-      } else {
-        showErrorKey('api.refreshModelsFailed');
+
+      const requestedProfileKey = activeProfileKey;
+      const requestedBaseUrl = baseUrl.trim();
+      const requestId = ++ollamaRefreshRequestIdRef.current;
+
+      dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: true });
+      if (!options?.silent) {
+        clearError();
       }
-      return [];
-    } finally {
-      if (requestId === ollamaRefreshRequestIdRef.current) {
-        dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: false });
+      try {
+        const models = await configClient.listModels({
+          provider,
+          apiKey: apiKey.trim(),
+          baseUrl: requestedBaseUrl || undefined,
+        });
+
+        const latestTarget = latestOllamaTargetRef.current;
+        if (
+          requestId !== ollamaRefreshRequestIdRef.current ||
+          latestTarget.provider !== provider ||
+          latestTarget.activeProfileKey !== requestedProfileKey ||
+          latestTarget.baseUrl !== requestedBaseUrl
+        ) {
+          return models;
+        }
+
+        dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: requestedProfileKey, models });
+
+        dispatch({
+          type: 'UPDATE_PROFILE_FN',
+          profileKey: requestedProfileKey,
+          updater: (current) => {
+            const explicitManualModel = current.useCustomModel ? current.customModel.trim() : '';
+            const currentModel = explicitManualModel || current.model.trim();
+            const hasDiscoveredMatch = models.some((item) => item.id === currentModel);
+            const shouldAutoSelectModel =
+              Boolean(models[0]?.id) &&
+              !explicitManualModel &&
+              (!currentModel || !hasDiscoveredMatch);
+
+            return {
+              ...current,
+              model: shouldAutoSelectModel ? models[0]!.id : current.model,
+              useCustomModel: shouldAutoSelectModel ? false : current.useCustomModel,
+            };
+          },
+        });
+        return models;
+      } catch (refreshError) {
+        const latestTarget = latestOllamaTargetRef.current;
+        if (
+          requestId !== ollamaRefreshRequestIdRef.current ||
+          latestTarget.provider !== provider ||
+          latestTarget.activeProfileKey !== requestedProfileKey ||
+          latestTarget.baseUrl !== requestedBaseUrl
+        ) {
+          return [];
+        }
+        dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
+        if (!options?.silent) {
+          const message = formatIpcError(refreshError, '');
+          if (
+            provider === 'ollama' &&
+            /OLLAMA_NOT_RUNNING|ECONNREFUSED|fetch failed/i.test(message)
+          ) {
+            showErrorKey('api.testError.ollama_not_running');
+          } else {
+            showErrorKey('api.refreshModelsFailed');
+          }
+        }
+        return [];
+      } finally {
+        if (requestId === ollamaRefreshRequestIdRef.current) {
+          dispatch({ type: 'SET_IS_REFRESHING_MODELS', payload: false });
+        }
       }
-    }
-  }, [
-    activeProfileKey,
-    apiKey,
-    baseUrl,
-    provider,
-    clearError,
-    dispatch,
-    showErrorKey,
-    showErrorText,
-  ]);
+    },
+    [activeProfileKey, apiKey, baseUrl, provider, clearError, dispatch, showErrorKey]
+  );
 
   const applyDiscoveredOllamaState = useCallback(
     (
@@ -274,8 +277,9 @@ export function useApiModelDiscovery({
           dispatch({ type: 'CLEAR_DISCOVERED_MODELS', profileKey: requestedProfileKey });
         }
         if (!options?.silent) {
-          if (discoveryError instanceof Error) {
-            showErrorText(discoveryError.message);
+          const message = formatIpcError(discoveryError, '');
+          if (message) {
+            showErrorText(message);
           } else {
             showErrorKey('api.localOllamaNotFound');
           }
@@ -307,14 +311,14 @@ export function useApiModelDiscovery({
     const trimmed = baseUrl.trim();
     if (!trimmed || !/^https?:\/\/.{3,}/i.test(trimmed)) return;
     const timer = setTimeout(() => {
-      void refreshModelOptions();
+      void refreshModelOptions({ silent: true });
     }, 800);
     return () => clearTimeout(timer);
   }, [provider, baseUrl, refreshModelOptions]);
 
   useEffect(() => {
     if (provider !== 'sophron' && provider !== 'openai-codex') return;
-    void refreshModelOptions();
+    void refreshModelOptions({ silent: true });
   }, [provider, refreshModelOptions]);
 
   return {

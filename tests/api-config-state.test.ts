@@ -19,7 +19,7 @@ import { resolveProfileModelOptions } from '../src/renderer/hooks/api-config-mod
 const discoveryHookPath = path.resolve(process.cwd(), 'src/renderer/hooks/useApiModelDiscovery.ts');
 
 describe('api config state helpers', () => {
-  it('exposes only first-class providers in the API provider picker', () => {
+  it('exposes first-class providers and OpenAI/Anthropic compatible protocols in the API provider picker', () => {
     expect(VISIBLE_API_PROVIDER_OPTIONS).toEqual([
       'deepseek',
       'moonshot',
@@ -30,6 +30,8 @@ describe('api config state helpers', () => {
       'openai-codex',
       'openrouter',
       'ollama',
+      'custom:openai',
+      'custom:anthropic',
     ]);
     expect(VISIBLE_API_PROVIDER_OPTIONS).not.toContain('custom');
   });
@@ -391,6 +393,8 @@ describe('api config state helpers', () => {
     expect(source).toContain('autoSelectModelId: models[0]?.id');
     expect(source).not.toContain("showErrorKey('api.localOllamaModelUnavailable'");
     expect(source).not.toContain('shouldAutoDiscoverLocalOllamaBaseUrl(baseUrl)');
+    expect(source).toContain('void refreshModelOptions({ silent: true })');
+    expect(source).toContain("showErrorKey('api.testError.ollama_not_running')");
   });
 
   it('keeps the shared auto-discovery helper constrained to the default local endpoint', () => {

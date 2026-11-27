@@ -57,7 +57,7 @@ function ApiFieldRow({
 }) {
   return (
     <div className={`ui-form-row ${rowClassName}`}>
-      <span className="ui-form-label items-center">{label}</span>
+      <span className="ui-form-label items-center whitespace-nowrap">{label}</span>
       <div className={`ui-form-value ${valueClassName}`}>{children}</div>
     </div>
   );
@@ -135,9 +135,25 @@ export function SettingsAPI() {
   const isSophronMode = provider === 'sophron';
   const isCodexMode = provider === 'openai-codex';
   const isSelectedDefault = selectedConfigSetId === activeConfigSetId;
-  const providerOptions: ProviderType[] = [
-    ...VISIBLE_API_PROVIDER_OPTIONS,
-    ...(provider === 'custom' ? (['custom'] as const) : []),
+  const selectedProviderValue = providerUnset
+    ? ''
+    : provider === 'custom'
+      ? `custom:${customProtocol}`
+      : provider;
+  const providerSelectOptions: Array<{ value: string; label: string }> = [
+    { value: '', label: t('api.providerEmpty') },
+    ...VISIBLE_API_PROVIDER_OPTIONS.map((item) => ({
+      value: item,
+      label:
+        item === 'custom:openai'
+          ? t('api.openaiCompatibleLabel')
+          : item === 'custom:anthropic'
+            ? t('api.anthropicCompatibleLabel')
+            : presets[item]?.name || item,
+    })),
+    ...(provider === 'custom' && customProtocol === 'gemini'
+      ? [{ value: 'custom:gemini', label: presets.custom?.name || 'Custom' }]
+      : []),
   ];
   const canSave =
     !isSaving &&
@@ -194,27 +210,27 @@ export function SettingsAPI() {
 
             <ApiFieldRow label={t('api.provider')}>
               <GlassSelect
-                value={providerUnset ? '' : provider}
+                value={selectedProviderValue}
                 onValueChange={(value) => {
                   if (value === '') {
                     clearProviderSelection();
+                  } else if (value === 'custom:openai') {
+                    changeProtocol('openai');
+                  } else if (value === 'custom:anthropic') {
+                    changeProtocol('anthropic');
+                  } else if (value === 'custom:gemini') {
+                    changeProtocol('gemini');
                   } else {
                     changeProvider(value as ProviderType);
                   }
                 }}
-                options={[
-                  { value: '', label: t('api.providerEmpty') },
-                  ...providerOptions.map((item) => ({
-                    value: item,
-                    label: presets[item]?.name || item,
-                  })),
-                ]}
+                options={providerSelectOptions}
                 triggerClassName="w-full justify-between text-[12.5px] text-text-primary focus-visible:ring-0"
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </ApiFieldRow>
 
-            {!providerUnset && provider === 'custom' && (
+            {!providerUnset && provider === 'custom' && customProtocol === 'gemini' && (
               <ApiFieldRow label={t('api.protocol')}>
                 <div className="grid min-h-[35px] w-full grid-cols-3 divide-x divide-border-subtle">
                   {(['anthropic', 'openai', 'gemini'] as const).map((item) => (

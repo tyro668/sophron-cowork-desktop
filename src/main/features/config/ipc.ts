@@ -25,7 +25,7 @@ import {
 } from '../../config/config-store';
 import { runConfigApiTest } from '../../config/config-test-routing';
 import { listCodexSubscriptionModelOptions } from '../../config/codex-models';
-import { listOllamaModels } from '../../config/ollama-api';
+import { listOllamaModels, normalizeError as normalizeOllamaError } from '../../config/ollama-api';
 import { createPersonalAnalysisClient } from '../../data/personal-analysis-client';
 import { handleIpc } from '../../ipc-handle';
 import { log, logError } from '../../utils/logger';
@@ -170,7 +170,15 @@ export function registerConfigIpc(): void {
       if (payload.provider !== 'ollama') {
         return [];
       }
-      return listOllamaModels(payload);
+      try {
+        return await listOllamaModels(payload);
+      } catch (error) {
+        const normalized = normalizeOllamaError(error);
+        if (normalized.errorType === 'ollama_not_running') {
+          throw new Error('OLLAMA_NOT_RUNNING', { cause: error });
+        }
+        throw new Error(normalized.details || 'OLLAMA_LIST_MODELS_FAILED', { cause: error });
+      }
     }
   );
 

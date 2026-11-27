@@ -14,6 +14,8 @@ export type SharedProviderType =
 
 export type SharedCustomProtocolType = 'anthropic' | 'openai' | 'gemini';
 export type VisibleApiProviderType = Exclude<SharedProviderType, 'custom' | 'gemini' | 'sophron'>;
+export type VisibleApiProviderOption =
+  VisibleApiProviderType | 'custom:openai' | 'custom:anthropic';
 
 export const VISIBLE_API_PROVIDER_OPTIONS = [
   'deepseek',
@@ -25,7 +27,9 @@ export const VISIBLE_API_PROVIDER_OPTIONS = [
   'openai-codex',
   'openrouter',
   'ollama',
-] as const satisfies readonly VisibleApiProviderType[];
+  'custom:openai',
+  'custom:anthropic',
+] as const satisfies readonly VisibleApiProviderOption[];
 
 export interface SharedProviderPreset {
   name: string;

@@ -166,7 +166,14 @@ export function ApiConfigSetManager({
   // Avoid repeating the model ID when the scheme is already named after it.
   const getSetSubtitle = (set: ApiConfigSet): string => {
     if (set.provider === '') return '';
-    const providerLabel = presets?.[set.provider]?.name || '';
+    const providerLabel =
+      set.provider === 'custom'
+        ? set.customProtocol === 'openai'
+          ? t('api.openaiCompatibleLabel')
+          : set.customProtocol === 'anthropic'
+            ? t('api.anthropicCompatibleLabel')
+            : presets?.custom?.name || ''
+        : presets?.[set.provider]?.name || '';
     const modelName = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
     const isSameAsName =
       modelName.length > 0 && modelName.toLowerCase() === set.name.trim().toLowerCase();

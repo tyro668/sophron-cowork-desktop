@@ -30,7 +30,9 @@ const PROVIDER_LABELS: Record<
   | 'aliyun'
   | 'zai'
   | 'sophron'
-  | 'ollama',
+  | 'ollama'
+  | 'custom:openai'
+  | 'custom:anthropic',
   string
 > = {
   anthropic: 'Anthropic',
@@ -43,6 +45,8 @@ const PROVIDER_LABELS: Record<
   zai: 'Z.AI',
   sophron: 'api.builtinLlmLabel',
   ollama: 'Ollama',
+  'custom:openai': 'api.openaiCompatibleLabel',
+  'custom:anthropic': 'api.anthropicCompatibleLabel',
 };
 
 function getProviderDisplayLabel(
@@ -157,10 +161,14 @@ export function ConfigModal({
   if (!isOpen) return null;
 
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
+  const selectedProviderOption = provider === 'custom' ? `custom:${customProtocol}` : provider;
   const isSophronMode = provider === 'sophron';
   const isCodexMode = provider === 'openai-codex';
-  const showsBaseUrl = provider === 'ollama';
-  const baseUrlPlaceholder = 'http://localhost:11434/v1';
+  const showsBaseUrl = provider === 'custom' || provider === 'ollama';
+  const baseUrlPlaceholder =
+    provider === 'ollama'
+      ? 'http://localhost:11434/v1'
+      : currentPreset?.baseUrl || 'https://api.example.com';
 
   return (
     <Dialog
@@ -217,14 +225,24 @@ export function ConfigModal({
                 {providerOptions.map((p) => (
                   <button
                     key={p}
-                    onClick={() => changeProvider(p)}
+                    onClick={() => {
+                      if (p === 'custom:openai') {
+                        changeProtocol('openai');
+                      } else if (p === 'custom:anthropic') {
+                        changeProtocol('anthropic');
+                      } else {
+                        changeProvider(p);
+                      }
+                    }}
                     className={`h-8 px-3 rounded-md text-[13px] font-medium transition-all ${
-                      provider === p
+                      selectedProviderOption === p
                         ? 'bg-accent text-accent-foreground'
                         : 'bg-surface-hover text-text-secondary hover:bg-surface-active'
                     }`}
                   >
-                    {presets?.[p]?.name || getProviderDisplayLabel(p, t) || p}
+                    {p === 'custom:openai' || p === 'custom:anthropic'
+                      ? getProviderDisplayLabel(p, t)
+                      : presets?.[p]?.name || getProviderDisplayLabel(p, t) || p}
                   </button>
                 ))}
               </div>
@@ -251,7 +269,7 @@ export function ConfigModal({
             </div>
           )}
 
-          {provider === 'custom' && (
+          {provider === 'custom' && customProtocol === 'gemini' && (
             <div className="ui-form-row">
               <div className="ui-form-label items-center">
                 <span className="flex items-center gap-1.5">

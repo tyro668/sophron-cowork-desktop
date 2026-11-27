@@ -114,7 +114,9 @@ export function CodexAuthCard() {
   return (
     <>
       <div className="ui-form-row">
-        <span className="ui-form-label items-center">{t('api.codexAuthTitle')}</span>
+        <span className="ui-form-label items-center whitespace-nowrap">
+          {t('api.codexAuthTitle')}
+        </span>
         <div className="ui-form-value !flex-row items-stretch">
           <span
             className={`ui-flush-text min-w-0 flex-1 gap-1.5 ${connected ? '!text-success' : ''}`}
@@ -177,7 +179,12 @@ export function CodexAuthCard() {
 
       {prompt && (
         <div className="ui-form-row">
-          <span className="ui-form-label items-center">{t('api.codexManualCodeLabel')}</span>
+          <span
+            className="ui-form-label items-center whitespace-nowrap"
+            title={t('api.codexManualCodeLabel')}
+          >
+            {t('api.codexManualCodeTitle')}
+          </span>
           <div className="ui-form-value !flex-row items-stretch">
             <input
               type="text"
