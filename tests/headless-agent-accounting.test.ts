@@ -7,7 +7,7 @@ import { Type } from 'typebox';
 
 vi.mock('../src/main/agent/pi-ai-one-shot', () => ({
   resolvePiAiTarget: vi.fn(async () => ({
-    model: { api: 'openai-completions', provider: 'test', id: 'test' },
+    model: { api: 'openai-completions', provider: 'test', id: 'test', reasoning: true },
     apiKey: 'test',
   })),
 }));
@@ -133,5 +133,92 @@ describe('headless agent accounting', () => {
     expect(lines[0]).toMatchObject({ tool: 'probe', turn: 1, isError: false });
     expect(JSON.stringify(lines)).not.toContain('hunter2-secret-value');
     expect(lines[2]).toMatchObject({ stop: 'max_tokens', tokens: { total: 1200 } });
+  });
+
+  it('forwards configured thinkingLevel from config to the model stream', async () => {
+    const capturedReasonings: Array<string | undefined> = [];
+    const makeStream = () =>
+      vi.fn((_model, _context, options?: { reasoning?: string }) => {
+        capturedReasonings.push(options?.reasoning);
+        const message: AssistantMessage = {
+          role: 'assistant',
+          api: 'openai-completions',
+          provider: 'test',
+          model: 'test',
+          content: [{ type: 'text', text: 'done' }],
+          stopReason: 'stop',
+          timestamp: Date.now(),
+          usage: {
+            input: 10,
+            output: 5,
+            cacheRead: 0,
+            cacheWrite: 0,
+            totalTokens: 15,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+          },
+        };
+        const stream = createAssistantMessageEventStream();
+        stream.push({ type: 'done', reason: 'stop', message });
+        stream.end();
+        return stream;
+      });
+
+    const highAgent = new HeadlessToolAgent({
+      config: { enableThinking: true, thinkingLevel: 'high' } as never,
+      systemPrompt: 'test',
+      tools: [],
+      maxTurns: 2,
+      timeoutMs: 10_000,
+      streamFn: makeStream() as never,
+    });
+    await highAgent.prompt('go');
+    highAgent.dispose();
+
+    const offAgent = new HeadlessToolAgent({
+      config: { enableThinking: false, thinkingLevel: 'high' } as never,
+      systemPrompt: 'test',
+      tools: [],
+      maxTurns: 2,
+      timeoutMs: 10_000,
+      streamFn: makeStream() as never,
+    });
+    await offAgent.prompt('go');
+    offAgent.dispose();
+
+    // Model without xhigh/max in thinkingLevelMap downgrades xhigh -> high.
+    const xhighFallbackAgent = new HeadlessToolAgent({
+      config: { enableThinking: true, thinkingLevel: 'xhigh' } as never,
+      systemPrompt: 'test',
+      tools: [],
+      maxTurns: 2,
+      timeoutMs: 10_000,
+      streamFn: makeStream() as never,
+    });
+    await xhighFallbackAgent.prompt('go');
+    xhighFallbackAgent.dispose();
+
+    // Model supporting xhigh + max passes max through directly.
+    vi.mocked(resolvePiAiTarget).mockResolvedValueOnce({
+      model: {
+        api: 'openai-codex-responses',
+        provider: 'openai-codex',
+        id: 'gpt-6.2-sol',
+        reasoning: true,
+        thinkingLevelMap: { off: null, minimal: 'low', xhigh: 'xhigh', max: 'max' },
+      } as never,
+      apiKey: 'test',
+    });
+    const maxAgent = new HeadlessToolAgent({
+      config: { enableThinking: true, thinkingLevel: 'max' } as never,
+      systemPrompt: 'test',
+      tools: [],
+      maxTurns: 2,
+      timeoutMs: 10_000,
+      streamFn: makeStream() as never,
+    });
+    await maxAgent.prompt('go');
+    maxAgent.dispose();
+
+    expect(capturedReasonings).toEqual(['high', undefined, 'high', 'max']);
   });
 });

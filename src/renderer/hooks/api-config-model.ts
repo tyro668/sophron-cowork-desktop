@@ -79,7 +79,13 @@ export function isProfileKey(value: unknown): value is ProviderProfileKey {
 }
 
 export function normalizeThinkingLevel(value: unknown, fallback: ThinkingLevel): ThinkingLevel {
-  return value === 'low' || value === 'medium' || value === 'high' ? value : fallback;
+  return value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+    ? value
+    : fallback;
 }
 
 export function isProviderType(value: unknown): value is ProviderType {

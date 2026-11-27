@@ -194,7 +194,7 @@ const appConfigUpdate = z.looseObject({
   memoryRuntime: objOpt,
   personalAnalysis: objOpt,
   enableThinking: boolOpt,
-  thinkingLevel: z.enum(['low', 'medium', 'high']).optional(),
+  thinkingLevel: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
   isConfigured: boolOpt,
 });
 

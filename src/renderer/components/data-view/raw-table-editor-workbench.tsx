@@ -32,7 +32,9 @@ import {
   History,
   PencilLine,
   RefreshCw,
+  RotateCcw,
   Sparkles,
+  Table2,
   Trash2,
   TriangleAlert,
   Upload,
@@ -217,7 +219,6 @@ export function RawTableEditorWorkbench({
   const [previewPage, setPreviewPage] = useState(1);
   const [customizeGenerating, setCustomizeGenerating] = useState(false);
   const secretReview = useSecretReview();
-  const [secretsKey, setSecretsKey] = useState(0);
   const {
     generationLog,
     logRef: generationLogRef,
@@ -574,7 +575,6 @@ export function RawTableEditorWorkbench({
         secrets: reviewed.secrets,
         secretsReviewed: reviewed.secretsReviewed,
       });
-      setSecretsKey((key) => key + 1);
       updateDataProcessing({
         ...dataProcessing,
         rulePrompt: result.version.rulePrompt,
@@ -1333,6 +1333,9 @@ export function RawTableEditorWorkbench({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewPreviewFor, previewRun === null]);
 
+  const isCustomizeConfirmed =
+    dataProcessing.strategy === 'customize' && dataProcessing.artifactVersionStatus === 'published';
+
   const customizeSteps: Array<{
     value: RawTableCustomizeStep;
     label: string;
@@ -1341,12 +1344,12 @@ export function RawTableEditorWorkbench({
     {
       value: 'rules',
       label: t('data.rawTables.editor.customizeStepPrompt'),
-      reachable: true,
+      reachable: !isCustomizeConfirmed,
     },
     {
       value: 'generate',
       label: t('data.rawTables.editor.customizeStepGenerate'),
-      reachable: customizeGenerating || generationLog !== null,
+      reachable: !isCustomizeConfirmed && (customizeGenerating || generationLog !== null),
     },
     {
       value: 'review',
@@ -1692,13 +1695,17 @@ export function RawTableEditorWorkbench({
                         value={dataProcessing.strategy}
                         onValueChange={(value) => {
                           if (value === 'customize') {
-                            updateDataProcessing(
-                              customizeDraftBackupRef.current ?? {
-                                strategy: 'customize',
-                                rulePrompt: '',
-                              }
+                            const restored = customizeDraftBackupRef.current ?? {
+                              strategy: 'customize' as const,
+                              rulePrompt: '',
+                            };
+                            updateDataProcessing(restored);
+                            setCustomizeStep(
+                              restored.artifactVersionStatus === 'published' &&
+                                restored.artifactVersionId
+                                ? 'review'
+                                : 'rules'
                             );
-                            setCustomizeStep('rules');
                             return;
                           }
                           updateDataProcessing({ strategy: 'auto' });
@@ -1732,16 +1739,57 @@ export function RawTableEditorWorkbench({
                   data-testid="raw-customize-steps"
                 >
                   <RawTableConfigRow label={t('data.rawTables.editor.customizeFlowLabel')}>
-                    <WorkbenchStepBreadcrumb
-                      steps={customizeSteps}
-                      activeStep={customizeStep}
-                      onSelectStep={setCustomizeStep}
-                    />
+                    <div className="flex min-h-[35px] min-w-0 flex-1 items-stretch justify-between">
+                      <WorkbenchStepBreadcrumb
+                        steps={customizeSteps}
+                        activeStep={customizeStep}
+                        onSelectStep={setCustomizeStep}
+                      />
+                      {customizeStep === 'review' ? (
+                        <div
+                          role="tablist"
+                          aria-label={t('data.rawTables.editor.customizeStepReview')}
+                          data-testid="raw-customize-review-tabs"
+                          className="flex flex-shrink-0 items-stretch divide-x divide-border-subtle border-l border-border-subtle"
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={reviewView === 'result'}
+                            data-testid="raw-customize-tab-result"
+                            onClick={() => setReviewView('result')}
+                            className={`inline-flex items-center justify-center gap-1.5 px-3.5 text-xs transition-colors ${
+                              reviewView === 'result'
+                                ? 'bg-accent-muted font-semibold text-accent'
+                                : 'font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                            }`}
+                          >
+                            <Table2 className="h-3.5 w-3.5" />
+                            {t('data.rawTables.editor.viewResult')}
+                          </button>
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={reviewView === 'code'}
+                            data-testid="raw-customize-toggle-code"
+                            onClick={() => setReviewView('code')}
+                            className={`inline-flex items-center justify-center gap-1.5 px-3.5 text-xs transition-colors ${
+                              reviewView === 'code'
+                                ? 'bg-accent-muted font-semibold text-accent'
+                                : 'font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                            }`}
+                          >
+                            <FileCode2 className="h-3.5 w-3.5" />
+                            {t('data.rawTables.editor.viewCodeAdvanced')}
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
                   </RawTableConfigRow>
                 </section>
 
                 <section
-                  className="ui-group ui-form-flush flex min-h-0 flex-1 flex-col overflow-hidden bg-surface"
+                  className="ui-group ui-form-flush flex min-h-0 flex-1 flex-col overflow-hidden !border-b-0 bg-surface"
                   data-testid="raw-customize-pane"
                 >
                   {customizeStep === 'rules' ? (
@@ -1750,11 +1798,8 @@ export function RawTableEditorWorkbench({
                       selectedSkillNames={customizeSelectedSkillNames}
                       appConfig={appConfig}
                       disabled={isBusy || !rawTable}
-                      isBusy={isBusy}
-                      generating={customizeGenerating}
                       modelMenuOpen={customizeModelMenuOpen}
                       selectedModelConfigSetId={selectedCustomizeModelConfigSetId}
-                      secretsKey={secretsKey}
                       onModelMenuOpenChange={setCustomizeModelMenuOpen}
                       onPatchProcessing={patchCustomizeDataProcessing}
                     />
@@ -1878,7 +1923,7 @@ export function RawTableEditorWorkbench({
                           disabled={!canGenerateCustomizeDraft}
                           onClick={() => void generateCustomizeDraft()}
                           data-testid="raw-customize-generate"
-                          className="ui-accent-cell border-l border-border-subtle"
+                          className="ui-accent-cell border-l border-border-subtle bg-accent-muted/45 font-medium hover:bg-accent-muted disabled:bg-transparent"
                           title={t('data.rawTables.editor.generateProjectDisabled')}
                         >
                           {customizeGenerating ? (
@@ -1971,10 +2016,13 @@ export function RawTableEditorWorkbench({
                           ? t('data.rawTables.editor.versionStatusArchived')
                           : t('data.rawTables.editor.versionStatusDraft')
                       : '';
-                    cols = '104px minmax(0,1fr) 104px 140px 104px';
+                    const showBackCell = !isCustomizeConfirmed;
+                    cols = showBackCell
+                      ? '104px minmax(0,1fr) 104px 104px'
+                      : 'minmax(0,1fr) 104px 104px 104px';
                     cells = (
                       <>
-                        {backCell}
+                        {showBackCell ? backCell : null}
                         {previewFailedHere && normalizerReport && !previewOpen ? (
                           // Step bar failure note: the reason plus the way back to the 报错 panel.
                           <button
@@ -1983,7 +2031,9 @@ export function RawTableEditorWorkbench({
                             onClick={() => setPreviewOpen(true)}
                             title={normalizerReport.message}
                             data-testid="raw-customize-preview-failure"
-                            className="flex min-w-0 items-center gap-1.5 border-l border-border-subtle px-2.5 text-left text-xs font-medium text-error hover:bg-error/5"
+                            className={`flex min-w-0 items-center gap-1.5 px-2.5 text-left text-xs font-medium text-error hover:bg-error/5 ${
+                              showBackCell ? 'border-l border-border-subtle' : ''
+                            }`}
                           >
                             <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
                             <span className="truncate">
@@ -2014,7 +2064,8 @@ export function RawTableEditorWorkbench({
                               </span>
                             ) : (
                               ''
-                            )
+                            ),
+                            !showBackCell
                           )
                         )}
                         <button
@@ -2026,24 +2077,18 @@ export function RawTableEditorWorkbench({
                           <History className="h-3.5 w-3.5" />
                           {t('data.rawTables.editor.versionHistory')}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReviewView((view) => (view === 'result' ? 'code' : 'result'))
-                          }
-                          data-testid="raw-customize-toggle-code"
-                          aria-pressed={reviewView === 'code'}
-                          className={`${toolCell} ${reviewView === 'code' ? 'bg-accent-muted text-accent' : ''}`}
-                        >
-                          {reviewView === 'code' ? (
-                            <Eye className="h-3.5 w-3.5" />
-                          ) : (
-                            <FileCode2 className="h-3.5 w-3.5" />
-                          )}
-                          {reviewView === 'code'
-                            ? t('data.rawTables.editor.viewResult')
-                            : t('data.rawTables.editor.viewCodeAdvanced')}
-                        </button>
+                        {isCustomizeConfirmed ? (
+                          <button
+                            type="button"
+                            disabled={isBusy || !rawTable}
+                            onClick={() => setCustomizeStep('rules')}
+                            data-testid="raw-customize-reedit"
+                            className={toolCell}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            {t('data.rawTables.editor.regenerateProjectDraft')}
+                          </button>
+                        ) : null}
                         {isPublished ? (
                           <span
                             data-testid="raw-customize-published"
@@ -2079,7 +2124,7 @@ export function RawTableEditorWorkbench({
                   }
                   return (
                     <div
-                      className="grid h-9 flex-shrink-0 border-t border-border-subtle bg-surface"
+                      className="grid h-10 flex-shrink-0 border-t border-border-subtle bg-surface-muted/35"
                       style={{ gridTemplateColumns: cols }}
                       data-testid="raw-customize-actions"
                     >

@@ -2869,7 +2869,9 @@
       "off": "Off",
       "low": "Low",
       "medium": "Medium",
-      "high": "High"
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max"
     },
     "enableThinkingOllamaHint": "Most Ollama models do not support thinking mode. Enable only if your model explicitly supports it.",
     "testSuccess": "Connection successful ({{ms}}ms)",

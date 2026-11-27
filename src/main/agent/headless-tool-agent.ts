@@ -17,6 +17,10 @@ import type { AssistantMessage } from '@earendil-works/pi-ai';
 import type { AppConfig } from '../config/config-store';
 import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { resolvePiAiTarget } from './pi-ai-one-shot';
+import {
+  resolveConfiguredThinkingLevel,
+  resolveEffectiveThinkingLevel,
+} from './pi-model-resolution';
 import type { AnyAgentTool } from './workspace-tools';
 import { log, logWarn } from '../utils/logger';
 import { waitWithSignal } from '../utils/wait-with-signal';
@@ -146,11 +150,15 @@ export class HeadlessToolAgent {
       this.cancellation.signal
     );
     this.cancellation.signal.throwIfAborted();
+    const thinkingLevel = resolveEffectiveThinkingLevel(
+      model,
+      resolveConfiguredThinkingLevel(this.options.config)
+    );
     const agent = new Agent({
       initialState: {
         systemPrompt: this.options.systemPrompt,
         model,
-        thinkingLevel: 'off',
+        thinkingLevel,
         tools: this.options.tools,
         messages: [],
       },

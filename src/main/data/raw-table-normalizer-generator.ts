@@ -3,6 +3,7 @@ import { parse } from 'acorn';
 import { spawnSync } from 'node:child_process';
 import type { AppConfig } from '../config/config-store';
 import { runPiAiOneShot } from '../agent/pi-ai-one-shot';
+import { resolveConfiguredThinkingLevel } from '../agent/pi-model-resolution';
 import {
   runNormalizerAgent,
   type NormalizerPreviewCheck,
@@ -134,6 +135,7 @@ export function createLlmRawTableNormalizerProjectGenerator(
         rulePrompt: buildSkillAwareRulePrompt(input.rulePrompt, input.selectedSkillNames),
       };
       const runtimeConfig = input.runtimeConfig ?? (await getConfig());
+      const reasoning = resolveConfiguredThinkingLevel(runtimeConfig);
       const sourceSummary = compactSourceSummary(input.sourceSummary);
       const analysisProgress = createJsonProgressWriter(input, 'source_analysis');
       const analysisResponse = await runPiAiOneShot(
@@ -143,6 +145,7 @@ export function createLlmRawTableNormalizerProjectGenerator(
         {
           temperature: 0,
           maxTokens: 8_000,
+          reasoning,
           onTextDelta: analysisProgress.append,
           signal: input.signal,
         }
@@ -163,6 +166,7 @@ export function createLlmRawTableNormalizerProjectGenerator(
         {
           temperature: 0.1,
           maxTokens: 16_000,
+          reasoning,
           onTextDelta: codeProgress.append,
           signal: input.signal,
         }
@@ -280,7 +284,13 @@ export function createLlmRawTableNormalizerProjectGenerator(
         buildNormalizerFixUserPrompt(input, payload),
         buildNormalizerFixSystemPrompt(input.primaryLanguage),
         runtimeConfig,
-        { temperature: 0.1, maxTokens: 16_000, onTextDelta: onDelta, signal: input.signal }
+        {
+          temperature: 0.1,
+          maxTokens: 16_000,
+          reasoning: resolveConfiguredThinkingLevel(runtimeConfig),
+          onTextDelta: onDelta,
+          signal: input.signal,
+        }
       );
       if (!response.text.trim()) throw new Error('模型没有返回内容');
       const parsed = JSON.parse(extractJsonObject(response.text)) as unknown;

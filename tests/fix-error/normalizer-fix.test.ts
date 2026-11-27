@@ -248,6 +248,74 @@ describe('LLM normalizer fix turn', () => {
     expect(phases).toContain('code_generation');
   });
 
+  it('forwards configured thinking level to one-shot generate and fix calls', async () => {
+    const template = createRawTableNormalizerProjectTemplate('node', 'copy');
+    const seenReasonings: Array<string | undefined> = [];
+    vi.mocked(runPiAiOneShot).mockReset();
+    vi.mocked(runPiAiOneShot)
+      .mockImplementationOnce(async (_prompt, _system, _config, options) => {
+        seenReasonings.push(options?.reasoning);
+        return { text: '{"sourceKind":"csv"}' } as Awaited<ReturnType<typeof runPiAiOneShot>>;
+      })
+      .mockImplementationOnce(async (_prompt, _system, _config, options) => {
+        seenReasonings.push(options?.reasoning);
+        return {
+          text: JSON.stringify({
+            files: [{ path: 'src/transform.js', content: copyTransform('generated') }],
+          }),
+        } as Awaited<ReturnType<typeof runPiAiOneShot>>;
+      })
+      .mockImplementationOnce(async (_prompt, _system, _config, options) => {
+        seenReasonings.push(options?.reasoning);
+        return {
+          text: JSON.stringify({
+            analysis: 'fixed',
+            files: [{ path: 'src/transform.js', content: copyTransform('fixed') }],
+            summary: 'fixed',
+          }),
+        } as Awaited<ReturnType<typeof runPiAiOneShot>>;
+      });
+
+    const runtimeConfig = {
+      provider: 'openai-codex',
+      apiKey: '',
+      baseUrl: '',
+      customProtocol: 'openai',
+      model: 'gpt-6.2-sol',
+      enableThinking: true,
+      thinkingLevel: 'high',
+    } as const;
+    const generator = createLlmRawTableNormalizerProjectGenerator(() => ({}) as AppConfig);
+    const generated = await generator.generate({
+      name: 'orders',
+      primaryLanguage: 'node',
+      rulePrompt: 'copy',
+      runtimeConfig: { ...runtimeConfig },
+      sourceSummary: {
+        sourcePath: '/tmp/orders.csv',
+        sourceKind: 'csv',
+        generatedAt: 0,
+        hash: 'h',
+        fileCount: 1,
+        sampledFileCount: 1,
+        truncated: false,
+        notes: [],
+        files: [],
+      },
+    });
+    await generator.fix!({
+      name: 'orders',
+      primaryLanguage: 'node',
+      rulePrompt: 'copy',
+      runtimeConfig: { ...runtimeConfig },
+      files: generated.files.length > 0 ? generated.files : template.files,
+      baseLabel: 'v1',
+      request: { error: 'boom' },
+    });
+
+    expect(seenReasonings).toEqual(['high', 'high', 'high']);
+  });
+
   it('规则生成 forwards 取消 to its one-shot model calls and stops after the aborted one', async () => {
     const controller = new AbortController();
     const signals: Array<AbortSignal | undefined> = [];

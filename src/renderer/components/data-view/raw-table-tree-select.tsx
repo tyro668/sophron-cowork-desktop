@@ -120,10 +120,9 @@ export function RawTableTreeSelect({
     if (!rect) return;
     const viewportWidth = window.innerWidth || 1024;
     const viewportHeight = window.innerHeight || 768;
-    const maxViewportWidth = Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2);
-    const width = Math.min(Math.max(rect.width, POPOVER_MIN_WIDTH), maxViewportWidth);
-    const maxLeft = Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN);
-    const left = Math.min(Math.max(VIEWPORT_MARGIN, rect.left), maxLeft);
+    const width = Math.min(Math.max(rect.width, POPOVER_MIN_WIDTH), viewportWidth);
+    const maxLeft = Math.max(0, viewportWidth - width);
+    const left = Math.min(Math.max(0, rect.left), maxLeft);
     const spaceBelow = viewportHeight - rect.bottom - VIEWPORT_MARGIN;
     const spaceAbove = rect.top - VIEWPORT_MARGIN;
     const preferDown = spaceBelow >= 180 || spaceBelow >= spaceAbove;

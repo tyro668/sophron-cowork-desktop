@@ -2869,7 +2869,9 @@
       "off": "关闭",
       "low": "低",
       "medium": "中",
-      "high": "高"
+      "high": "高",
+      "xhigh": "极高",
+      "max": "最高"
     },
     "enableThinkingOllamaHint": "大多数 Ollama 模型不支持思考模式，仅在模型明确支持时启用。",
     "testSuccess": "连接成功（{{ms}}ms）",

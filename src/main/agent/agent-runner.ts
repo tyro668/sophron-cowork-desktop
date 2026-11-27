@@ -55,6 +55,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { evaluatePermission, rememberAlwaysAllow } from '../config/permission-rules-store';
 import { completePermissionReview } from '../config/permission-model-review';
 import { runPiAiOneShot } from './pi-ai-one-shot';
+import {
+  resolveConfiguredThinkingLevel,
+  resolveEffectiveThinkingLevel,
+} from './pi-model-resolution';
 import { PathResolver } from '../sandbox/path-resolver';
 import { MCPManager } from '../mcp/mcp-manager';
 import { log, logWarn, logError, logCtx, logCtxError, logTiming } from '../utils/logger';
@@ -856,11 +860,19 @@ export class AgentRunner {
       // Resolve thinking level early — needed for session reuse check below
       const enableThinking =
         runtimeConfigOverride?.enableThinking ?? configStore.get('enableThinking') ?? false;
-      const configuredThinkingLevel =
-        runtimeConfigOverride?.thinkingLevel ?? configStore.get('thinkingLevel') ?? 'medium';
-      logCtx('[AgentRunner] Enable thinking mode:', enableThinking, configuredThinkingLevel);
-      type PiThinkingLevel = 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-      const thinkingLevel: PiThinkingLevel = enableThinking ? configuredThinkingLevel : 'off';
+      const configuredThinkingLevel = resolveConfiguredThinkingLevel({
+        enableThinking,
+        thinkingLevel:
+          runtimeConfigOverride?.thinkingLevel ?? configStore.get('thinkingLevel') ?? 'medium',
+      });
+      const thinkingLevel = resolveEffectiveThinkingLevel(piModel, configuredThinkingLevel);
+      logCtx(
+        '[AgentRunner] Enable thinking mode:',
+        enableThinking,
+        configuredThinkingLevel,
+        '→',
+        thinkingLevel
+      );
       const sessionRuntimeSignature = buildPiSessionRuntimeSignature({
         configProvider: runtimeConfig.provider,
         customProtocol: runtimeConfig.customProtocol,

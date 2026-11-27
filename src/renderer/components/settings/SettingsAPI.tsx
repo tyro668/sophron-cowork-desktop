@@ -392,9 +392,9 @@ export function SettingsAPI() {
                   <div
                     role="radiogroup"
                     aria-label={t('api.thinkingLevel')}
-                    className="grid min-h-[35px] w-full grid-cols-4 divide-x divide-border-subtle"
+                    className="grid min-h-[35px] w-full grid-cols-6 divide-x divide-border-subtle"
                   >
-                    {(['off', 'low', 'medium', 'high'] as const).map((level) => {
+                    {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
                       const active =
                         level === 'off'
                           ? !enableThinking
@@ -413,7 +413,7 @@ export function SettingsAPI() {
                               setThinkingLevel(level);
                             }
                           }}
-                          className={`flex items-center justify-center text-[12px] font-medium transition-colors ${
+                          className={`flex items-center justify-center whitespace-nowrap px-1 text-[12px] font-medium transition-colors ${
                             active
                               ? 'bg-accent-muted text-accent'
                               : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'

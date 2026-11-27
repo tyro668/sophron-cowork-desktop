@@ -375,7 +375,13 @@ function isAppLogoVariant(value: unknown): value is AppLogoVariant {
 }
 
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
-  return value === 'low' || value === 'medium' || value === 'high';
+  return (
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh' ||
+    value === 'max'
+  );
 }
 
 function toThinkingLevel(value: unknown, fallback: ThinkingLevel): ThinkingLevel {

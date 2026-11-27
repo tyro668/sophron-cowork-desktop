@@ -253,11 +253,38 @@ describe('RawTableEditorWorkbench custom draft persistence', () => {
     expect(await screen.findByText('Look right?')).toBeTruthy();
     expect(screen.getByTestId('raw-result-explain').textContent).toContain('2 rows × 2 columns');
     expect(screen.queryByTestId('raw-customize-review')).toBeNull();
+    // Before confirmation, stepping back to rules is still allowed.
+    expect(screen.getByTestId('raw-customize-back')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: /Describe rules/ }) as HTMLButtonElement).disabled
+    ).toBe(false);
+
     fireEvent.click(screen.getByTestId('raw-customize-publish'));
     await waitFor(() => expect(publish).toHaveBeenCalledWith({ versionId: 'ver_1' }));
     await waitFor(() => expect(onUpdateRawTableConfig).toHaveBeenCalledTimes(1));
-    // Code stays one click away under 高级.
+
+    // Once confirmed, returning to earlier steps is locked from both footer and breadcrumb.
+    expect(screen.queryByTestId('raw-customize-back')).toBeNull();
+    expect(
+      (screen.getByRole('button', { name: /Describe rules/ }) as HTMLButtonElement).disabled
+    ).toBe(true);
+    expect((screen.getByRole('button', { name: /Generate/ }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+
+    // Top tab strip switches directly between result and code views.
+    expect(screen.getByTestId('raw-customize-review-tabs')).toBeTruthy();
     fireEvent.click(screen.getByTestId('raw-customize-toggle-code'));
     expect(await screen.findByTestId('raw-customize-review')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('raw-customize-tab-result'));
+    expect(await screen.findByTestId('raw-customize-result')).toBeTruthy();
+
+    // Confirmed versions expose an explicit Regenerate entry to edit rules for a new draft.
+    fireEvent.click(screen.getByTestId('raw-customize-reedit'));
+    expect(promptTextarea().value).toBe('keep paid rows');
+    // Still possible to jump back to the active confirmed result before generating.
+    expect(
+      (screen.getByRole('button', { name: /Confirm result/ }) as HTMLButtonElement).disabled
+    ).toBe(false);
   });
 });

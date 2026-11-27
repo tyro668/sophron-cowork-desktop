@@ -120,7 +120,7 @@ export function FolderSourceOptionsSection({
   return (
     <section className="ui-group ui-form-flush bg-surface" data-testid="raw-source-folder-options">
       <div className="ui-group-title">{tr('importOptions.title')}</div>
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <div className="ui-form-label items-center">{tr('folder.strategy')}</div>
         <div className="ui-form-value !flex-row items-stretch text-[12.5px]">
           <div className="w-[140px] flex-none border-r border-border-subtle">
@@ -196,7 +196,7 @@ export function FolderSourceOptionsSection({
         </div>
       </div>
 
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <div className="ui-form-label items-center">{tr('mode.fileType')}</div>
         <div className="ui-form-value">
           <GlassSelect
@@ -216,7 +216,7 @@ export function FolderSourceOptionsSection({
         </div>
       </div>
 
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <div className="ui-form-label items-center">{tr('importOptions.recursive')}</div>
         <div className="ui-form-value">
           <div className="flex flex-1 items-center px-2.5">
@@ -235,7 +235,7 @@ export function FolderSourceOptionsSection({
 
       {isMerge && (
         <>
-          <div className="ui-form-row">
+          <div className="ui-form-row !pr-0">
             <div className="ui-form-label items-center">{tr('importOptions.sortBy')}</div>
             <div className="ui-form-value">
               <GlassSelect
@@ -256,7 +256,7 @@ export function FolderSourceOptionsSection({
               />
             </div>
           </div>
-          <div className="ui-form-row">
+          <div className="ui-form-row !pr-0">
             <div className="ui-form-label items-center">{tr('importOptions.schema')}</div>
             <div className="ui-form-value">
               <GlassSelect
@@ -275,7 +275,7 @@ export function FolderSourceOptionsSection({
               />
             </div>
           </div>
-          <div className="ui-form-row">
+          <div className="ui-form-row !pr-0">
             <OptionLabelWithTip
               label={tr('importOptions.sheetAll')}
               tip={tr('importOptions.sheetAllHint')}
@@ -296,7 +296,7 @@ export function FolderSourceOptionsSection({
         </>
       )}
 
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <div className="ui-form-label items-center">{tr('importOptions.header')}</div>
         <div className="ui-form-value !flex-row items-stretch">
           <div
@@ -345,7 +345,7 @@ export function FolderSourceOptionsSection({
       </div>
 
       {isMerge && (
-        <div className="ui-form-row">
+        <div className="ui-form-row !pr-0">
           <div className="ui-form-label items-center">{tr('importOptions.systemFields')}</div>
           <div className="ui-form-value">
             <GlassSelect
@@ -367,7 +367,7 @@ export function FolderSourceOptionsSection({
         </div>
       )}
 
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <OptionLabelWithTip
           label={tr('importOptions.allText')}
           tip={tr('importOptions.allTextHint')}
@@ -386,7 +386,7 @@ export function FolderSourceOptionsSection({
         </div>
       </div>
 
-      <div className="ui-form-row">
+      <div className="ui-form-row !pr-0">
         <div className="ui-form-label items-center">{tr('importOptions.password')}</div>
         <div className="ui-form-value">
           <input

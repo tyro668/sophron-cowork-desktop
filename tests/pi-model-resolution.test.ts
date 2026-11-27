@@ -4,6 +4,8 @@ import {
   buildPiModelLookupCandidates,
   buildSyntheticPiModel,
   inferPiApi,
+  resolveConfiguredThinkingLevel,
+  resolveEffectiveThinkingLevel,
   resolvePiModelString,
   resolvePiRegistryModel,
   resolvePiRouteProtocol,
@@ -780,5 +782,133 @@ describe('pi model resolution helpers', () => {
 
     expect(completionsCompat(model)?.thinkingFormat).toBeUndefined();
     expect(completionsCompat(model)?.requiresReasoningContentOnAssistantMessages).toBeUndefined();
+  });
+
+  it('resolves configured thinking level from runtime config', () => {
+    expect(resolveConfiguredThinkingLevel(undefined)).toBe('off');
+    expect(resolveConfiguredThinkingLevel({ enableThinking: false, thinkingLevel: 'high' })).toBe(
+      'off'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true, thinkingLevel: 'low' })).toBe(
+      'low'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true, thinkingLevel: 'medium' })).toBe(
+      'medium'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true, thinkingLevel: 'high' })).toBe(
+      'high'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true, thinkingLevel: 'xhigh' })).toBe(
+      'xhigh'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true, thinkingLevel: 'max' })).toBe(
+      'max'
+    );
+    expect(resolveConfiguredThinkingLevel({ enableThinking: true })).toBe('medium');
+  });
+
+  it('downgrades unsupported thinking levels step by step instead of upgrading', () => {
+    // claude-opus-4-6 supports low/medium/high/max, NOT xhigh: xhigh must downgrade to high.
+    const opus46 = resolvePiRegistryModel('anthropic/claude-opus-4-6', {
+      configProvider: 'anthropic',
+      rawProvider: 'anthropic',
+    })!;
+    expect(resolveEffectiveThinkingLevel(opus46, 'max')).toBe('max');
+    expect(resolveEffectiveThinkingLevel(opus46, 'xhigh')).toBe('high');
+    expect(resolveEffectiveThinkingLevel(opus46, 'high')).toBe('high');
+
+    // gpt-5.4 supports low/medium/high/xhigh, NOT max: max must downgrade to xhigh.
+    const gpt54 = resolvePiRegistryModel('openai/gpt-5.4', {
+      configProvider: 'openai',
+      rawProvider: 'openai',
+    })!;
+    expect(resolveEffectiveThinkingLevel(gpt54, 'max')).toBe('xhigh');
+    expect(resolveEffectiveThinkingLevel(gpt54, 'xhigh')).toBe('xhigh');
+
+    // gpt-5 supports up to high: both max and xhigh downgrade to high.
+    const gpt5 = resolvePiRegistryModel('openai/gpt-5', {
+      configProvider: 'openai',
+      rawProvider: 'openai',
+    })!;
+    expect(resolveEffectiveThinkingLevel(gpt5, 'max')).toBe('high');
+    expect(resolveEffectiveThinkingLevel(gpt5, 'xhigh')).toBe('high');
+
+    // gpt-5-pro only supports high: max downgrades to high, low falls back to lowest supported (high).
+    const gpt5Pro = resolvePiRegistryModel('openai/gpt-5-pro', {
+      configProvider: 'openai',
+      rawProvider: 'openai',
+    })!;
+    expect(resolveEffectiveThinkingLevel(gpt5Pro, 'max')).toBe('high');
+    expect(resolveEffectiveThinkingLevel(gpt5Pro, 'low')).toBe('high');
+
+    // Non-reasoning model always resolves to off.
+    const nonReasoning = buildSyntheticPiModel('gpt-4.1', 'openai', 'openai');
+    expect(resolveEffectiveThinkingLevel(nonReasoning, 'max')).toBe('off');
+  });
+
+  it('omits reasoning instead of sending unsupported effort=none for openai-codex-responses models', async () => {
+    const fakeCodexJwt = [
+      Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url'),
+      Buffer.from(
+        JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'acct_test' } })
+      ).toString('base64url'),
+      'sig',
+    ].join('.');
+
+    const synthetic = applyPiModelRuntimeOverrides(
+      buildSyntheticPiModel(
+        'gpt-6.2-sol',
+        'openai-codex',
+        'openai-codex',
+        'https://chatgpt.com/backend-api'
+      ),
+      { configProvider: 'openai-codex', rawProvider: 'openai-codex' }
+    );
+    expect(synthetic.thinkingLevelMap?.off).toBeNull();
+    expect(synthetic.thinkingLevelMap?.minimal).toBe('low');
+    expect(synthetic.thinkingLevelMap?.xhigh).toBe('xhigh');
+    expect(synthetic.thinkingLevelMap?.max).toBe('max');
+
+    const registry = resolvePiRegistryModel('openai-codex/gpt-6.1-terra', {
+      configProvider: 'openai-codex',
+      rawProvider: 'openai-codex',
+    });
+    expect(registry?.thinkingLevelMap?.off).toBeNull();
+    expect(registry?.thinkingLevelMap?.minimal).toBe('low');
+
+    const capturePayload = async (
+      reasoning?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    ) => {
+      let body: Record<string, unknown> | undefined;
+      await completeSimple(
+        synthetic,
+        { messages: [{ role: 'user', content: 'test', timestamp: 0 }] },
+        {
+          apiKey: fakeCodexJwt,
+          reasoning,
+          onPayload(payload) {
+            body = payload as Record<string, unknown>;
+            throw new Error('offline payload capture');
+          },
+        }
+      );
+      return body;
+    };
+
+    const offBody = await capturePayload(undefined);
+    expect(offBody).toBeDefined();
+    expect(offBody?.reasoning).toBeUndefined();
+
+    const highBody = await capturePayload('high');
+    expect(highBody?.reasoning).toEqual({ effort: 'high', summary: 'auto' });
+
+    const xhighBody = await capturePayload('xhigh');
+    expect(xhighBody?.reasoning).toEqual({ effort: 'xhigh', summary: 'auto' });
+
+    const maxBody = await capturePayload('max');
+    expect(maxBody?.reasoning).toEqual({ effort: 'max', summary: 'auto' });
+
+    const minimalBody = await capturePayload('minimal');
+    expect(minimalBody?.reasoning).toEqual({ effort: 'low', summary: 'auto' });
   });
 });

@@ -23,7 +23,7 @@ export function RawTableConfigRow({
   align?: 'start' | 'center';
 }) {
   return (
-    <div className="ui-form-row">
+    <div className="ui-form-row !pr-0">
       <div className={`ui-form-label ${align === 'start' ? 'items-start pt-2.5' : 'items-center'}`}>
         {label}
       </div>

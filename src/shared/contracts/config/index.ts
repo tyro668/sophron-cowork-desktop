@@ -34,7 +34,7 @@ export type AppAccentTheme = 'mint' | 'lake' | 'lavender' | 'orange' | 'rose';
 export type AppLogoVariant = 'mark' | 'fold';
 
 /** Extended-thinking effort level applied when `enableThinking` is on. */
-export type ThinkingLevel = 'low' | 'medium' | 'high';
+export type ThinkingLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export type ProviderProfileKey =
   | 'openrouter'

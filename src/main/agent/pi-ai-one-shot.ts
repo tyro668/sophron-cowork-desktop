@@ -30,6 +30,7 @@ import {
   applyPiModelRuntimeOverrides,
   buildSyntheticPiModel,
   inferPiApi,
+  resolveEffectiveThinkingLevel,
   resolvePiModelString,
   resolvePiRegistryModel,
   resolvePiRouteProtocol,
@@ -296,11 +297,15 @@ export async function runPiAiOneShot(
     systemPrompt,
     messages: [userMsg],
   };
+  const effectiveReasoning =
+    reasoning && reasoning !== 'off'
+      ? resolveEffectiveThinkingLevel(resolvedModel, reasoning)
+      : 'off';
   const requestOptionsWithAuth = {
     ...requestOptions,
     // One-shot callers own their output budget; conversation thinking settings
     // must not implicitly enable expensive reasoning for titles/classification.
-    reasoning: reasoning === 'off' ? undefined : reasoning,
+    reasoning: effectiveReasoning === 'off' ? undefined : effectiveReasoning,
     apiKey: apiKey || undefined,
   };
   const response =

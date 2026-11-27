@@ -120,7 +120,7 @@ export function GlassSelect({
           side={side}
           align={align}
           sideOffset={sideOffset}
-          collisionPadding={12}
+          collisionPadding={{ top: 8, bottom: 8, left: 0, right: 0 }}
           className={cn(
             selectContentClass,
             'min-w-[var(--radix-select-trigger-width)] max-h-64',

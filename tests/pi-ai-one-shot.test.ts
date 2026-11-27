@@ -99,6 +99,25 @@ vi.mock('../src/main/agent/pi-model-resolution', () => ({
   resolvePiRegistryModel: mocks.resolvePiRegistryModel,
   buildSyntheticPiModel: mocks.buildSyntheticPiModel,
   applyPiModelRuntimeOverrides: (model: unknown) => model,
+  resolveEffectiveThinkingLevel: (
+    model: { reasoning?: boolean; thinkingLevelMap?: Record<string, string | null | undefined> },
+    level: string
+  ) => {
+    if (level === 'off') return 'off';
+    if (model.reasoning === false) return 'off';
+    const order = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+    const isSupported = (candidate: string) => {
+      const mapped = model.thinkingLevelMap?.[candidate];
+      if (mapped === null) return false;
+      if (candidate === 'xhigh' || candidate === 'max') return mapped !== undefined;
+      return true;
+    };
+    if (isSupported(level)) return level;
+    for (let i = order.indexOf(level) - 1; i >= 0; i -= 1) {
+      if (isSupported(order[i])) return order[i];
+    }
+    return 'off';
+  },
   resolveSyntheticPiModelFallback: ({
     rawModel,
     resolvedModelString,
@@ -198,6 +217,8 @@ describe('probeWithPiAi', () => {
     expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBeUndefined();
     await runPiAiOneShot('test', '', config, { reasoning: 'low' });
     expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBe('low');
+    await runPiAiOneShot('test', '', config, { reasoning: 'xhigh' });
+    expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBe('high');
     await runPiAiOneShot('test', '', config, { reasoning: 'off' });
     expect(mocks.completeSimple.mock.calls.at(-1)?.[2].reasoning).toBeUndefined();
     expect(config.enableThinking).toBe(true);

@@ -17,10 +17,15 @@ describe('raw table 自定义 flow matches config design c15–c19', () => {
     expect(breadcrumb).toContain('mx-2.5 h-3.5 w-3.5 flex-shrink-0 text-text-muted');
     expect(workbench).not.toContain('flex h-4.5 w-4.5 items-center justify-center rounded-full');
   });
-  it('rules step: flush prompt, own model row, example chips, bottom action row', () => {
+  it('rules step: model above flush prompt, no secrets/examples rows, bottom action row', () => {
     expect(rulesStep).toContain('ui-composer-flush min-h-0 flex-1');
     expect(rulesStep).toContain("t('data.rawTables.editor.customizeModelLabel')");
     expect(rulesStep).toContain('data-testid="raw-customize-prompt-count"');
+    expect(rulesStep).not.toContain('SecretsEditor');
+    expect(rulesStep).not.toContain('examplesLabel');
+    expect(rulesStep.indexOf("t('data.rawTables.editor.customizeModelLabel')")).toBeLessThan(
+      rulesStep.indexOf('ui-composer-flush min-h-0 flex-1')
+    );
     expect(workbench).toContain('data-testid="raw-customize-actions"');
     expect(workbench).toContain('data-testid="raw-customize-generate"');
     expect(workbench).not.toContain(
@@ -34,13 +39,21 @@ describe('raw table 自定义 flow matches config design c15–c19', () => {
     expect(workbench).toContain('regenerateTestId="raw-customize-regenerate"');
     expect(workbench).not.toContain('mx-4 flex-shrink-0 rounded-lg border border-error/20');
   });
-  it('review step: shared 36px pane header and flush action cells', () => {
+  it('review step: inline result/code switch on step row, shared 36px pane header, and flush action cells', () => {
     expect(reviewCode).toContain('grid-rows-[36px_minmax(0,1fr)]');
     expect(reviewCode).toContain("'grid-cols-[minmax(0,1fr)_92px_240px_40px]'");
     // After an AI 修复 the header gains the 差异/全文 dropdown column.
     expect(reviewCode).toContain("'grid-cols-[minmax(0,1fr)_150px_92px_240px_40px]'");
+    expect(workbench).toContain('data-testid="raw-customize-review-tabs"');
+    expect(workbench).toContain('data-testid="raw-customize-tab-result"');
+    expect(workbench).toContain('data-testid="raw-customize-toggle-code"');
+    expect(workbench.indexOf('data-testid="raw-customize-review-tabs"')).toBeLessThan(
+      workbench.indexOf('data-testid="raw-customize-pane"')
+    );
     expect(workbench).toContain('data-testid="raw-customize-version-summary"');
-    expect(workbench).toContain("'104px minmax(0,1fr) 104px 140px 104px'");
+    expect(workbench).toContain('data-testid="raw-customize-reedit"');
+    expect(workbench).toContain("'104px minmax(0,1fr) 104px 104px'");
+    expect(workbench).toContain("'minmax(0,1fr) 104px 104px 104px'");
     expect(versions).not.toContain('ring-1 ring-inset ring-accent/20');
   });
   it('version history: flush 6-column grid in a p-0 dialog', () => {

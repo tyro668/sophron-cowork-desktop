@@ -234,18 +234,42 @@ export function SourceGroup({
 }
 
 export function InfoTip({ label }: { label: string }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const open = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewportWidth = window.innerWidth || 1024;
+    const left = Math.min(rect.right + 8, Math.max(12, viewportWidth - 280));
+    setPos({ top: rect.top + rect.height / 2, left });
+  };
+  const close = () => setPos(null);
   return (
-    <span className="group relative inline-flex" data-testid="raw-source-merge-reason">
+    <span className="inline-flex" data-testid="raw-source-merge-reason">
       <button
+        ref={triggerRef}
         type="button"
         aria-label={label}
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted hover:text-accent focus:outline-none"
+        onMouseEnter={open}
+        onMouseLeave={close}
+        onFocus={open}
+        onBlur={close}
+        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:text-accent focus:text-accent focus:outline-none"
       >
         <Info className="h-3.5 w-3.5" />
       </button>
-      <span className="pointer-events-none absolute left-full top-1/2 z-30 ml-2 hidden -translate-y-1/2 whitespace-nowrap rounded-md border border-border-muted bg-surface px-2.5 py-1.5 text-[12px] text-text-primary shadow-elevated group-hover:block group-focus-within:block">
-        {label}
-      </span>
+      {pos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              role="tooltip"
+              style={{ top: pos.top, left: pos.left }}
+              className="pointer-events-none fixed z-[10010] max-w-[268px] -translate-y-1/2 border border-border bg-surface px-2.5 py-1.5 text-[12px] font-normal leading-5 text-text-secondary shadow-elevated"
+            >
+              {label}
+            </div>,
+            document.body
+          )
+        : null}
     </span>
   );
 }
@@ -265,7 +289,9 @@ export function OptionLabelWithTip({
   const open = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    setPos({ top: rect.top + rect.height / 2, left: rect.right + 8 });
+    const viewportWidth = window.innerWidth || 1024;
+    const left = Math.min(rect.right + 8, Math.max(12, viewportWidth - 280));
+    setPos({ top: rect.top + rect.height / 2, left });
   };
   const close = () => setPos(null);
   return (
@@ -289,7 +315,7 @@ export function OptionLabelWithTip({
             <div
               role="tooltip"
               style={{ top: pos.top, left: pos.left }}
-              className="pointer-events-none fixed z-[9999] max-w-[260px] -translate-y-1/2 rounded-md border border-border-muted bg-surface px-2.5 py-1.5 text-[12px] font-normal leading-5 text-text-secondary shadow-elevated"
+              className="pointer-events-none fixed z-[10010] max-w-[268px] -translate-y-1/2 border border-border bg-surface px-2.5 py-1.5 text-[12px] font-normal leading-5 text-text-secondary shadow-elevated"
             >
               {tip}
             </div>,

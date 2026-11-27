@@ -320,7 +320,7 @@ export function RawSourceDetail({
             data-testid="raw-source-detail-source"
           >
             <div className="ui-group-title">{tr('config.sourceGroup')}</div>
-            <div className="ui-form-row">
+            <div className="ui-form-row !pr-0">
               <div className={label}>{isFolder ? tr('config.folder') : tr('config.file')}</div>
               <div className="ui-form-value !flex-row items-stretch">
                 <div className={cellText}>
@@ -343,7 +343,7 @@ export function RawSourceDetail({
                 )}
               </div>
             </div>
-            <div className="ui-form-row">
+            <div className="ui-form-row !pr-0">
               <div className={label}>{tr('detail.buildMode')}</div>
               <div className="ui-form-value !flex-row items-stretch">
                 <select
@@ -372,7 +372,7 @@ export function RawSourceDetail({
               </div>
             </div>
             {!isCloud && !changingMode && (
-              <div className="ui-form-row">
+              <div className="ui-form-row !pr-0">
                 <div className={label}>{tr('detail.autoIncludeLabel')}</div>
                 <div className="ui-form-value">
                   <div className={cellText}>
@@ -399,7 +399,7 @@ export function RawSourceDetail({
                 </div>
               </div>
             )}
-            <div className="ui-form-row">
+            <div className="ui-form-row !pr-0">
               <div className={label}>{tr('detail.lastScan')}</div>
               <div className="ui-form-value">
                 <div className={cellText} data-testid="raw-source-last-scan">

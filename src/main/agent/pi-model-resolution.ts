@@ -1,4 +1,9 @@
-import { getModel, type Api, type Model } from '@earendil-works/pi-ai/compat';
+import {
+  getModel,
+  getSupportedThinkingLevels,
+  type Api,
+  type Model,
+} from '@earendil-works/pi-ai/compat';
 import { isOfficialOpenAIBaseUrl } from '../config/auth-utils';
 
 const COMMON_FALLBACK_PROVIDERS = ['openai', 'anthropic', 'google'] as const;
@@ -48,6 +53,58 @@ export interface SyntheticPiModelFallbackInput {
 export interface SyntheticPiModelFallback {
   provider: string;
   modelId: string;
+}
+
+export type ConfiguredThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+const THINKING_LEVEL_ORDER = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type EffectivePiThinkingLevel = 'off' | (typeof THINKING_LEVEL_ORDER)[number];
+
+const GPT_MAX_REASONING_PATTERN = /(?:^|\/)gpt-(?:5\.6|6(?:\.\d+)?)(?:$|[/_.-])/i;
+const GPT_XHIGH_REASONING_PATTERN = /(?:^|\/)gpt-5\.[2-5](?:$|[/_.-])/i;
+const CLAUDE_MAX_REASONING_PATTERN =
+  /(?:^|\/)claude-(?:(?:opus|sonnet|haiku|fable)-5|opus-4-[78])(?:$|[/_.-])/i;
+
+export function resolveConfiguredThinkingLevel(
+  config?: { enableThinking?: boolean; thinkingLevel?: string } | null
+): ConfiguredThinkingLevel {
+  if (!config?.enableThinking) return 'off';
+  const level = config.thinkingLevel;
+  if (
+    level === 'low' ||
+    level === 'medium' ||
+    level === 'high' ||
+    level === 'xhigh' ||
+    level === 'max'
+  ) {
+    return level;
+  }
+  return 'medium';
+}
+
+/**
+ * Resolve the effective thinking level for a model.
+ * When the model does not support the requested tier, downgrade step-by-step
+ * (max -> xhigh -> high -> medium -> low -> minimal) rather than upgrading.
+ */
+export function resolveEffectiveThinkingLevel(
+  model: Model<Api>,
+  requested: EffectivePiThinkingLevel
+): EffectivePiThinkingLevel {
+  if (requested === 'off' || !model.reasoning) return 'off';
+
+  const supported = getSupportedThinkingLevels(model).filter(
+    (level): level is (typeof THINKING_LEVEL_ORDER)[number] => level !== 'off'
+  );
+  if (supported.length === 0) return 'off';
+  if (supported.includes(requested)) return requested;
+
+  const requestedIndex = THINKING_LEVEL_ORDER.indexOf(requested);
+  for (let i = requestedIndex - 1; i >= 0; i -= 1) {
+    const candidate = THINKING_LEVEL_ORDER[i];
+    if (supported.includes(candidate)) return candidate;
+  }
+  return supported[0];
 }
 
 export function resolvePiRouteProtocol(provider?: string, customProtocol?: string): string {
@@ -414,6 +471,64 @@ export function applyPiModelRuntimeOverrides(
         off: 'none',
       },
     } as typeof nextModel;
+  }
+
+  // ChatGPT Codex subscription models (e.g. gpt-6.2-sol, gpt-6.1-sol/terra) reject
+  // reasoning.effort = "none" and "minimal" (supported: low/medium/high/xhigh/max).
+  // Setting off: null tells pi-ai to omit body.reasoning when thinking is off instead
+  // of sending { effort: "none" }, and maps minimal -> low. For synthetic models not
+  // yet in pi-ai's static catalog, fill in xhigh/max without overriding explicit nulls.
+  if (nextModel.api === 'openai-codex-responses' && nextModel.reasoning) {
+    const currentThinkingLevelMap =
+      nextModel.thinkingLevelMap && typeof nextModel.thinkingLevelMap === 'object'
+        ? nextModel.thinkingLevelMap
+        : {};
+    const inferredHigherLevels: Record<string, string> = {};
+    if (GPT_MAX_REASONING_PATTERN.test(nextModel.id)) {
+      if (currentThinkingLevelMap.xhigh === undefined) inferredHigherLevels.xhigh = 'xhigh';
+      if (currentThinkingLevelMap.max === undefined) inferredHigherLevels.max = 'max';
+    } else if (GPT_XHIGH_REASONING_PATTERN.test(nextModel.id)) {
+      if (currentThinkingLevelMap.xhigh === undefined) inferredHigherLevels.xhigh = 'xhigh';
+    }
+    nextModel = {
+      ...nextModel,
+      thinkingLevelMap: {
+        ...currentThinkingLevelMap,
+        ...inferredHigherLevels,
+        off: null,
+        minimal: currentThinkingLevelMap.minimal ?? 'low',
+      },
+    } as typeof nextModel;
+  } else if (
+    nextModel.reasoning &&
+    (nextModel.api === 'openai-responses' || nextModel.api === 'anthropic-messages')
+  ) {
+    const currentThinkingLevelMap =
+      nextModel.thinkingLevelMap && typeof nextModel.thinkingLevelMap === 'object'
+        ? nextModel.thinkingLevelMap
+        : {};
+    const inferredHigherLevels: Record<string, string> = {};
+    if (
+      (nextModel.api === 'openai-responses' && GPT_MAX_REASONING_PATTERN.test(nextModel.id)) ||
+      (nextModel.api === 'anthropic-messages' && CLAUDE_MAX_REASONING_PATTERN.test(nextModel.id))
+    ) {
+      if (currentThinkingLevelMap.xhigh === undefined) inferredHigherLevels.xhigh = 'xhigh';
+      if (currentThinkingLevelMap.max === undefined) inferredHigherLevels.max = 'max';
+    } else if (
+      nextModel.api === 'openai-responses' &&
+      GPT_XHIGH_REASONING_PATTERN.test(nextModel.id)
+    ) {
+      if (currentThinkingLevelMap.xhigh === undefined) inferredHigherLevels.xhigh = 'xhigh';
+    }
+    if (Object.keys(inferredHigherLevels).length > 0) {
+      nextModel = {
+        ...nextModel,
+        thinkingLevelMap: {
+          ...currentThinkingLevelMap,
+          ...inferredHigherLevels,
+        },
+      } as typeof nextModel;
+    }
   }
 
   // DeepSeek expects replayed reasoning as a top-level reasoning_content field,

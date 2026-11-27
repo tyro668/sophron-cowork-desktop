@@ -1,4 +1,4 @@
-import { Info, Minus, Plus } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type {
   DataColumnTypeInfo,
@@ -61,72 +61,61 @@ export function ParsingDetailSection({
                 contentClassName="w-[var(--radix-select-trigger-width)]"
               />
             </RawTableConfigRow>
-            <RawTableConfigRow
-              label={
-                <span className="inline-flex items-center gap-1.5">
-                  {t('data.rawTables.editor.headerRow')}
-                  <span className="group relative inline-flex">
-                    <button
-                      type="button"
-                      className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
-                      aria-label={t('data.rawTables.editor.headerRowDetectHint')}
-                    >
-                      <Info className="h-3.5 w-3.5" />
-                    </button>
-                    <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
-                      {t('data.rawTables.editor.headerRowDetectHint')}
-                    </span>
-                  </span>
-                </span>
-              }
-            >
-              <div
-                className={`ui-flush-split grid flex-1 ${
-                  excelConfig.headerMode === 'manual' ? 'grid-cols-[minmax(0,1fr)_10rem]' : ''
-                }`}
-              >
-                <GlassSelect
-                  value={excelConfig.headerMode}
-                  onValueChange={(value) =>
-                    onUpdateConfig({
-                      ...excelConfig,
-                      headerMode: value as DataRawTableExcelConfig['headerMode'],
-                    })
-                  }
-                  options={[
-                    { value: 'auto', label: t('data.rawTables.editor.smartDetect') },
-                    {
-                      value: 'manual',
-                      label: t('data.rawTables.editor.manualSpecify'),
-                    },
-                  ]}
-                  disabled={disabled}
-                  triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
-                  contentClassName="w-[var(--radix-select-trigger-width)]"
-                />
-                {excelConfig.headerMode === 'manual' ? (
-                  <label className="relative block border-l border-border-subtle">
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={excelConfig.headerRow}
-                      onChange={(event) =>
-                        onUpdateConfig({
-                          ...excelConfig,
-                          headerRow: Math.max(1, Math.floor(Number(event.target.value) || 1)),
-                        })
-                      }
-                      disabled={disabled}
-                      className="box-border h-full min-h-[35px] w-full border-0 bg-transparent pl-[10px] pr-10 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    />
-                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
-                      {t('data.rawTables.editor.rowUnit')}
-                    </span>
-                  </label>
-                ) : null}
+            <div className="ui-form-row !pr-0">
+              <OptionLabelWithTip
+                label={t('data.rawTables.editor.headerRow')}
+                tip={t('data.rawTables.editor.headerRowDetectHint')}
+                testId="raw-table-excel-header-row-tip"
+              />
+              <div className="ui-form-value">
+                <div
+                  className={`ui-flush-split grid flex-1 ${
+                    excelConfig.headerMode === 'manual' ? 'grid-cols-[minmax(0,1fr)_10rem]' : ''
+                  }`}
+                >
+                  <GlassSelect
+                    value={excelConfig.headerMode}
+                    onValueChange={(value) =>
+                      onUpdateConfig({
+                        ...excelConfig,
+                        headerMode: value as DataRawTableExcelConfig['headerMode'],
+                      })
+                    }
+                    options={[
+                      { value: 'auto', label: t('data.rawTables.editor.smartDetect') },
+                      {
+                        value: 'manual',
+                        label: t('data.rawTables.editor.manualSpecify'),
+                      },
+                    ]}
+                    disabled={disabled}
+                    triggerClassName="w-full justify-between text-text-primary disabled:opacity-60"
+                    contentClassName="w-[var(--radix-select-trigger-width)]"
+                  />
+                  {excelConfig.headerMode === 'manual' ? (
+                    <label className="relative block border-l border-border-subtle">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={excelConfig.headerRow}
+                        onChange={(event) =>
+                          onUpdateConfig({
+                            ...excelConfig,
+                            headerRow: Math.max(1, Math.floor(Number(event.target.value) || 1)),
+                          })
+                        }
+                        disabled={disabled}
+                        className="box-border h-full min-h-[35px] w-full border-0 bg-transparent pl-[10px] pr-10 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted hover:bg-surface-hover focus:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-text-muted">
+                        {t('data.rawTables.editor.rowUnit')}
+                      </span>
+                    </label>
+                  ) : null}
+                </div>
               </div>
-            </RawTableConfigRow>
+            </div>
             <RawTableConfigRow label={t('data.rawTables.editor.columnTypes')}>
               <ColumnTypeOverridesEditor
                 overrides={excelConfig.columnTypeOverrides ?? []}
@@ -403,7 +392,7 @@ export function ParsingDetailSection({
               contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </RawTableConfigRow>
-          <div className="ui-form-row">
+          <div className="ui-form-row !pr-0">
             <OptionLabelWithTip
               label={t('data.rawSources.importOptions.sheetAll')}
               tip={t('data.rawSources.importOptions.sheetAllHint')}
@@ -509,7 +498,7 @@ export function ParsingDetailSection({
               contentClassName="w-[var(--radix-select-trigger-width)]"
             />
           </RawTableConfigRow>
-          <div className="ui-form-row">
+          <div className="ui-form-row !pr-0">
             <OptionLabelWithTip
               label={t('data.rawSources.importOptions.allText')}
               tip={t('data.rawSources.importOptions.allTextHint')}
