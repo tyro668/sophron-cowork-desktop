@@ -198,6 +198,19 @@ export const AutomationPrepareScheduleUpdateInputSchema = Type.Object(
       description: TOOL_SCHEMA_COPY.automation.automationId,
     }),
     schedule: AutomationScheduleInputSchema,
+    name: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 200,
+        description: TOOL_SCHEMA_COPY.automation.scheduleUpdateName,
+      })
+    ),
+    description: Type.Optional(
+      Type.String({
+        maxLength: 2_000,
+        description: TOOL_SCHEMA_COPY.automation.scheduleUpdateDescription,
+      })
+    ),
   },
   { additionalProperties: false }
 );
@@ -209,6 +222,19 @@ export const AutomationPrepareScheduleUpdateParametersSchema = Type.Object(
       description: TOOL_SCHEMA_COPY.automation.automationId,
     }),
     schedule: Type.Union([AutomationScheduleInputSchema, SerializedObjectFallbackSchema]),
+    name: Type.Optional(
+      Type.String({
+        minLength: 1,
+        maxLength: 200,
+        description: TOOL_SCHEMA_COPY.automation.scheduleUpdateName,
+      })
+    ),
+    description: Type.Optional(
+      Type.String({
+        maxLength: 2_000,
+        description: TOOL_SCHEMA_COPY.automation.scheduleUpdateDescription,
+      })
+    ),
   },
   { additionalProperties: false }
 );
@@ -280,6 +306,9 @@ export interface PreparedAutomationDraft {
 export interface PreparedAutomationScheduleUpdateSummary {
   automationId: string;
   name: string;
+  /** Name after the update; equals `name` when unchanged. */
+  nextName: string;
+  descriptionChange: 'kept' | 'updated' | 'cleared';
   previousScheduleText: string;
   scheduleText: string;
   timezone: string;
@@ -293,6 +322,9 @@ export interface PreparedAutomationScheduleUpdateDraft {
   automationId: string;
   expectedTrigger: AutomationTrigger;
   trigger: AutomationTrigger;
+  /** Name and description written together with the new trigger. */
+  name: string;
+  description: string | null;
   summary: PreparedAutomationScheduleUpdateSummary;
 }
 

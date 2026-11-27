@@ -240,3 +240,27 @@ function computeNextRuns(trigger: AutomationTrigger, now: number, count: number)
   }
   return results;
 }
+
+function triggerTimes(trigger: AutomationTrigger): string[] {
+  return 'times' in trigger ? trigger.times : [];
+}
+
+/**
+ * Whether free text names an execution time of `previous` that `next` no longer
+ * uses (e.g. "08:00" or "8:00" after moving to 09:00). Times are language
+ * neutral, so this works for model-written Chinese and English descriptions.
+ */
+export function mentionsReplacedScheduleTime(
+  text: string,
+  previous: AutomationTrigger,
+  next: AutomationTrigger
+): boolean {
+  const kept = new Set(triggerTimes(next));
+  return triggerTimes(previous)
+    .filter((time) => !kept.has(time))
+    .some((time) => {
+      const [hour, minute] = time.split(':');
+      const pattern = new RegExp(`(^|[^\\d])0?${Number(hour)}:${minute}(?!\\d)`);
+      return pattern.test(text);
+    });
+}

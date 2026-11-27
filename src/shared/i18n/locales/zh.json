@@ -4149,7 +4149,23 @@
     "runFilter7d": "最近 7 天",
     "runFilter30d": "最近 30 天",
     "runSearch": "搜索执行记录…",
-    "runFailed": "执行失败"
+    "runFailed": "执行失败",
+    "triggerSummary": {
+      "manual": "手动执行",
+      "once": "单次 {{time}}",
+      "interval": "每 {{every}} {{unit}}",
+      "daily": "每天 {{times}}",
+      "weekly": "每{{weekdays}} {{times}}",
+      "monthly": "每月 {{days}} {{times}}",
+      "lastDay": "最后一天",
+      "dayOfMonth": "{{day}} 日",
+      "cron": "Cron {{expression}}",
+      "fileChange": "文件变更时",
+      "listSeparator": "、",
+      "unitMinute": "分钟",
+      "unitHour": "小时",
+      "unitDay": "天"
+    }
   },
   "remote": {
     "title": "远程控制",

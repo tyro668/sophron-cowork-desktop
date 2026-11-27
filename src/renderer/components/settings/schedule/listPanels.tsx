@@ -1,5 +1,6 @@
 import { getAutomationTableBindings } from '../../../../shared/automation/table-bindings';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ChevronDown,
   ArrowUpDown,
@@ -19,6 +20,7 @@ import { Switch } from '../../ui/switch';
 import { GlassDropdownMenu, GlassMenuItem } from '../../GlassDropdownMenu';
 import type { AutomationRunLogEntry } from './types';
 import { AUTOMATION_TABLE_PAGE_SIZE } from './types';
+import { formatAutomationTriggerSummary } from './trigger-summary';
 
 type RunStatusFilter = 'all' | 'succeeded' | 'failed' | 'running';
 type RunRangeFilter = 'all' | '1d' | '7d' | '30d';
@@ -461,6 +463,7 @@ function AutomationTable({
   onDeleteGroup: (group: DataListGroup) => void;
   tr: (key: string, fallback?: string) => string;
 }) {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const sections = buildGroupSections(automations, groups, (automation) => automation.groupId);
   const grouped = hasNamedSections(sections);
@@ -468,6 +471,7 @@ function AutomationTable({
     const selected = automation.id === selectedId;
     const inactive = !automation.enabled;
     const RowIcon = automation.trigger.kind === 'manual' ? Hand : CalendarClock;
+    const triggerSummary = formatAutomationTriggerSummary(automation.trigger, t);
     const icon = inactive
       ? { bgClass: 'bg-surface-active text-text-muted', textClass: 'text-text-muted' }
       : { bgClass: 'bg-accent-muted text-accent', textClass: 'text-accent' };
@@ -517,12 +521,12 @@ function AutomationTable({
         </td>
         <td
           className="truncate px-2 text-[12.5px] text-text-secondary"
-          title={automation.description || undefined}
+          title={[triggerSummary, automation.description].filter(Boolean).join('\n')}
         >
-          {automation.description ||
-            (automation.trigger.kind === 'manual'
-              ? tr('schedule.runReason.manual')
-              : tr('schedule.runReason.timer'))}
+          {triggerSummary}
+          {automation.description && (
+            <span className="text-text-muted"> · {automation.description}</span>
+          )}
         </td>
         <td className="px-2 text-[13px] font-medium text-text-secondary">
           {automation.actionGraph.nodes.length}

@@ -206,7 +206,7 @@ export const AUTOMATION_TOOL_COPY = {
   automation_prepare_schedule_update: {
     label: 'Prepare automation schedule update',
     description:
-      'Validate and preview a schedule-only update for an existing automation. Resolve the exact automation id with automation_list first. This preserves the automation action and enabled or paused state, and returns a draftId for automation_update_schedule.',
+      'Validate and preview a schedule-only update for an existing automation. Resolve the exact automation id with automation_list first. This preserves the automation action and enabled or paused state, and returns a draftId for automation_update_schedule. If the name or description mentions the old schedule, pass an updated name or description so they stay accurate.',
   },
   automation_update_schedule: {
     label: 'Update automation schedule',
@@ -309,5 +309,9 @@ export const TOOL_SCHEMA_COPY = {
       'Pass true only when the user explicitly requested enabling or disabling this automation.',
     scheduleUpdateConfirmed:
       'Pass true only when the user explicitly requested this schedule change.',
+    scheduleUpdateName:
+      'Optional new name. Pass it only when the current name describes the old schedule (for example 每日…) and the user did not choose that name; never rename a user-chosen name.',
+    scheduleUpdateDescription:
+      'Optional new description for the new schedule. Pass an empty string to clear it. When omitted, a description that mentions an old execution time is cleared, because the list shows the schedule from the trigger.',
   },
 } as const;
