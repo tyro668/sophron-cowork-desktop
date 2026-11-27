@@ -48,6 +48,7 @@ export const EXPRESSION_FUNCTIONS: readonly ExpressionFunction[] = [
   fn('week', 'date', 'scalar', [1, 1], 'integer', '取周数', ['周']),
   fn('day', 'date', 'scalar', [1, 1], 'integer', '取日', ['日']),
   fn('dayofweek', 'date', 'scalar', [1, 1], 'integer', '星期几（0=周日）', ['星期']),
+  fn('dayofyear', 'date', 'scalar', [1, 1], 'integer', '当年第几天（1-366）', ['年中第几天']),
   fn('hour', 'date', 'scalar', [1, 1], 'integer', '取小时', ['小时']),
   fn('minute', 'date', 'scalar', [1, 1], 'integer', '取分钟', ['分钟']),
   fn('second', 'date', 'scalar', [1, 1], 'integer', '取秒', ['秒']),

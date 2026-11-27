@@ -1,5 +1,6 @@
 import { parseExpression } from '../expression';
 import { inferType } from '../expression/infer';
+import { expandCalculationDomainExpression } from '../calculate-field/domain-dsl';
 import { DEFAULT_MATCH, DEFAULT_OPERATION } from '../operator-schemas/set-op';
 import { parseFieldRef } from '../expression-syntax/fields';
 import { planJoinProjectionColumns } from './join-projection';
@@ -37,7 +38,8 @@ function inferColumnType(expression: string, columns: PlanColumn[]): string | un
   try {
     const types: Record<string, string> = {};
     for (const column of columns) if (column.type) types[column.name] = column.type;
-    const type = inferType(parseExpression(expression), types).type;
+    const expanded = expandCalculationDomainExpression(expression, { allowLegacySql: true });
+    const type = inferType(parseExpression(expanded), types).type;
     return CONCRETE_TYPES.has(type) ? type : undefined;
   } catch {
     return undefined;

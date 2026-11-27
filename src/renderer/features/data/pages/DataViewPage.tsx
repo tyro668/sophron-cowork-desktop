@@ -419,6 +419,8 @@ export function DataViewPage() {
           <ResultTableEditor
             resultTable={editors.editingResultTable}
             rawTables={editors.outputEditorRawTables}
+            rawGroups={inputGroups}
+            rawSources={rawSources}
             isRawTablesLoading={editors.outputEditorRawTablesLoading}
             isBusy={actionId === editors.editingResultTable.id}
             pipelines={dashboard.dashboard.pipelines}

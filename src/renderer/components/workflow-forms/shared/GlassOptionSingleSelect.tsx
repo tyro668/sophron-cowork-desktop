@@ -93,12 +93,14 @@ export function GlassOptionSingleSelect({
     );
     const dropdownWidth = computeDropdownWidth(rect.width, contentWidth);
     const placement = computeDropdownPlacement(rect);
+    const viewportWidth = window.innerWidth || 1024;
+    const left = Math.min(rect.left, Math.max(8, viewportWidth - dropdownWidth.minWidth - 8));
     setMaxHeight(placement.maxHeight);
     setPosition({
-      left: rect.left,
+      left,
       top: placement.top,
       bottom: placement.bottom,
-      width: rect.width,
+      width: dropdownWidth.minWidth,
       ...dropdownWidth,
     });
   }, [flattenedItems, triggerRef, setPosition, setMaxHeight]);
@@ -203,7 +205,7 @@ export function GlassOptionSingleSelect({
               : 'border-border-muted bg-surface text-text-secondary'
         } ${className ?? ''}`}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate whitespace-nowrap px-2 text-left">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate whitespace-nowrap pl-2 pr-1 text-left">
           {value ? (
             <>
               {triggerIcon ?? selectedItem?.icon}
@@ -216,7 +218,7 @@ export function GlassOptionSingleSelect({
           )}
         </span>
         <ChevronDown
-          className={`mr-1 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`mr-0.5 h-3.5 w-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`}
         />
       </button>
 

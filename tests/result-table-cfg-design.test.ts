@@ -11,16 +11,20 @@ describe('result table editor matches config design c09–c12', () => {
     expect(src).not.toContain('jade-primary-button border-l');
     expect(src).toContain('w-[92px] items-center justify-center gap-1.5 whitespace-nowrap');
   });
-  it('basic info has 名称 + 复制来源; lineage has 打开加工 and 下游', () => {
+  it('basic info has 名称 + 来源类型/来源原始表; lineage has 打开加工 and 下游', () => {
     expect(src).toContain('data-testid="result-basic-name"');
+    expect(src).toContain("t('data.resultTables.source.type')");
+    expect(src).toContain("t('data.resultTables.source.rawTable')");
     expect(src).toContain("t('data.resultTables.lineage.openPipeline')");
     expect(src).toContain("t('data.resultTables.lineage.downstreamLabel')");
   });
-  it('danger zone is a normal flush group with a red text cell and impact', () => {
+  it('omits summary stat cards, uses RawTableTreeSelect for copy source, and moves delete to the top more menu', () => {
     expect(src).toContain('ui-config-flush min-h-0 flex-1 overflow-y-auto bg-surface');
+    expect(src).not.toContain('StatCard');
+    expect(src).toContain('<RawTableTreeSelect');
     expect(src).not.toContain('ui-group-danger');
-    expect(src).toContain('data-testid="result-danger-zone"');
-    expect(src).toContain('resultTableDeleteImpact(resultTable, t)');
+    expect(src).not.toContain('data-testid="result-danger-zone"');
+    expect(src).toContain("t('data.resultTables.danger.deleteAction')");
   });
   it('data and automation tabs reuse the flush grid', () => {
     // The data tab is just the grid: no filter / search / column count / export bar.

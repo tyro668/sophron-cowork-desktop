@@ -7,9 +7,10 @@ import {
 } from '../shared/GlassExpressionInput';
 import { parseCalculationFunctionWizardInput } from '../../../../shared/calculate-field/wizard-input';
 import { CalculationFunctionWizard } from './CalculationFunctionWizard';
-import { normalizeCalculationDomainExpression } from '../../../../shared/calculate-field/domain-dsl';
-
-export const CALC_WIZARD_GRID_COLUMNS = '150px 190px 104px minmax(0,1fr) 112px 112px 44px';
+import {
+  expandCalculationDomainExpression,
+  normalizeCalculationDomainExpression,
+} from '../../../../shared/calculate-field/domain-dsl';
 
 type CalculateFieldExpressionInputProps = Omit<GlassExpressionInputProps, 'assistantPanel'>;
 
@@ -36,8 +37,6 @@ export function CalculateFieldExpressionInput({
     () => ({
       openLabel: tr('calcFieldOpenWizard'),
       closeLabel: tr('calcFieldCloseWizard'),
-      gridColumns: CALC_WIZARD_GRID_COLUMNS,
-      titleSpan: 4,
       render: ({ currentExpression, insertExpression, replaceExpression, footerOverride }) => {
         const initialInput = parseCalculationFunctionWizardInput(currentExpression);
         return (
@@ -58,6 +57,11 @@ export function CalculateFieldExpressionInput({
     [columnTypes, fieldCompletions, tr]
   );
 
+  const expandExpression = useCallback(
+    (expression: string) => expandCalculationDomainExpression(expression, { allowLegacySql: true }),
+    []
+  );
+
   return (
     <GlassExpressionInput
       {...expressionInputProps}
@@ -66,6 +70,7 @@ export function CalculateFieldExpressionInput({
       columnTypes={columnTypes}
       assistantPanel={assistantPanel}
       aggregateContext="row"
+      expandExpression={expandExpression}
       title={expressionInputProps.title ?? tr('calcFieldEditorTitle')}
     />
   );

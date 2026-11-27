@@ -15,8 +15,9 @@ describe('dropdown text width measurement', () => {
 
     expect(measureMaxTextWidth(['a', 'longest'], 13, 48)).toBe(118);
     expect(measureMaxTextWidth(['medium'], 13, 48)).toBe(108);
+    expect(measureMaxTextWidth(['新增字段'])).toBe(112);
     expect(createElement).toHaveBeenCalledTimes(1);
     expect(getContext).toHaveBeenCalledTimes(1);
-    expect(measureText).toHaveBeenCalledTimes(3);
+    expect(measureText).toHaveBeenCalledTimes(4);
   });
 });

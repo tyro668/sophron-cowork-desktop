@@ -284,15 +284,15 @@ describe('reusable table trees in existing views', () => {
     expect(screen.getByRole('combobox')).toBeTruthy();
     expect(screen.queryByTestId('result-table-purpose-desc')).toBeNull();
 
-    // Hovering the info icon after the purpose dropdown shows descriptions for both options.
-    const infoBtn = screen.getByTestId('result-table-purpose-info');
-    expect(screen.queryByTestId('result-table-purpose-tooltip')).toBeNull();
+    // Hovering the info icon after the source type dropdown shows descriptions for both options.
+    const infoBtn = screen.getByTestId('result-table-source-type-info');
+    expect(screen.queryByTestId('result-table-source-type-tooltip')).toBeNull();
     fireEvent.mouseEnter(infoBtn);
-    const tooltip = screen.getByTestId('result-table-purpose-tooltip');
-    expect(tooltip.textContent).toMatch(/Receive pipeline output|接收加工结果/);
-    expect(tooltip.textContent).toMatch(/Copy from a raw table|从原始表复制/);
+    const tooltip = screen.getByTestId('result-table-source-type-tooltip');
+    expect(tooltip.textContent).toMatch(/Data pipeline|数据加工/);
+    expect(tooltip.textContent).toMatch(/Copy raw table|复制原始表/);
     fireEvent.mouseLeave(infoBtn);
-    expect(screen.queryByTestId('result-table-purpose-tooltip')).toBeNull();
+    expect(screen.queryByTestId('result-table-source-type-tooltip')).toBeNull();
 
     fireEvent.click(screen.getByTestId('result-table-create-confirm'));
     expect(onSubmit).toHaveBeenCalledWith({ name: '新的结果表 6', sourceRawTableId: null });
@@ -327,7 +327,7 @@ describe('reusable table trees in existing views', () => {
       fireEvent.click(purposeSelect);
     });
     const copyOption = await screen.findByRole('option', {
-      name: /Copy from a raw table|从原始表复制/,
+      name: /Copy raw table|复制原始表/,
     });
     await act(async () => {
       fireEvent.click(copyOption);

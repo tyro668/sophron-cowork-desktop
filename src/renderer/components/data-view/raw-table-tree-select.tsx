@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Loader2, Search, Table2, X } from 'lucide-react';
+import { Check, ChevronDown, Loader2, Search, Table2, X } from 'lucide-react';
 import { isRawTableUnavailable } from '../../../shared/contracts';
 import { useDropdown } from '../../hooks/useDropdown';
 import type { DataGroup, DataRawSource, DataRawTable } from '../../types';
@@ -14,7 +14,6 @@ import { RawTableTree } from './raw-table-tree';
 import { isMatchingSearchText } from './shared';
 
 const POPOVER_MIN_WIDTH = 340;
-const POPOVER_MAX_WIDTH = 440;
 const POPOVER_MAX_HEIGHT = 300;
 const POPOVER_MIN_HEIGHT = 140;
 const VIEWPORT_MARGIN = 12;
@@ -29,6 +28,8 @@ export interface RawTableTreeSelectProps {
   disabled?: boolean;
   placeholder: string;
   loadingLabel?: string;
+  allowClear?: boolean;
+  clearLabel?: string;
   ariaLabel?: string;
   triggerClassName?: string;
   onValueChange: (tableId: string) => void;
@@ -44,6 +45,8 @@ export function RawTableTreeSelect({
   disabled = false,
   placeholder,
   loadingLabel,
+  allowClear = false,
+  clearLabel,
   ariaLabel,
   triggerClassName,
   onValueChange,
@@ -117,10 +120,8 @@ export function RawTableTreeSelect({
     if (!rect) return;
     const viewportWidth = window.innerWidth || 1024;
     const viewportHeight = window.innerHeight || 768;
-    const width = Math.min(
-      Math.max(rect.width, POPOVER_MIN_WIDTH),
-      Math.min(POPOVER_MAX_WIDTH, viewportWidth - VIEWPORT_MARGIN * 2)
-    );
+    const maxViewportWidth = Math.max(0, viewportWidth - VIEWPORT_MARGIN * 2);
+    const width = Math.min(Math.max(rect.width, POPOVER_MIN_WIDTH), maxViewportWidth);
     const maxLeft = Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN);
     const left = Math.min(Math.max(VIEWPORT_MARGIN, rect.left), maxLeft);
     const spaceBelow = viewportHeight - rect.bottom - VIEWPORT_MARGIN;
@@ -153,7 +154,7 @@ export function RawTableTreeSelect({
     ? (loadingLabel ?? placeholder)
     : selectedTable
       ? selectedTable.name
-      : placeholder;
+      : value || placeholder;
 
   return (
     <>
@@ -174,9 +175,9 @@ export function RawTableTreeSelect({
           }
         }}
         className={cn(
-          'flex min-w-0 items-center justify-between gap-2 text-left text-[13px] outline-none transition-colors',
+          'flex w-full min-w-0 items-center justify-between gap-2 text-left text-[13px] outline-none transition-colors',
           dropdown.open && 'bg-surface-hover',
-          selectedTable ? 'text-text-primary' : 'text-text-muted',
+          selectedTable || value ? 'text-text-primary' : 'text-text-muted',
           triggerClassName
         )}
       >
@@ -238,6 +239,28 @@ export function RawTableTreeSelect({
               className="min-h-0 flex-1 overflow-y-auto bg-surface"
               data-testid="raw-table-tree-select-list"
             >
+              {allowClear && !query.trim() && (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={!value}
+                  data-testid="raw-table-tree-select-clear"
+                  onClick={() => {
+                    onValueChange('');
+                    dropdown.close();
+                    dropdown.triggerRef.current?.focus();
+                  }}
+                  className={cn(
+                    'flex h-9 w-full items-center justify-between gap-2 border-b border-border-subtle px-3 text-left text-[13px] transition-colors',
+                    !value
+                      ? 'bg-accent-muted font-medium text-accent'
+                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                  )}
+                >
+                  <span className="truncate">{clearLabel ?? placeholder}</span>
+                  {!value && <Check className="h-3.5 w-3.5 flex-shrink-0 text-accent" />}
+                </button>
+              )}
               {filteredRaw.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-8 text-center">
                   <Table2 className="h-5 w-5 text-text-muted" />

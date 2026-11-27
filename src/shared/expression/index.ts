@@ -49,3 +49,22 @@ export function analyzeExpression(
     };
   }
 }
+
+/** Metric-argument helper: accepts a single expression or comma-separated list (e.g. `[name], '-'`). */
+export function analyzeExpressionList(
+  text: string,
+  columnTypes: Record<string, string> = {}
+): ExpressionAnalysis {
+  try {
+    const items = parseExpressionList(text);
+    for (const ast of items) exprToSql(ast);
+    if (items.length === 1) return { ok: true, ...inferType(items[0], columnTypes) };
+    return { ok: true };
+  } catch (error) {
+    const e = error as { message: string; code?: string; position?: number };
+    return {
+      ok: false,
+      error: { message: e.message, code: e.code ?? 'syntax', position: e.position },
+    };
+  }
+}

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { isTemporalDataFieldType } from '../../../../shared/data-field-types';
 import {
@@ -33,6 +33,7 @@ import {
 } from '../../../../shared/calculate-field/wizard-state';
 import { AlertCircle, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDragReorder } from '../../../hooks/useDragReorder';
+import { FormulaSyntaxText } from '../shared/GlassExpressionInput';
 import { GlassDirectionToggle } from '../shared/GlassDirectionToggle';
 import { GlassFieldSingleSelect } from '../shared/GlassFieldSingleSelect';
 import { GlassOptionMultiSelect } from '../shared/GlassOptionMultiSelect';
@@ -620,236 +621,235 @@ export function CalculationFunctionWizard({
     </>
   );
 
+  const activeFnButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    activeFnButtonRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [category, functionId, windowCompare, windowFn]);
+
+  const activeFnLabel = windowCompare ? tr(`calcFieldFn_${windowFn}`) : tr(definition.labelKey);
+  const fnCount = windowCompare ? WINDOW_COMPARE_FUNCTIONS.length : definitions.length;
+
   const listRow =
-    'flex h-8 w-full shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+    'flex h-9 w-full shrink-0 items-center justify-between gap-2 border-b border-border-subtle px-3 text-left text-[12.5px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30';
+  const activeRow =
+    'border-l-2 border-l-accent bg-accent-muted/80 pl-[10px] font-medium text-accent';
   const paneHeader =
-    'flex h-[30px] shrink-0 items-center border-b border-border-subtle bg-background-secondary px-3 text-[11.5px] font-medium text-text-muted';
-  const cellBorder = 'border-b border-border-subtle';
+    'flex h-8 shrink-0 items-center justify-between border-b border-border-subtle bg-surface-muted px-3 text-[11.5px] font-medium text-text-secondary';
 
   return (
-    <>
-      <div
-        key="wiz-current-label"
-        className={`flex items-center bg-background-secondary px-3 text-[12px] font-medium text-text-secondary ${cellBorder} border-r`}
-      >
-        {tr('calcFieldCurrentFormula')}
-      </div>
-      <div
-        key="wiz-current"
-        style={{ gridColumn: 'span 6' }}
-        className={`flex min-w-0 items-center px-3 ${cellBorder}`}
-      >
-        {currentExpression.trim() ? (
-          <FormulaText text={currentExpression} />
-        ) : (
-          <span className="text-[12.5px] text-text-muted">
-            {tr('calcFieldCurrentFormulaEmpty')}
-          </span>
-        )}
-      </div>
-
-      <div
-        key="wiz-categories"
-        className={`flex min-h-0 flex-col border-r border-border-subtle ${cellBorder}`}
-      >
-        <div className={paneHeader}>{tr('calcFieldCategoryHeader')}</div>
-        <div
-          role="listbox"
-          aria-label={tr('calcFieldCategoryHeader')}
-          className="fx-list min-h-0 flex-1"
-        >
-          <button
-            key="window_compare"
-            type="button"
-            role="option"
-            aria-selected={windowCompare}
-            data-testid="calc-scenario-window-compare"
-            onClick={() => setWindowCompare(true)}
-            className={`${listRow} ${
-              windowCompare
-                ? 'bg-accent-muted text-accent'
-                : 'text-text-primary hover:bg-surface-hover'
-            }`}
-          >
-            {tr('calcFieldScenarioWindowCompare')}
-          </button>
-          {CALCULATION_FUNCTION_CATEGORIES.map((item) => (
-            <button
-              key={item}
-              type="button"
-              role="option"
-              aria-selected={!windowCompare && item === category}
-              onClick={() => selectCategory(item)}
-              className={`${listRow} ${
-                !windowCompare && item === category
-                  ? 'bg-accent-muted text-accent'
-                  : 'text-text-primary hover:bg-surface-hover'
-              }`}
-            >
-              {tr(CATEGORY_LABEL_KEYS[item])}
-            </button>
-          ))}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-surface">
+      <div className="flex h-9 shrink-0 items-center gap-3 border-b border-border-subtle bg-surface-muted/50 px-3.5">
+        <span className="shrink-0 text-[11.5px] font-medium text-text-secondary">
+          {tr('calcFieldCurrentFormula')}
+        </span>
+        <span className="h-3.5 w-px shrink-0 bg-border-subtle" aria-hidden />
+        <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+          {currentExpression.trim() ? (
+            <FormulaSyntaxText text={currentExpression} />
+          ) : (
+            <span className="text-[12px] text-text-muted">
+              {tr('calcFieldCurrentFormulaEmpty')}
+            </span>
+          )}
         </div>
       </div>
-      <div
-        key="wiz-functions"
-        className={`flex min-h-0 flex-col border-r border-border-subtle ${cellBorder}`}
-      >
-        <div className={paneHeader}>{tr('calcFieldFunctionHeader')}</div>
-        <div
-          role="listbox"
-          aria-label={tr('calcFieldFunctionHeader')}
-          className="fx-list min-h-0 flex-1"
-        >
-          {windowCompare &&
-            WINDOW_COMPARE_FUNCTIONS.map((fn) => (
-              <button
-                key={fn}
-                type="button"
-                role="option"
-                aria-selected={fn === windowFn}
-                onClick={() => setWindowFn(fn)}
-                className={`${listRow} ${
-                  fn === windowFn
-                    ? 'bg-accent-muted text-accent'
-                    : 'text-text-primary hover:bg-surface-hover'
-                }`}
-              >
-                <span className="min-w-0 truncate">{tr(`calcFieldFn_${fn}`)}</span>
-                {fn === windowFn && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
-              </button>
-            ))}
-          {!windowCompare &&
-            definitions.map((item) => {
-              const selected = item.id === definition.id;
+
+      <div className="grid min-h-0 flex-1 grid-cols-[172px_196px_minmax(0,1fr)] overflow-hidden">
+        <div key="wiz-categories" className="flex min-h-0 flex-col border-r border-border-subtle">
+          <div className={paneHeader}>
+            <span>{tr('calcFieldCategoryHeader')}</span>
+          </div>
+          <div
+            role="listbox"
+            aria-label={tr('calcFieldCategoryHeader')}
+            className="fx-list min-h-0 flex-1"
+          >
+            <button
+              key="window_compare"
+              type="button"
+              role="option"
+              aria-selected={windowCompare}
+              data-testid="calc-scenario-window-compare"
+              onClick={() => setWindowCompare(true)}
+              className={`${listRow} ${
+                windowCompare ? activeRow : 'text-text-primary hover:bg-surface-hover'
+              }`}
+            >
+              <span className="truncate">{tr('calcFieldScenarioWindowCompare')}</span>
+            </button>
+            {CALCULATION_FUNCTION_CATEGORIES.map((item) => {
+              const selected = !windowCompare && item === category;
               return (
                 <button
-                  key={item.id}
+                  key={item}
                   type="button"
                   role="option"
                   aria-selected={selected}
-                  onClick={() => selectFunction(item.id)}
+                  onClick={() => selectCategory(item)}
                   className={`${listRow} ${
-                    selected
-                      ? 'bg-accent-muted text-accent'
-                      : 'text-text-primary hover:bg-surface-hover'
+                    selected ? activeRow : 'text-text-primary hover:bg-surface-hover'
                   }`}
                 >
-                  <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
-                  {selected && <Check className="h-3.5 w-3.5 shrink-0 text-text-muted" />}
+                  <span className="truncate">{tr(CATEGORY_LABEL_KEYS[item])}</span>
                 </button>
               );
             })}
+          </div>
         </div>
-      </div>
-      <div
-        key="wiz-params"
-        style={{ gridColumn: 'span 5' }}
-        className={`flex min-h-0 flex-col ${cellBorder}`}
-      >
-        <div className={paneHeader}>{tr('calcFieldParamsHeader')}</div>
-        <div className="opg fx-list min-h-0 flex-1 grid-cols-[104px_minmax(0,1fr)]">
-          {windowCompare ? windowRows : basicRows}
-          {!windowCompare && fieldRows}
-          {!windowCompare && hasSpecialConfig && (
-            <FrameEditor
-              frameType={frameType}
-              setFrameType={setFrameType}
-              startType={frameStartType}
-              setStartType={setFrameStartType}
-              startOffset={frameStartOffset}
-              setStartOffset={setFrameStartOffset}
-              startUnit={frameStartUnit}
-              setStartUnit={setFrameStartUnit}
-              endType={frameEndType}
-              setEndType={setFrameEndType}
-              endOffset={frameEndOffset}
-              setEndOffset={setFrameEndOffset}
-              endUnit={frameEndUnit}
-              setEndUnit={setFrameEndUnit}
-              exclude={frameExclude}
-              setExclude={setFrameExclude}
-              usesTemporalRangeUnit={usesTemporalRangeUnit}
-              tr={tr}
-            />
-          )}
-          <FormRow label={tr('calcFieldGeneratedFormula')} variant="text">
-            {preview.expression ? (
-              <FormulaText text={preview.expression} />
-            ) : (
-              <span className="text-[12.5px] text-error">
-                {preview.error || tr('calcFieldGeneratedFormulaIncomplete')}
-              </span>
+
+        <div key="wiz-functions" className="flex min-h-0 flex-col border-r border-border-subtle">
+          <div className={paneHeader}>
+            <span>{tr('calcFieldFunctionHeader')}</span>
+            <span className="tabular-nums text-[11px] text-text-muted">{fnCount}</span>
+          </div>
+          <div
+            role="listbox"
+            aria-label={tr('calcFieldFunctionHeader')}
+            className="fx-list min-h-0 flex-1"
+          >
+            {windowCompare &&
+              WINDOW_COMPARE_FUNCTIONS.map((fn) => {
+                const selected = fn === windowFn;
+                return (
+                  <button
+                    key={fn}
+                    ref={selected ? activeFnButtonRef : undefined}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => setWindowFn(fn)}
+                    className={`${listRow} ${
+                      selected ? activeRow : 'text-text-primary hover:bg-surface-hover'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{tr(`calcFieldFn_${fn}`)}</span>
+                    {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                  </button>
+                );
+              })}
+            {!windowCompare &&
+              definitions.map((item) => {
+                const selected = item.id === definition.id;
+                return (
+                  <button
+                    key={item.id}
+                    ref={selected ? activeFnButtonRef : undefined}
+                    type="button"
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => selectFunction(item.id)}
+                    className={`${listRow} ${
+                      selected ? activeRow : 'text-text-primary hover:bg-surface-hover'
+                    }`}
+                  >
+                    <span className="min-w-0 truncate">{tr(item.labelKey)}</span>
+                    {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+
+        <div key="wiz-params" className="flex min-h-0 flex-col bg-surface">
+          <div className={paneHeader}>
+            <span className="min-w-0 truncate">
+              {tr('calcFieldParamsHeader')}
+              <span className="ml-1.5 font-normal text-text-muted">· {activeFnLabel}</span>
+            </span>
+          </div>
+          <div className="opg fx-list min-h-0 flex-1 grid-cols-[108px_minmax(0,1fr)]">
+            {windowCompare ? windowRows : basicRows}
+            {!windowCompare && fieldRows}
+            {!windowCompare && hasSpecialConfig && (
+              <FrameEditor
+                frameType={frameType}
+                setFrameType={setFrameType}
+                startType={frameStartType}
+                setStartType={setFrameStartType}
+                startOffset={frameStartOffset}
+                setStartOffset={setFrameStartOffset}
+                startUnit={frameStartUnit}
+                setStartUnit={setFrameStartUnit}
+                endType={frameEndType}
+                setEndType={setFrameEndType}
+                endOffset={frameEndOffset}
+                setEndOffset={setFrameEndOffset}
+                endUnit={frameEndUnit}
+                setEndUnit={setFrameEndUnit}
+                exclude={frameExclude}
+                setExclude={setFrameExclude}
+                usesTemporalRangeUnit={usesTemporalRangeUnit}
+                tr={tr}
+              />
             )}
-          </FormRow>
+          </div>
+
+          <div
+            className="flex shrink-0 flex-col border-t border-border-subtle bg-surface-muted/45"
+            data-testid="calc-wizard-generated-preview"
+          >
+            <div className="flex h-7 items-center justify-between border-b border-border-subtle px-3.5">
+              <span className="text-[11.5px] font-medium text-text-secondary">
+                {tr('calcFieldGeneratedFormula')}
+              </span>
+              {preview.expression ? (
+                <span className="text-[11px] font-medium text-success">
+                  {tr('calcFieldFormulaReady')}
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-error">
+                  {preview.error || tr('calcFieldGeneratedFormulaIncomplete')}
+                </span>
+              )}
+            </div>
+            <div className="min-h-[54px] max-h-[88px] overflow-y-auto bg-surface px-3.5 py-2.5">
+              {preview.expression ? (
+                <FormulaSyntaxText text={preview.expression} wrap />
+              ) : (
+                <span className="text-[12px] text-text-muted">
+                  {preview.error || tr('calcFieldGeneratedFormulaIncomplete')}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {footerOverride ?? (
-        <>
+        <div className="flex h-11 shrink-0 items-stretch justify-between border-t border-border-subtle bg-surface">
           <div
             key="wiz-hint"
-            style={{ gridColumn: 'span 4' }}
-            className="flex items-center px-3 text-[12px] text-text-muted"
+            className="flex min-w-0 flex-1 items-center px-3.5 text-[12px] text-text-muted"
           >
-            {tr('calcFieldWizardFooterHint')}
+            <span className="truncate">{tr('calcFieldWizardFooterHint')}</span>
           </div>
-          <button
-            key="wiz-insert"
-            type="button"
-            disabled={!preview.expression}
-            onClick={() => onInsertAtCursor(preview.expression)}
-            className="flex items-center justify-center border-l border-border-subtle bg-surface text-[12.5px] font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {tr('calcFieldInsertAtCursor')}
-          </button>
-          <button
-            key="wiz-replace"
-            type="button"
-            disabled={!preview.expression}
-            onClick={() => onReplace(preview.expression)}
-            style={{ gridColumn: 'span 2' }}
-            className="flex items-center justify-center bg-accent text-[12.5px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {tr('calcFieldReplaceFormula')}
-          </button>
-        </>
+          <div className="flex shrink-0 items-stretch">
+            <button
+              key="wiz-insert"
+              type="button"
+              disabled={!preview.expression}
+              onClick={() => onInsertAtCursor(preview.expression)}
+              className="inline-flex h-full w-[124px] shrink-0 items-center justify-center border-l border-border-subtle bg-surface text-[13px] font-medium text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {tr('calcFieldInsertAtCursor')}
+            </button>
+            <button
+              key="wiz-replace"
+              type="button"
+              disabled={!preview.expression}
+              onClick={() => onReplace(preview.expression)}
+              className="inline-flex h-full w-[132px] shrink-0 items-center justify-center border-l border-border-subtle bg-accent text-[13px] font-medium text-accent-foreground transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {tr('calcFieldReplaceFormula')}
+            </button>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
-/** Read-only formula with the editor's token palette. */
-function FormulaText({ text }: { text: string }) {
-  const parts = text.split(/(\[[^\]]*\]|'[^']*'|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+(?:\.\d+)?)/g);
-  return (
-    <code
-      className="min-w-0 truncate whitespace-pre font-mono text-[12.5px] text-text-primary"
-      title={text}
-    >
-      {parts.map((part, i) => {
-        if (!part) return null;
-        let cls = '';
-        if (part.startsWith('[')) cls = 'text-[var(--color-syntax-variable)]';
-        else if (part.startsWith("'")) cls = 'text-[var(--color-syntax-string)]';
-        else if (/^\d/.test(part)) cls = 'text-[var(--color-syntax-number)]';
-        else if (/^[A-Za-z_]/.test(part)) {
-          const next = text.slice(parts.slice(0, i + 1).join('').length).trimStart();
-          cls = next.startsWith('(')
-            ? 'font-semibold text-[var(--color-syntax-number)]'
-            : 'font-semibold text-[var(--color-syntax-keyword-strong)]';
-        }
-        return (
-          <span key={i} className={cls}>
-            {part}
-          </span>
-        );
-      })}
-    </code>
-  );
-}
-
-/** One flush parameter row on the shared operator grid: 104px label + cell. */
+/** One flush parameter row on the shared operator grid: 108px label + cell. */
 function FormRow({
   label,
   required,
@@ -869,11 +869,11 @@ function FormRow({
       : `opg-c ctl${variant === 'chips' ? ' chips' : ''}${error ? ' err' : ''}`;
   return (
     <>
-      <div className="opg-c lab" style={{ minHeight: 44 }}>
+      <div className="opg-c lab" style={{ minHeight: 40 }}>
         <span className="truncate">{label}</span>
         {required && <span className="req">*</span>}
       </div>
-      <div className={cellClass} style={{ minHeight: 44 }}>
+      <div className={cellClass} style={{ minHeight: 40 }}>
         {children}
       </div>
     </>

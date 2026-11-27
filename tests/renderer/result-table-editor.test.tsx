@@ -8,7 +8,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import './i18n-test';
 import { ResultTableEditor } from '../../src/renderer/components/data-view/result-tables';
-import type { DataPipeline, DataResultTable } from '../../src/renderer/types';
+import type {
+  DataGroup,
+  DataPipeline,
+  DataRawSource,
+  DataRawTable,
+  DataResultTable,
+} from '../../src/renderer/types';
 
 const PREVIEW = {
   columns: ['id', 'amount'],
@@ -57,8 +63,17 @@ function makePipeline(id: string, name = id): DataPipeline {
 
 function renderEditor(overrides?: {
   resultTable?: DataResultTable;
+  rawTables?: DataRawTable[];
+  rawGroups?: DataGroup[];
+  rawSources?: DataRawSource[];
   pipelines?: DataPipeline[];
   onRunPipeline?: (pipeline: DataPipeline) => void | Promise<void>;
+  onDelete?: (resultTable: DataResultTable) => void | Promise<void>;
+  onSave?: (
+    resultTable: DataResultTable,
+    name: string,
+    sourceRawTableId: string | null
+  ) => void | Promise<void>;
   data?: Record<string, unknown>;
 }) {
   const previewRawTable = vi.fn(async () => PREVIEW);
@@ -70,13 +85,16 @@ function renderEditor(overrides?: {
   const view = render(
     <ResultTableEditor
       resultTable={overrides?.resultTable ?? makeResultTable()}
-      rawTables={[]}
+      rawTables={overrides?.rawTables ?? []}
+      rawGroups={overrides?.rawGroups ?? []}
+      rawSources={overrides?.rawSources ?? []}
       isRawTablesLoading={false}
       isBusy={false}
       pipelines={overrides?.pipelines ?? [makePipeline('task_1', 'Clean pipeline')]}
       onBack={vi.fn()}
-      onSave={vi.fn()}
+      onSave={overrides?.onSave ?? vi.fn()}
       onRunPipeline={overrides?.onRunPipeline ?? vi.fn()}
+      onDelete={overrides?.onDelete}
     />
   );
   return { ...view, previewRawTable, exportTable };
@@ -106,7 +124,9 @@ describe('ResultTableEditor', () => {
       'true'
     );
     // The config form is the default view.
-    expect(await screen.findByText('Copy source')).toBeTruthy();
+    expect(await screen.findByText('Source type')).toBeTruthy();
+    // Source raw table picker is hidden when source type is Data pipeline.
+    expect(screen.queryByTestId('raw-table-tree-select-trigger')).toBeNull();
   });
 
   it('shows the preview grid after switching to the data tab', async () => {
@@ -157,5 +177,72 @@ describe('ResultTableEditor', () => {
     await waitFor(() =>
       expect(exportTable).toHaveBeenCalledWith(expect.objectContaining({ format: 'xlsx' }))
     );
+  });
+
+  it('omits summary stat cards and danger zone, uses tree picker for copy source, and puts delete in top more menu', async () => {
+    const onDelete = vi.fn();
+    const onSave = vi.fn();
+    const rawGroup: DataGroup = { id: 'rg1', scope: 'raw', name: '销售组', createdAt: 1 };
+    const rawTable = {
+      id: 'rt1',
+      name: '订单原始表',
+      groupId: 'rg1',
+      sourcePath: '/data/orders.xlsx',
+      sourceKind: 'excel',
+      fileCount: 1,
+      tableName: 'raw_rt1',
+      rowCount: 10,
+      columnCount: 3,
+      relatedPipelineNames: [],
+      inputConfig: { sourceKind: 'excel' },
+      memberStatus: 'ok',
+      createdAt: 1,
+      updatedAt: 1,
+    } as unknown as DataRawTable;
+    const target = makeResultTable();
+    renderEditor({
+      resultTable: target,
+      rawTables: [rawTable],
+      rawGroups: [rawGroup],
+      onDelete,
+      onSave,
+    });
+
+    // Summary stats and danger zone are removed.
+    expect(screen.queryByTestId('result-danger-zone')).toBeNull();
+    expect(screen.queryByText('Rows')).toBeNull();
+
+    // Initially Data pipeline -> raw table selector is hidden.
+    expect(screen.queryByTestId('raw-table-tree-select-trigger')).toBeNull();
+    const saveBtn = screen.getByTestId('result-editor-save') as HTMLButtonElement;
+    expect(saveBtn.disabled).toBe(true);
+
+    // Switch source type to Copy raw table -> raw table tree selector appears; save stays disabled until a table is chosen.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Source type' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Copy raw table|复制原始表/ }));
+    expect(saveBtn.disabled).toBe(true);
+
+    const trigger = screen.getByTestId('raw-table-tree-select-trigger');
+    fireEvent.click(trigger);
+    const popover = await screen.findByTestId('raw-table-tree-select-popover');
+    expect(popover.textContent).toContain('销售组');
+    fireEvent.click(popover.querySelector('[data-table-id="rt1"]') as HTMLElement);
+    expect(trigger.textContent).toContain('订单原始表');
+    expect(saveBtn.disabled).toBe(false);
+
+    fireEvent.click(saveBtn);
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(target, 'Clean orders', 'rt1'));
+
+    // Switching source type back to Data pipeline hides the raw table picker.
+    fireEvent.click(screen.getByRole('combobox', { name: 'Source type' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Data pipeline|数据加工/ }));
+    expect(screen.queryByTestId('raw-table-tree-select-trigger')).toBeNull();
+
+    // Delete action is inside the top More menu and invokes onDelete (which runs the existing confirm prompt).
+    const moreTrigger = screen.getByRole('button', { name: 'More' });
+    fireEvent.pointerDown(moreTrigger);
+    fireEvent.click(moreTrigger);
+    fireEvent.click(await screen.findByText(/Delete result table|删除结果表/));
+    expect(onDelete).toHaveBeenCalledWith(target);
   });
 });

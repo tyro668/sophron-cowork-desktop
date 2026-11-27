@@ -1,10 +1,110 @@
-import { useState } from 'react';
-import { Info, Workflow } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Info } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DataTableExportFormat } from '../../../types';
 import { dataClient } from '../../../features/data/api/data-client';
 import { formatIpcError } from '../../../utils/ipc-error';
 import { showToast } from '../../../utils/toast';
+import { cn } from '../../ui';
+
+export type ResultTableSourceType = 'pipeline' | 'copy';
+
+const TOOLTIP_WIDTH = 280;
+const TOOLTIP_MARGIN = 12;
+
+/** Shared flush info button + portal tooltip describing both result-table source types. */
+export function ResultTableSourceTypeInfoTip({
+  currentType,
+  testId = 'result-table-source-type-info',
+}: {
+  currentType: ResultTableSourceType;
+  testId?: string;
+}) {
+  const { t } = useTranslation();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const openTip = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const viewportWidth = window.innerWidth || 1024;
+    const left = Math.min(
+      Math.max(TOOLTIP_MARGIN, rect.right - TOOLTIP_WIDTH),
+      Math.max(TOOLTIP_MARGIN, viewportWidth - TOOLTIP_WIDTH - TOOLTIP_MARGIN)
+    );
+    setPos({ top: rect.bottom + 6, left });
+  };
+  const closeTip = () => setPos(null);
+
+  const items: Array<{ key: ResultTableSourceType; title: string; desc: string }> = [
+    {
+      key: 'pipeline',
+      title: t('data.resultTables.source.typePipeline'),
+      desc: t('data.resultTables.source.typePipelineDesc'),
+    },
+    {
+      key: 'copy',
+      title: t('data.resultTables.source.typeCopy'),
+      desc: t('data.resultTables.source.typeCopyDesc'),
+    },
+  ];
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        data-testid={testId}
+        aria-label={t('data.resultTables.source.type')}
+        onMouseEnter={openTip}
+        onMouseLeave={closeTip}
+        onFocus={openTip}
+        onBlur={closeTip}
+        className="inline-flex h-full w-10 flex-shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-accent focus-visible:bg-surface-hover focus-visible:text-accent focus-visible:outline-none"
+      >
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      {pos && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              role="tooltip"
+              data-testid="result-table-source-type-tooltip"
+              style={{ top: pos.top, left: pos.left, width: TOOLTIP_WIDTH }}
+              className="pointer-events-none fixed z-[10010] border border-border bg-surface text-left shadow-elevated"
+            >
+              {items.map((item, index) => {
+                const active = item.key === currentType;
+                return (
+                  <div
+                    key={item.key}
+                    className={cn(
+                      'px-3 py-2.5',
+                      index > 0 && 'border-t border-border-subtle',
+                      active && 'bg-accent-muted/35'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'text-[12px] font-semibold',
+                        active ? 'text-accent' : 'text-text-primary'
+                      )}
+                    >
+                      {item.title}
+                    </div>
+                    <div className="mt-0.5 text-[12px] leading-[1.45] text-text-secondary">
+                      {item.desc}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>,
+            document.body
+          )
+        : null}
+    </>
+  );
+}
 
 /** Shared export flow for result tables (save dialog, success toast, silent cancel). */
 export function useResultTableExport() {
@@ -31,56 +131,6 @@ export function useResultTableExport() {
     }
   };
   return { exportBusy, exportResultTable, canExport: dataClient.has('exportTable') };
-}
-
-export function InlineInfoTooltip({ label }: { label: string }) {
-  return (
-    <span className="group relative inline-flex">
-      <button
-        type="button"
-        className="inline-flex h-4 w-4 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-accent-muted hover:text-accent focus:bg-accent-muted focus:text-accent focus:outline-none"
-        aria-label={label}
-      >
-        <Info className="h-3.5 w-3.5" />
-      </button>
-      <span className="pointer-events-none absolute left-0 top-full z-30 mt-2 hidden w-72 rounded-lg border border-border-subtle bg-surface px-3 py-2 text-left text-[12px] font-medium leading-5 text-text-secondary shadow-elevated group-hover:block group-focus-within:block">
-        {label}
-      </span>
-    </span>
-  );
-}
-
-export function StatCard({
-  label,
-  value,
-  link,
-  plain,
-}: {
-  label: string;
-  value: string;
-  link?: boolean;
-  plain?: boolean;
-}) {
-  return (
-    <div className="bg-surface">
-      <div className="flex h-[30px] items-center border-b border-border-subtle bg-surface-muted px-3 text-xs text-text-secondary">
-        {label}
-      </div>
-      <div
-        className={`flex h-10 items-center gap-1.5 truncate px-3 tabular-nums ${
-          link
-            ? 'text-[12.5px] font-medium text-accent'
-            : plain
-              ? 'text-[12.5px] text-text-primary'
-              : 'text-[15px] font-semibold text-text-primary'
-        }`}
-        title={value}
-      >
-        {link ? <Workflow className="h-3.5 w-3.5 flex-shrink-0" /> : null}
-        {value}
-      </div>
-    </div>
-  );
 }
 
 /** Every raw table the producing pipeline reads (a join over child tables has several). */

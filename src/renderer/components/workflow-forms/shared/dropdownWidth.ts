@@ -20,18 +20,18 @@ function getTextMeasureContext(fontSize: number): CanvasRenderingContext2D {
       throw new Error('Canvas 2D context is required to measure dropdown option widths');
     }
   }
-  textMeasureContext.font = `${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
+  textMeasureContext.font = `500 ${fontSize}px ${getComputedStyle(document.body).fontFamily}`;
   return textMeasureContext;
 }
 
-/** Widest rendered text width plus extra room for item paddings and the
- *  vertical scrollbar, so a dropdown panel can size itself to its longest
- *  option instead of truncating it behind a horizontal scrollbar. Returns 0
- *  outside a browser (SSR renders closed panels, trigger width applies). */
+/** Widest rendered text width plus extra room for item paddings, the selected
+ *  checkmark icon, and the vertical scrollbar, so a dropdown panel can size
+ *  itself to its longest option instead of truncating it. Returns 0 outside a
+ *  browser (SSR renders closed panels, trigger width applies). */
 export function measureMaxTextWidth(
   texts: readonly string[],
   fontSize = 13,
-  extraPadding = 48
+  extraPadding = 72
 ): number {
   if (texts.length === 0 || typeof document === 'undefined') return 0;
   const context = getTextMeasureContext(fontSize);

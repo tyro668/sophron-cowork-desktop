@@ -6,7 +6,7 @@ import {
   FileText,
   Folder,
   Info,
-  MoreHorizontal,
+  MoreVertical,
   RefreshCw,
   Search,
   Table2,
@@ -136,7 +136,7 @@ export function DataMoreMenu({ items }: { items: DataMoreMenuItem[] }) {
           title={t('data.actions.more')}
           aria-label={t('data.actions.more')}
         >
-          <MoreHorizontal className="h-4 w-4" />
+          <MoreVertical className="h-4 w-4" />
         </Button>
       }
     >

@@ -3,7 +3,7 @@ import {
   ArrowLeft,
   FileText,
   LoaderCircle,
-  MoreHorizontal,
+  MoreVertical,
   PencilLine,
   Play,
   Redo2,
@@ -227,7 +227,7 @@ export function PipelineHeader({
               className="inline-flex h-full w-10 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-55"
               title={t('data.actions.more')}
             >
-              <MoreHorizontal className="h-4 w-4" />
+              <MoreVertical className="h-4 w-4" />
             </button>
           }
         >

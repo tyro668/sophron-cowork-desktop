@@ -18,10 +18,12 @@ import {
   getAutomationTableBindings,
   tableBindingKey,
 } from '../../../../shared/automation/table-bindings';
+import { isRawTableUnavailable } from '../../../../shared/contracts';
 import { dataClient } from '../../../features/data/api/data-client';
-import { resultTableDeleteImpact } from '../../../features/data/utils/delete-impact';
 import type {
+  DataGroup,
   DataPipeline,
+  DataRawSource,
   DataRawTable,
   DataRawTablePreview,
   DataResultTable,
@@ -29,6 +31,7 @@ import type {
 } from '../../../types';
 import { formatIpcError } from '../../../utils/ipc-error';
 import { GlassDataGridPreview } from '../../GlassDataGridPreview';
+import { GlassSelect } from '../../GlassSelect';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui/tabs';
 import {
   bottomTabBarClass,
@@ -38,21 +41,23 @@ import {
   DataMoreMenu,
   formatDateTime,
   RAW_TABLE_PREVIEW_PAGE_SIZE,
-  RawTableSelect,
   RawTableStatusBadge,
 } from '../shared';
+import { RawTableTreeSelect } from '../raw-table-tree-select';
 import { ResultTableAutomations } from '../table-automations';
 import {
-  InlineInfoTooltip,
   LineageChip,
-  StatCard,
+  ResultTableSourceTypeInfoTip,
   upstreamRawNames,
   useResultTableExport,
+  type ResultTableSourceType,
 } from './ResultTablePrimitives';
 
 export function ResultTableEditor({
   resultTable,
   rawTables,
+  rawGroups = [],
+  rawSources = [],
   isRawTablesLoading,
   isBusy,
   pipelines,
@@ -64,6 +69,8 @@ export function ResultTableEditor({
 }: {
   resultTable: DataResultTable;
   rawTables: DataRawTable[];
+  rawGroups?: DataGroup[];
+  rawSources?: DataRawSource[];
   isRawTablesLoading: boolean;
   isBusy: boolean;
   pipelines: DataPipeline[];
@@ -103,6 +110,9 @@ export function ResultTableEditor({
   }, [resultTable.id]);
   const [localName, setLocalName] = useState(resultTable.name);
   const [isNameEditing, setIsNameEditing] = useState(false);
+  const [sourceType, setSourceType] = useState<ResultTableSourceType>(
+    resultTable.sourceRawTableId ? 'copy' : 'pipeline'
+  );
   const [sourceRawTableId, setSourceRawTableId] = useState(resultTable.sourceRawTableId ?? '');
   const [activeTab, setActiveTab] = useState<'data' | 'config' | 'automation'>('config');
   const [preview, setPreview] = useState<DataRawTablePreview | null>(null);
@@ -114,26 +124,17 @@ export function ResultTableEditor({
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const busy = isBusy;
   const trimmedName = localName.trim();
+  const selectedRawTable = rawTables.find((rawTable) => rawTable.id === sourceRawTableId) ?? null;
+  const nextSourceRawTableId = sourceType === 'copy' ? sourceRawTableId || null : null;
+  const sourceSelectionValid =
+    sourceType === 'pipeline' ||
+    (Boolean(sourceRawTableId) && !isRawTableUnavailable(selectedRawTable));
   const canSave = Boolean(
     trimmedName &&
     !busy &&
-    (trimmedName !== resultTable.name ||
-      (sourceRawTableId || null) !== resultTable.sourceRawTableId)
+    sourceSelectionValid &&
+    (trimmedName !== resultTable.name || nextSourceRawTableId !== resultTable.sourceRawTableId)
   );
-
-  const rawTableOptions = useMemo(() => {
-    const options = rawTables.map((rawTable) => ({
-      value: rawTable.id,
-      label: rawTable.name,
-    }));
-    if (sourceRawTableId && !options.some((option) => option.value === sourceRawTableId)) {
-      options.unshift({ value: sourceRawTableId, label: sourceRawTableId });
-    }
-    const emptyLabel = isRawTablesLoading
-      ? t('data.resultTables.editor.loadingRawTables')
-      : t('data.resultTables.editor.noRawTable');
-    return [{ value: '', label: emptyLabel }, ...options];
-  }, [rawTables, isRawTablesLoading, sourceRawTableId, t]);
 
   // The pipeline that produced this table — matched by id (name fallback for
   // dashboards loaded before relatedPipelineIds existed).
@@ -189,7 +190,7 @@ export function ResultTableEditor({
 
   const handleSave = async () => {
     if (!canSave) return;
-    await onSave(resultTable, localName, sourceRawTableId || null);
+    await onSave(resultTable, localName, nextSourceRawTableId);
     await loadPreview(previewPage);
   };
 
@@ -214,6 +215,7 @@ export function ResultTableEditor({
   useEffect(() => {
     setLocalName(resultTable.name);
     setIsNameEditing(false);
+    setSourceType(resultTable.sourceRawTableId ? 'copy' : 'pipeline');
     setSourceRawTableId(resultTable.sourceRawTableId ?? '');
   }, [resultTable.id, resultTable.name, resultTable.sourceRawTableId]);
 
@@ -363,6 +365,19 @@ export function ResultTableEditor({
                   },
                 ],
               },
+              ...(onDelete
+                ? [
+                    {
+                      key: 'delete',
+                      label: t('data.resultTables.danger.deleteAction'),
+                      icon: <Trash2 className="h-3.5 w-3.5" />,
+                      danger: true,
+                      disabled: busy,
+                      separatorBefore: true,
+                      onClick: () => void onDelete(resultTable),
+                    },
+                  ]
+                : []),
             ]}
           />
         </div>
@@ -378,29 +393,9 @@ export function ResultTableEditor({
           className="ui-config-flush min-h-0 flex-1 overflow-y-auto bg-surface"
         >
           <div className="grid">
-            <div className="ui-group grid gap-px bg-border-subtle sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label={t('data.resultTables.stats.rows')}
-                value={resultTable.rowCount.toLocaleString('en-US')}
-              />
-              <StatCard
-                label={t('data.resultTables.stats.columns')}
-                value={String(resultTable.columnCount)}
-              />
-              <StatCard
-                label={t('data.resultTables.stats.pipeline')}
-                value={relatedPipeline?.name ?? '—'}
-                link={Boolean(relatedPipeline)}
-              />
-              <StatCard
-                label={t('data.resultTables.stats.updatedAt')}
-                value={formatDateTime(resultTable.updatedAt)}
-                plain
-              />
-            </div>
             <section className="ui-group ui-form-flush bg-surface">
               <div className="ui-group-title">{t('data.resultTables.sections.basic')}</div>
-              <div className="ui-form-row">
+              <div className="ui-form-row !pr-0">
                 <div className="ui-form-label items-center">
                   {t('data.resultTables.basic.nameLabel')}
                 </div>
@@ -416,27 +411,51 @@ export function ResultTableEditor({
                   />
                 </div>
               </div>
-              <div className="ui-form-row">
+              <div className="ui-form-row !pr-0">
                 <div className="ui-form-label items-center">
-                  <span className="inline-flex items-center gap-1.5">
-                    {t('data.resultTables.editor.rawTable')}
-                    <InlineInfoTooltip label={t('data.resultTables.editor.rawTableInfo')} />
-                  </span>
+                  {t('data.resultTables.source.type')}
                 </div>
-                <div className="ui-form-value">
-                  <RawTableSelect
-                    flush
-                    value={sourceRawTableId}
-                    options={rawTableOptions}
-                    disabled={busy || isRawTablesLoading}
-                    onChange={setSourceRawTableId}
+                <div className="ui-form-value !flex-row items-stretch">
+                  <GlassSelect
+                    ariaLabel={t('data.resultTables.source.type')}
+                    value={sourceType}
+                    disabled={busy}
+                    onValueChange={(value) => setSourceType(value === 'copy' ? 'copy' : 'pipeline')}
+                    options={[
+                      { value: 'pipeline', label: t('data.resultTables.source.typePipeline') },
+                      { value: 'copy', label: t('data.resultTables.source.typeCopy') },
+                    ]}
+                    triggerClassName="min-w-0 flex-1 justify-between text-[12.5px] text-text-primary disabled:opacity-60"
+                    contentClassName="w-[var(--radix-select-trigger-width)] rounded-none border-border"
                   />
+                  <ResultTableSourceTypeInfoTip currentType={sourceType} />
                 </div>
               </div>
+              {sourceType === 'copy' && (
+                <div className="ui-form-row !pr-0">
+                  <div className="ui-form-label items-center">
+                    {t('data.resultTables.source.rawTable')}
+                  </div>
+                  <div className="ui-form-value">
+                    <RawTableTreeSelect
+                      value={sourceRawTableId}
+                      rawTables={rawTables}
+                      sources={rawSources}
+                      groups={rawGroups}
+                      loading={isRawTablesLoading}
+                      disabled={busy}
+                      ariaLabel={t('data.resultTables.source.rawTable')}
+                      placeholder={t('data.resultTables.source.selectRawTable')}
+                      loadingLabel={t('data.resultTables.editor.loadingRawTables')}
+                      onValueChange={setSourceRawTableId}
+                    />
+                  </div>
+                </div>
+              )}
             </section>
             <section className="ui-group ui-form-flush bg-surface">
               <div className="ui-group-title">{t('data.resultTables.lineage.title')}</div>
-              <div className="ui-form-row">
+              <div className="ui-form-row !pr-0">
                 <div className="ui-form-label items-center">
                   {t('data.resultTables.lineage.flowLabel')}
                 </div>
@@ -473,7 +492,7 @@ export function ResultTableEditor({
                   ) : null}
                 </div>
               </div>
-              <div className="ui-form-row">
+              <div className="ui-form-row !pr-0">
                 <div className="ui-form-label items-center">
                   {t('data.resultTables.lineage.downstreamLabel')}
                 </div>
@@ -489,34 +508,6 @@ export function ResultTableEditor({
                 </div>
               </div>
             </section>
-            {onDelete && (
-              <section
-                className="ui-group ui-form-flush bg-surface"
-                data-testid="result-danger-zone"
-              >
-                <div className="ui-group-title">{t('data.resultTables.danger.title')}</div>
-                <div className="ui-form-row">
-                  <div className="ui-form-label items-center">
-                    {t('data.resultTables.danger.deleteTitle')}
-                  </div>
-                  <div className="ui-form-value !flex-row">
-                    <span className="flex min-w-0 flex-1 items-center px-[10px] py-2 text-[12.5px] text-text-muted">
-                      {t('data.resultTables.danger.deleteHint')}{' '}
-                      {resultTableDeleteImpact(resultTable, t)}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void onDelete(resultTable)}
-                      className="inline-flex w-[140px] flex-shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle text-xs font-medium text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      {t('data.resultTables.danger.deleteAction')}
-                    </button>
-                  </div>
-                </div>
-              </section>
-            )}
           </div>
         </TabsContent>
         <TabsContent value="data" className="flex min-h-0 flex-1 flex-col">

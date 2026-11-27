@@ -1,5 +1,4 @@
 import {
-  Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -9,7 +8,17 @@ import {
   type ReactNode,
 } from 'react';
 import { useFormTranslation } from '../../../hooks/useFormTranslation';
-import { AlertCircle, ChevronDown, Search, SquareFunction, X } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  Code2,
+  CornerDownLeft,
+  Plus,
+  Search,
+  SquareFunction,
+  Wand2,
+  X,
+} from 'lucide-react';
 import { StreamLanguage } from '@codemirror/language';
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { Compartment, EditorState, StateEffect, StateField } from '@codemirror/state';
@@ -36,7 +45,11 @@ import './form-grid.css';
 import { closerFor, lintExpression, type ExpressionIssue } from './expressionLint';
 import { isCalculationSceneDslId } from '../../../../shared/calculate-field/function-registry';
 import { Dialog } from '../../ui/dialog';
-import { analyzeExpression, lookupExpressionFunction } from '../../../../shared/expression';
+import {
+  analyzeExpression,
+  analyzeExpressionList,
+  lookupExpressionFunction,
+} from '../../../../shared/expression';
 
 export interface ExpressionAssistantPanelContext {
   currentExpression: string;
@@ -50,11 +63,6 @@ export interface ExpressionAssistantPanelContext {
 export interface ExpressionAssistantPanel {
   openLabel: string;
   closeLabel: string;
-  /** Grid template for the assistant mode; the dialog header is laid on it. */
-  gridColumns: string;
-  /** Number of columns the header title spans in assistant mode. */
-  titleSpan: number;
-
   render: (context: ExpressionAssistantPanelContext) => ReactNode;
 }
 
@@ -626,6 +634,8 @@ export interface GlassExpressionInputProps {
    * a group) or `metric` (argument of an aggregate metric — any aggregate is nested).
    */
   aggregateContext?: 'row' | 'metric';
+  /** Optional pre-expansion (e.g. calculation-field domain DSL → standard expression) before validation. */
+  expandExpression?: (text: string) => string;
 }
 
 const EXPR_KEYWORDS = new Set([
@@ -796,17 +806,67 @@ const issueField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
-export const FORMULA_EDITOR_GRID_COLUMNS =
-  '36px minmax(0,1fr) minmax(0,1.13fr) 64px minmax(0,1fr) 96px 96px 44px';
-
-const EDITOR_HEIGHT = 96;
+const EDITOR_HEIGHT = 116;
 const ROW_BORDER = 'border-b border-border-subtle';
 const COL_BORDER = 'border-r border-border-subtle';
-const PANE_HEADER = `flex h-[30px] shrink-0 items-center bg-background-secondary px-3 text-ui-caption font-medium text-text-muted ${ROW_BORDER}`;
-const PANE_SEARCH = `relative flex h-9 shrink-0 items-center ${ROW_BORDER}`;
+const PANE_HEADER = `flex h-8 shrink-0 items-center justify-between bg-surface-muted px-3 text-[11.5px] font-medium text-text-secondary ${ROW_BORDER}`;
+const PANE_SEARCH = `relative flex h-8 shrink-0 items-center bg-surface ${ROW_BORDER}`;
 const PANE_SEARCH_INPUT =
-  'h-full w-full bg-transparent pl-8 pr-3 text-ui-control text-text-primary outline-none placeholder:text-text-muted';
-const LIST_ROW = `flex h-9 w-full shrink-0 cursor-pointer items-center gap-2.5 px-2.5 text-left text-ui-body transition-colors ${ROW_BORDER} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30`;
+  'h-full w-full bg-transparent pl-8 pr-7 text-[12.5px] text-text-primary outline-none placeholder:text-text-muted';
+const LIST_ROW = `group flex h-8 w-full shrink-0 cursor-pointer items-center gap-2 px-3 text-left text-[12.5px] transition-colors ${ROW_BORDER} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30`;
+
+const QUICK_OPERATORS: Array<{ label: string; apply: string; cursorOffset?: number }> = [
+  { label: '+', apply: ' + ' },
+  { label: '-', apply: ' - ' },
+  { label: '*', apply: ' * ' },
+  { label: '/', apply: ' / ' },
+  { label: '( )', apply: '()', cursorOffset: 1 },
+  { label: '=', apply: ' = ' },
+  { label: '!=', apply: ' != ' },
+  { label: '>', apply: ' > ' },
+  { label: '<', apply: ' < ' },
+  { label: 'and', apply: ' and ' },
+  { label: 'or', apply: ' or ' },
+];
+
+/** Read-only formula highlighted with the editor's token palette. */
+export function FormulaSyntaxText({ text, wrap = false }: { text: string; wrap?: boolean }) {
+  const parts = text.split(/(\[[^\]]*\]|'[^']*'|\b[A-Za-z_][A-Za-z0-9_]*\b|\d+(?:\.\d+)?)/g);
+  return (
+    <code
+      className={`min-w-0 font-mono text-[12.5px] leading-[1.55] text-text-primary ${
+        wrap ? 'whitespace-pre-wrap break-all' : 'truncate whitespace-pre'
+      }`}
+      title={text}
+    >
+      {parts.map((part, i) => {
+        if (!part) return null;
+        let cls = '';
+        if (part.startsWith('[')) cls = 'text-[var(--color-syntax-variable)]';
+        else if (part.startsWith("'")) cls = 'text-[var(--color-syntax-string)]';
+        else if (/^\d/.test(part)) cls = 'text-[var(--color-syntax-number)]';
+        else if (/^[A-Za-z_]/.test(part)) {
+          const lower = part.toLowerCase();
+          const next = text.slice(parts.slice(0, i + 1).join('').length).trimStart();
+          if (EXPR_KEYWORDS.has(lower)) {
+            cls = 'font-semibold text-[var(--color-syntax-keyword-strong)]';
+          } else if (next.startsWith('(')) {
+            cls = isCalculationSceneDslId(lower)
+              ? 'font-semibold text-[var(--color-syntax-namespace)]'
+              : 'font-semibold text-[var(--color-syntax-number)]';
+          } else {
+            cls = 'text-[var(--color-syntax-variable)]';
+          }
+        }
+        return (
+          <span key={i} className={cls}>
+            {part}
+          </span>
+        );
+      })}
+    </code>
+  );
+}
 
 function sortFields(fields: string[], query: string): string[] {
   const filtered = query.trim()
@@ -857,101 +917,127 @@ function FunctionDetailPanel({
 }) {
   if (!token) {
     return (
-      <div className="flex flex-1 items-center justify-center px-3 text-center text-ui-label text-text-muted">
-        {tr('expressionFunctionDetailHint')}
+      <div className="flex flex-1 flex-col">
+        <div className={PANE_HEADER}>
+          <span>{tr('expressionFunctionDetailLabel')}</span>
+        </div>
+        <div className="flex flex-1 items-center justify-center px-4 text-center text-[12.5px] text-text-muted">
+          {tr('expressionFunctionDetailHint')}
+        </div>
       </div>
     );
   }
-  const row = (label: string, body: ReactNode, key: string) => (
-    <Fragment key={key}>
-      <div
-        className={`flex min-h-9 items-center bg-background-secondary px-3 text-ui-label text-text-muted ${ROW_BORDER} ${COL_BORDER}`}
-      >
-        {label}
-      </div>
-      <div
-        className={`flex min-h-9 min-w-0 items-center px-3 py-1.5 text-ui-control ${ROW_BORDER}`}
-      >
-        {body}
-      </div>
-    </Fragment>
-  );
   const aliases = lookupExpressionFunction(token.label)?.aliases ?? [];
+  const examples = (token.examples ?? []).slice(0, 2);
+
   return (
-    <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] content-start overflow-y-auto">
-      {aliases.length > 0 &&
-        row(
-          tr('expressionDetailAliases'),
-          <span className="flex flex-wrap gap-1.5 font-mono text-text-primary">
-            {aliases.map((a) => (
-              <button
-                key={a}
-                type="button"
-                className="hover:text-accent"
-                onClick={() => onInsert(`${a}()`, a.length + 1)}
-              >
-                {a}()
-              </button>
-            ))}
-          </span>,
-          'aliases'
-        )}
-      {row(
-        tr('expressionDetailPurpose'),
-        <span className="text-text-primary">
-          {token.i18nDescKey ? tr(token.i18nDescKey) : '—'}
-        </span>,
-        'purpose'
-      )}
-      {row(
-        tr('expressionDetailParams'),
-        token.params && token.params.length > 0 ? (
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            {token.params.map((p) => (
-              <span key={p.name} className="inline-flex items-center gap-1 text-text-primary">
-                {helpTerm(tr, 'params', p.name)}
-                <span className="rounded-full border border-accent/30 bg-accent-muted px-1.5 text-[11px] leading-[18px] text-accent">
-                  {helpTerm(tr, 'types', p.type)}
-                </span>
-                {p.optional && (
-                  <span className="text-[11px] text-text-muted">{tr('optional')}</span>
-                )}
-              </span>
-            ))}
-          </span>
-        ) : (
-          <span className="text-text-muted">—</span>
-        ),
-        'params'
-      )}
-      {row(
-        tr('expressionDetailReturn'),
-        <span className="text-text-primary">{returnTypeText(token, tr)}</span>,
-        'return'
-      )}
-      {(token.examples ?? [])
-        .slice(0, 2)
-        .map((ex, i) =>
-          row(
-            i === 0 ? tr('expressionDetailExample') : '',
-            <code className="break-all font-mono text-ui-control text-text-primary">
-              {localizeExample(ex, tr)}
-            </code>,
-            `ex-${i}`
-          )
-        )}
-      {row(
-        '',
+    <div className="flex min-h-0 flex-1 flex-col bg-surface">
+      <div
+        className={`flex h-8 shrink-0 items-stretch justify-between bg-surface-muted ${ROW_BORDER}`}
+      >
+        <div className="flex min-w-0 items-center gap-1.5 px-3.5 text-[11.5px] font-medium text-text-secondary">
+          <span className="shrink-0">{tr('expressionFunctionDetailLabel')}</span>
+        </div>
         <button
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onInsert(token.apply, token.cursorOffset)}
-          className="text-ui-control text-accent hover:underline"
+          className="ui-accent-cell h-full shrink-0 border-l border-border-subtle px-3 text-[12px]"
         >
+          <CornerDownLeft className="h-3.5 w-3.5" />
           {tr('expressionInsertAtCursor')}
-        </button>,
-        'insert'
-      )}
+        </button>
+      </div>
+
+      <div className="fx-list min-h-0 flex-1 space-y-4 p-4">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="font-mono text-[14px] font-semibold text-text-primary">
+              {tokenDisplayLabel(token, tr)}
+            </code>
+            {aliases.length > 0 && (
+              <span className="inline-flex flex-wrap items-center gap-1">
+                {aliases.map((alias) => (
+                  <button
+                    key={alias}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onInsert(`${alias}()`, alias.length + 1)}
+                    className="border border-border-subtle bg-surface-muted px-1.5 py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                  >
+                    {alias}()
+                  </button>
+                ))}
+              </span>
+            )}
+          </div>
+          <p className="text-[12.5px] leading-[1.6] text-text-secondary">
+            {token.i18nDescKey ? tr(token.i18nDescKey) : '—'}
+          </p>
+        </div>
+
+        <div className="border border-border-subtle bg-surface">
+          <div className="grid grid-cols-[72px_minmax(0,1fr)] border-b border-border-subtle">
+            <div className="flex items-center border-r border-border-subtle bg-surface-muted px-2.5 py-2 text-[11.5px] font-medium text-text-secondary">
+              {tr('expressionDetailParams')}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-[12.5px]">
+              {token.params && token.params.length > 0 ? (
+                token.params.map((p) => (
+                  <span key={p.name} className="inline-flex items-center gap-1.5 text-text-primary">
+                    <span className="font-medium">{helpTerm(tr, 'params', p.name)}</span>
+                    <span className="border border-accent/25 bg-accent-muted/70 px-1.5 py-0.5 text-[11px] leading-none text-accent">
+                      {helpTerm(tr, 'types', p.type)}
+                    </span>
+                    {p.optional && (
+                      <span className="text-[11px] text-text-muted">{tr('optional')}</span>
+                    )}
+                  </span>
+                ))
+              ) : (
+                <span className="text-text-muted">—</span>
+              )}
+            </div>
+          </div>
+          <div className="grid grid-cols-[72px_minmax(0,1fr)]">
+            <div className="flex items-center border-r border-border-subtle bg-surface-muted px-2.5 py-2 text-[11.5px] font-medium text-text-secondary">
+              {tr('expressionDetailReturn')}
+            </div>
+            <div className="flex min-w-0 items-center px-3 py-2 text-[12.5px] text-text-primary">
+              {returnTypeText(token, tr)}
+            </div>
+          </div>
+        </div>
+
+        {examples.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="text-[11.5px] font-medium text-text-secondary">
+              {tr('expressionDetailExample')}
+            </div>
+            <div className="space-y-1.5">
+              {examples.map((ex, i) => {
+                const localized = localizeExample(ex, tr);
+                return (
+                  <div
+                    key={`ex-${i}`}
+                    className="group flex items-start justify-between gap-2 border border-border-subtle bg-surface-muted/50 px-3 py-2"
+                  >
+                    <FormulaSyntaxText text={localized} wrap />
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => onInsert(localized)}
+                      className="shrink-0 text-[11.5px] font-medium text-accent opacity-80 transition-opacity hover:underline group-hover:opacity-100"
+                    >
+                      {tr('expressionInsertExample')}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -990,10 +1076,16 @@ function FunctionList({
       .filter((g) => g.tokens.length > 0);
   }, [excludeCategories, functionGroups, query, tr]);
 
+  const totalCount = useMemo(() => groups.reduce((acc, g) => acc + g.tokens.length, 0), [groups]);
+
   return (
     <>
+      <div className={PANE_HEADER}>
+        <span>{tr('expressionFunctionHelperLabel')}</span>
+        <span className="tabular-nums text-[11px] text-text-muted">{totalCount}</span>
+      </div>
       <div className={PANE_SEARCH}>
-        <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-text-muted" />
+        <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-text-muted" />
         <input
           type="text"
           value={query}
@@ -1002,10 +1094,20 @@ function FunctionList({
           aria-label={tr('expressionFunctionSearchPlaceholder')}
           className={PANE_SEARCH_INPUT}
         />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            aria-label={tr('expressionClearFormula')}
+            className="absolute right-2 inline-flex h-4 w-4 items-center justify-center text-text-muted hover:text-text-primary"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
       </div>
       <div className="fx-list min-h-0 flex-1" role="listbox">
         {groups.length === 0 ? (
-          <div className="px-3 py-4 text-center text-ui-label text-text-muted">
+          <div className="px-3 py-6 text-center text-[12px] text-text-muted">
             {tr('fieldPicker.noMatch')}
           </div>
         ) : (
@@ -1024,34 +1126,61 @@ function FunctionList({
                       return next;
                     })
                   }
-                  className={`flex h-[30px] w-full items-center gap-1.5 bg-background-secondary px-3 text-left text-ui-label text-text-muted hover:text-text-secondary ${ROW_BORDER}`}
+                  className={`flex h-7 w-full items-center justify-between bg-surface-muted/75 px-3 text-left text-[11.5px] font-medium text-text-secondary transition-colors hover:text-text-primary ${ROW_BORDER}`}
                 >
-                  <ChevronDown
-                    className={`h-3.5 w-3.5 shrink-0 transition-transform ${collapsed ? '-rotate-90' : ''}`}
-                  />
-                  {tr(group.i18nKey)}
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 shrink-0 text-text-muted transition-transform ${collapsed ? '-rotate-90' : ''}`}
+                    />
+                    <span className="truncate">{tr(group.i18nKey)}</span>
+                  </span>
+                  <span className="tabular-nums text-[11px] text-text-muted">
+                    {group.tokens.length}
+                  </span>
                 </button>
                 {!collapsed &&
                   group.tokens.map((token) => {
                     const isSelected = selected?.label === token.label;
                     return (
-                      <button
+                      <div
                         key={token.label}
-                        type="button"
                         role="option"
                         aria-selected={isSelected}
+                        tabIndex={0}
                         title={tr('expressionFunctionInsertHint')}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => onSelect(token)}
                         onDoubleClick={() => onInsert(token.apply, token.cursorOffset)}
-                        className={`${LIST_ROW} font-mono text-ui-control ${
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            onSelect(token);
+                          }
+                        }}
+                        className={`${LIST_ROW} justify-between font-mono text-[12px] ${
                           isSelected
-                            ? 'bg-accent-muted text-accent'
-                            : 'text-text-secondary hover:bg-surface-hover'
+                            ? 'border-l-2 border-l-accent bg-accent-muted/80 pl-[10px] font-medium text-accent'
+                            : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                         }`}
                       >
-                        <span className="truncate">{tokenDisplayLabel(token, tr)}</span>
-                      </button>
+                        <span className="min-w-0 flex-1 truncate">
+                          {tokenDisplayLabel(token, tr)}
+                        </span>
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          title={tr('expressionInsertAtCursor')}
+                          aria-label={tr('expressionInsertAtCursor')}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onInsert(token.apply, token.cursorOffset);
+                          }}
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     );
                   })}
               </div>
@@ -1093,6 +1222,7 @@ export function GlassExpressionInput({
   subtitle,
   lintFields,
   aggregateContext,
+  expandExpression,
 }: GlassExpressionInputProps) {
   const tr = useFormTranslation('expression');
   const [open, setOpen] = useState(false);
@@ -1151,6 +1281,7 @@ export function GlassExpressionInput({
           subtitle={subtitle}
           lintFields={lintFields}
           aggregateContext={aggregateContext}
+          expandExpression={expandExpression}
           tr={tr}
         />
       )}
@@ -1171,6 +1302,7 @@ function ExpressionEditorDialog({
   subtitle,
   lintFields,
   aggregateContext,
+  expandExpression,
   tr,
 }: GlassExpressionInputProps & {
   onClose: () => void;
@@ -1196,15 +1328,36 @@ function ExpressionEditorDialog({
     () => lintExpression(draft, lintFields ?? fieldCompletions),
     [draft, fieldCompletions, lintFields]
   );
+  const expandedDraft = useMemo(() => {
+    const trimmed = draft.trim();
+    if (!trimmed) return { text: '', error: null as string | null };
+    if (!expandExpression) return { text: draft, error: null as string | null };
+    try {
+      return { text: expandExpression(draft), error: null as string | null };
+    } catch (err) {
+      return {
+        text: draft,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }, [draft, expandExpression]);
   const aggregateIssue = useMemo(
-    () => (aggregateContext ? expressionAggregateIssue(draft, aggregateContext) : null),
-    [aggregateContext, draft]
+    () =>
+      aggregateContext && !expandedDraft.error
+        ? expressionAggregateIssue(expandedDraft.text, aggregateContext)
+        : null,
+    [aggregateContext, expandedDraft]
   );
   // Typed expression layer: result type (or first grammar error) for the status bar.
-  const analysis = useMemo(
-    () => (draft.trim() ? analyzeExpression(draft, columnTypes ?? {}) : null),
-    [draft, columnTypes]
-  );
+  const analysis = useMemo(() => {
+    if (!draft.trim()) return null;
+    if (expandedDraft.error) {
+      return { ok: false, error: { message: expandedDraft.error, code: 'domain' } };
+    }
+    return aggregateContext === 'metric'
+      ? analyzeExpressionList(expandedDraft.text, columnTypes ?? {})
+      : analyzeExpression(expandedDraft.text, columnTypes ?? {});
+  }, [aggregateContext, columnTypes, draft, expandedDraft]);
   const caseRewrite = useMemo(
     () => (/\bcase\b/i.test(draft) ? rewriteCaseExpression(draft) : null),
     [draft]
@@ -1316,48 +1469,47 @@ function ExpressionEditorDialog({
   requestCloseRef.current = requestClose;
 
   const wizard = mode === 'wizard' && assistantPanel;
-  const columns = wizard ? assistantPanel.gridColumns : FORMULA_EDITOR_GRID_COLUMNS;
-  const titleSpan = wizard ? assistantPanel.titleSpan : 5;
-  const rows = wizard
-    ? '44px 36px minmax(0,1fr) 48px'
-    : `44px ${EDITOR_HEIGHT}px ${issues.map(() => '30px ').join('')}${aggregateIssue && !wizard ? '30px ' : ''}minmax(0,1fr) 48px`;
 
   const tabClass = (active: boolean) =>
-    `flex items-center justify-center border-l border-border-subtle text-ui-control font-medium transition-colors ${ROW_BORDER} ${
+    `inline-flex h-full w-[112px] shrink-0 items-center justify-center gap-1.5 border-l border-border-subtle text-[12.5px] font-medium transition-colors ${
       active
-        ? 'bg-accent-muted text-accent'
+        ? 'bg-accent-muted/70 text-accent shadow-[inset_0_-2px_0_var(--color-accent)]'
         : 'bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
     }`;
 
-  const footerButton = `flex items-center justify-center border-l border-border-subtle text-ui-control font-medium transition-colors`;
+  const footerButton =
+    'inline-flex h-full shrink-0 items-center justify-center border-l border-border-subtle text-[13px] font-medium transition-colors';
 
   const discardFooter = confirmDiscard && (
-    <Fragment key="discard">
+    <div
+      key="discard"
+      className="flex h-11 shrink-0 items-stretch justify-between border-t border-border-subtle bg-surface"
+    >
       <div
-        style={{ gridColumn: `span ${titleSpan}` }}
-        className="flex items-center gap-2 px-3 text-ui-control text-text-primary"
+        className="flex min-w-0 flex-1 items-center gap-2 px-4 text-[12.5px] text-text-primary"
         role="alert"
       >
-        <AlertCircle className="h-3.5 w-3.5 text-warning" />
-        {tr('expressionDiscardPrompt')}
+        <AlertCircle className="h-3.5 w-3.5 shrink-0 text-warning" />
+        <span className="truncate">{tr('expressionDiscardPrompt')}</span>
       </div>
-      <button
-        type="button"
-        autoFocus
-        onClick={() => setConfirmDiscard(false)}
-        className={`${footerButton} bg-surface text-text-primary hover:bg-surface-hover`}
-      >
-        {tr('expressionKeepEditing')}
-      </button>
-      <button
-        type="button"
-        onClick={onClose}
-        style={{ gridColumn: 'span 2' }}
-        className={`${footerButton} bg-error text-error-foreground hover:bg-error/90`}
-      >
-        {tr('expressionDiscardChanges')}
-      </button>
-    </Fragment>
+      <div className="flex shrink-0 items-stretch">
+        <button
+          type="button"
+          autoFocus
+          onClick={() => setConfirmDiscard(false)}
+          className={`${footerButton} w-[108px] bg-surface text-text-primary hover:bg-surface-hover`}
+        >
+          {tr('expressionKeepEditing')}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className={`${footerButton} w-[116px] bg-error text-error-foreground hover:bg-error/90`}
+        >
+          {tr('expressionDiscardChanges')}
+        </button>
+      </div>
+    </div>
   );
 
   return (
@@ -1367,65 +1519,116 @@ function ExpressionEditorDialog({
       closeOnOverlayClick
       closeOnEscape
       ariaLabel={title}
-      overlayClassName="bg-black/28 px-4 py-6"
-      className={`${wizard ? 'h-[520px]' : 'h-[600px]'} w-[920px] max-w-[calc(100vw-2rem)] gap-0 overflow-hidden rounded-xl p-0 shadow-card`}
+      overlayClassName="bg-black/28 px-4 py-6 dark:bg-black/50"
+      className="flex h-[600px] max-h-[88vh] w-[960px] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-none border-border bg-surface p-0 shadow-elevated"
     >
       <div
         data-testid="formula-editor-grid"
-        className="grid h-full w-full min-h-0"
-        style={{ gridTemplateColumns: columns, gridTemplateRows: rows }}
+        className="flex h-full min-h-0 w-full flex-col bg-surface"
       >
         <div
-          key="title"
-          style={{ gridColumn: `span ${titleSpan}` }}
-          className={`flex min-w-0 items-center gap-2.5 px-3 ${ROW_BORDER}`}
+          className={`flex h-11 shrink-0 items-stretch justify-between bg-surface ${ROW_BORDER}`}
         >
-          <h3 className="shrink-0 text-[14px] font-semibold text-text-primary">{title}</h3>
-          {subtitle && <span className="truncate text-ui-control text-text-muted">{subtitle}</span>}
+          <div className="flex min-w-0 items-center gap-2.5 px-4">
+            <SquareFunction className="h-4 w-4 shrink-0 text-accent" />
+            <h3 className="shrink-0 text-[14px] font-semibold text-text-primary">{title}</h3>
+            {subtitle && (
+              <>
+                <span className="h-3.5 w-px shrink-0 bg-border-subtle" aria-hidden />
+                <span className="truncate text-[12px] text-text-muted">{subtitle}</span>
+              </>
+            )}
+          </div>
+          <div className="flex shrink-0 items-stretch">
+            {assistantPanel && (
+              <>
+                <button
+                  key="tab-fn"
+                  type="button"
+                  aria-pressed={!wizard}
+                  onClick={() => setMode('functions')}
+                  className={tabClass(!wizard)}
+                >
+                  <Code2 className="h-3.5 w-3.5 shrink-0" />
+                  {tr('expressionTabFunctions')}
+                </button>
+                <button
+                  key="tab-wiz"
+                  type="button"
+                  aria-pressed={!!wizard}
+                  onClick={() => setMode('wizard')}
+                  className={tabClass(!!wizard)}
+                >
+                  <Wand2 className="h-3.5 w-3.5 shrink-0" />
+                  {assistantPanel.openLabel}
+                </button>
+              </>
+            )}
+            <button
+              key="close"
+              type="button"
+              onClick={requestClose}
+              aria-label={tr('cancel')}
+              className="inline-flex h-full w-11 shrink-0 items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-accent-muted hover:text-accent"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        {assistantPanel ? (
-          <>
-            <button
-              key="tab-fn"
-              type="button"
-              aria-pressed={!wizard}
-              onClick={() => setMode('functions')}
-              className={tabClass(!wizard)}
-            >
-              {tr('expressionTabFunctions')}
-            </button>
-            <button
-              key="tab-wiz"
-              type="button"
-              aria-pressed={!!wizard}
-              onClick={() => setMode('wizard')}
-              className={tabClass(!!wizard)}
-            >
-              {assistantPanel.openLabel}
-            </button>
-          </>
-        ) : (
-          <div key="tab-blank" style={{ gridColumn: 'span 2' }} className={ROW_BORDER} />
-        )}
-        <button
-          key="close"
-          type="button"
-          onClick={requestClose}
-          aria-label={tr('cancel')}
-          className={`flex items-center justify-center border-l border-border-subtle text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary ${ROW_BORDER}`}
-        >
-          <X className="h-4 w-4" />
-        </button>
 
-        {/* The CodeMirror host stays mounted while the wizard is shown so the
-            draft and cursor survive the mode switch. */}
-        <div
-          key="editor"
-          ref={hostRef}
-          aria-label={title}
-          style={{ gridColumn: '1 / -1' }}
-          className={wizard ? 'hidden' : `min-h-0 ${ROW_BORDER}`}
-        />
+        {/* Keep CodeMirror mounted while the wizard is shown so draft and cursor survive mode switches. */}
+        <div className={wizard ? 'hidden' : 'flex shrink-0 flex-col'}>
+          <div
+            className={`flex h-8 shrink-0 items-center justify-between gap-2 bg-surface-muted/60 px-2.5 ${ROW_BORDER}`}
+          >
+            <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+              {QUICK_OPERATORS.map((op) => (
+                <button
+                  key={op.label}
+                  type="button"
+                  tabIndex={-1}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    editAtCursor(op.apply, op.cursorOffset);
+                  }}
+                  className="inline-flex h-6 shrink-0 items-center justify-center px-2 font-mono text-[11.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-accent"
+                >
+                  {op.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {issues.length === 0 && analysis?.ok && analysis.type && (
+                <span
+                  data-testid="expression-result-type"
+                  className="inline-flex shrink-0 items-center border border-accent/25 bg-accent-muted/70 px-2 py-0.5 text-[11.5px] font-medium text-accent"
+                >
+                  {tr('expressionResultType', {
+                    type: helpTerm(tr, 'types', EXPR_TYPE_HELP[analysis.type] ?? 'any'),
+                  })}
+                </span>
+              )}
+              {draft.trim().length > 0 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => replaceExpression('')}
+                  className="inline-flex h-6 items-center px-1.5 text-[11.5px] text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+                >
+                  {tr('expressionClearFormula')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div
+            key="editor"
+            ref={hostRef}
+            aria-label={title}
+            style={{ height: EDITOR_HEIGHT }}
+            className={`min-h-0 shrink-0 focus-within:shadow-[inset_0_0_0_1px_var(--color-accent)] ${ROW_BORDER}`}
+          />
+        </div>
 
         {wizard ? (
           assistantPanel.render({
@@ -1448,8 +1651,7 @@ function ExpressionEditorDialog({
                 key={`issue-${issue.from}-${issue.kind}`}
                 type="button"
                 onClick={() => jumpTo(issue.from)}
-                style={{ gridColumn: '1 / -1' }}
-                className={`flex min-w-0 items-center gap-2 bg-error/[0.06] px-3 text-left text-ui-label text-error ${ROW_BORDER}`}
+                className={`flex h-8 shrink-0 items-center gap-2 bg-error/[0.06] px-3.5 text-left text-[12px] text-error ${ROW_BORDER}`}
               >
                 <AlertCircle className="h-3.5 w-3.5 shrink-0" />
                 <b className="shrink-0 font-semibold">
@@ -1464,12 +1666,11 @@ function ExpressionEditorDialog({
                 </span>
               </button>
             ))}
-            {aggregateIssue && !wizard && (
+            {aggregateIssue && (
               <div
                 key="aggregate-issue"
                 data-testid="expression-aggregate-issue"
-                style={{ gridColumn: '1 / -1' }}
-                className={`flex min-w-0 items-center gap-2 bg-warning/[0.08] px-3 text-ui-label text-text-primary ${ROW_BORDER}`}
+                className={`flex h-8 shrink-0 items-center gap-2 bg-warning/[0.08] px-3.5 text-[12px] text-text-primary ${ROW_BORDER}`}
               >
                 <AlertCircle className="h-3.5 w-3.5 shrink-0 text-warning" />
                 <b className="shrink-0 font-semibold">{aggregateIssue.message}</b>
@@ -1481,7 +1682,7 @@ function ExpressionEditorDialog({
                     type="button"
                     data-testid="expression-aggregate-fix"
                     onClick={() => replaceExpression(aggregateIssue.fixText!)}
-                    className="ml-auto shrink-0 rounded-md border border-border-subtle px-2 py-0.5 text-ui-label font-medium text-accent hover:bg-accent-muted"
+                    className="ml-auto shrink-0 border border-border-subtle bg-surface px-2 py-0.5 text-[11.5px] font-medium text-accent hover:bg-accent-muted"
                   >
                     {tr('expressionAddOverFix')}
                   </button>
@@ -1489,102 +1690,99 @@ function ExpressionEditorDialog({
               </div>
             )}
 
-            <div
-              key="fields"
-              style={{ gridColumn: 'span 2' }}
-              className={`flex min-h-0 flex-col ${COL_BORDER} ${ROW_BORDER}`}
-            >
-              <div className={PANE_HEADER}>{tr('expressionFieldsTab')}</div>
-              <div className={PANE_SEARCH}>
-                <Search className="pointer-events-none absolute left-3 h-3.5 w-3.5 text-text-muted" />
-                <input
-                  type="text"
-                  value={fieldQuery}
-                  onChange={(e) => setFieldQuery(e.target.value)}
-                  placeholder={tr('expressionFieldSearchPlaceholder')}
-                  aria-label={tr('expressionFieldSearchPlaceholder')}
-                  className={PANE_SEARCH_INPUT}
+            <div className="grid min-h-0 flex-1 grid-cols-[204px_248px_minmax(0,1fr)] overflow-hidden">
+              <div key="fields" className={`flex min-h-0 flex-col ${COL_BORDER}`}>
+                <div className={PANE_HEADER}>
+                  <span>{tr('expressionFieldsTab')}</span>
+                  <span className="tabular-nums text-[11px] text-text-muted">
+                    {sortedFields.length}
+                  </span>
+                </div>
+                <div className={PANE_SEARCH}>
+                  <Search className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-text-muted" />
+                  <input
+                    type="text"
+                    value={fieldQuery}
+                    onChange={(e) => setFieldQuery(e.target.value)}
+                    placeholder={tr('expressionFieldSearchPlaceholder')}
+                    aria-label={tr('expressionFieldSearchPlaceholder')}
+                    className={PANE_SEARCH_INPUT}
+                  />
+                  {fieldQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setFieldQuery('')}
+                      aria-label={tr('expressionClearFormula')}
+                      className="absolute right-2 inline-flex h-4 w-4 items-center justify-center text-text-muted hover:text-text-primary"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+                <div className="fx-list min-h-0 flex-1">
+                  {sortedFields.length === 0 ? (
+                    <div className="px-3 py-6 text-center text-[12px] text-text-muted">
+                      {tr('fieldPicker.noMatch')}
+                    </div>
+                  ) : (
+                    sortedFields.map((col) => (
+                      <button
+                        key={col}
+                        type="button"
+                        title={tr('expressionFieldInsertHint')}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          editAtCursor(`[${col}]`);
+                        }}
+                        className={`${LIST_ROW} justify-between text-text-primary hover:bg-surface-hover`}
+                      >
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <DataTypeIcon type={columnTypes?.[col]} />
+                          <span className="min-w-0 truncate">{col}</span>
+                        </span>
+                        <Plus className="h-3.5 w-3.5 shrink-0 text-accent opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div key="functions" className={`flex min-h-0 flex-col ${COL_BORDER}`}>
+                <FunctionList
+                  functionGroups={functionGroups}
+                  excludeCategories={excludeFunctionCategories}
+                  selected={selectedToken}
+                  onSelect={setSelectedToken}
+                  onInsert={editAtCursor}
+                  tr={tr}
                 />
               </div>
-              <div className="fx-list min-h-0 flex-1">
-                {sortedFields.length === 0 ? (
-                  <div className="px-3 py-4 text-center text-ui-label text-text-muted">
-                    {tr('fieldPicker.noMatch')}
-                  </div>
-                ) : (
-                  sortedFields.map((col) => (
-                    <button
-                      key={col}
-                      type="button"
-                      title={tr('expressionFieldInsertHint')}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        editAtCursor(`[${col}]`);
-                      }}
-                      className={`${LIST_ROW} text-text-primary hover:bg-surface-hover`}
-                    >
-                      <DataTypeIcon type={columnTypes?.[col]} />
-                      <span className="min-w-0 truncate">{col}</span>
-                    </button>
-                  ))
-                )}
+
+              <div key="detail" className="flex min-h-0 flex-col">
+                <FunctionDetailPanel token={selectedToken} tr={tr} onInsert={editAtCursor} />
               </div>
-            </div>
-            <div key="functions" className={`flex min-h-0 flex-col ${COL_BORDER} ${ROW_BORDER}`}>
-              <div className={PANE_HEADER}>{tr('expressionFunctionHelperLabel')}</div>
-              <FunctionList
-                functionGroups={functionGroups}
-                excludeCategories={excludeFunctionCategories}
-                selected={selectedToken}
-                onSelect={setSelectedToken}
-                onInsert={editAtCursor}
-                tr={tr}
-              />
-            </div>
-            <div
-              key="detail"
-              style={{ gridColumn: 'span 5' }}
-              className={`flex min-h-0 flex-col ${ROW_BORDER}`}
-            >
-              <div className={PANE_HEADER}>
-                {tr('expressionFunctionDetailLabel')}
-                {selectedToken && (
-                  <span className="ml-1 truncate font-normal">· {selectedToken.label}</span>
-                )}
-              </div>
-              <FunctionDetailPanel token={selectedToken} tr={tr} onInsert={editAtCursor} />
             </div>
 
             {discardFooter || (
-              <>
+              <div className="flex h-11 shrink-0 items-stretch justify-between border-t border-border-subtle bg-surface">
                 <div
                   key="status"
-                  style={{ gridColumn: 'span 5' }}
-                  className="flex min-w-0 items-center gap-2.5 px-3 text-ui-label text-text-muted"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-3.5 text-[12px] text-text-muted"
                 >
                   {issues.length > 0 && (
-                    <span className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-error/[0.08] px-2 py-0.5 text-ui-control text-error">
+                    <span className="inline-flex shrink-0 items-center gap-1.5 border border-error/25 bg-error/[0.07] px-2 py-0.5 text-[12px] text-error">
                       <span className="h-1.5 w-1.5 rounded-full bg-error" />
                       {tr('expressionIssueCount', { count: issues.length })}
-                    </span>
-                  )}
-                  {issues.length === 0 && analysis?.ok && analysis.type && (
-                    <span
-                      data-testid="expression-result-type"
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-accent-muted px-2 py-0.5 text-ui-control text-accent"
-                    >
-                      {tr('expressionResultType', {
-                        type: helpTerm(tr, 'types', EXPR_TYPE_HELP[analysis.type] ?? 'any'),
-                      })}
                     </span>
                   )}
                   {issues.length === 0 && analysis && !analysis.ok && (
                     <span
                       data-testid="expression-grammar-error"
                       title={analysis.error?.message}
-                      className="inline-flex min-w-0 items-center gap-1.5 truncate rounded-md bg-error/[0.08] px-2 py-0.5 text-ui-control text-error"
+                      className="inline-flex min-w-0 items-center gap-1.5 truncate border border-error/25 bg-error/[0.07] px-2 py-0.5 text-[12px] text-error"
                     >
-                      {analysis.error?.message}
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{analysis.error?.message}</span>
                     </span>
                   )}
                   {caseRewrite !== null && (
@@ -1593,34 +1791,35 @@ function ExpressionEditorDialog({
                       data-testid="expression-case-quickfix"
                       onClick={applyCaseRewrite}
                       title={caseRewrite}
-                      className="shrink-0 rounded-md border border-primary/30 px-2 py-0.5 text-ui-control text-primary hover:bg-primary/[0.08]"
+                      className="shrink-0 border border-accent/35 bg-accent-muted/50 px-2 py-0.5 text-[12px] font-medium text-accent transition-colors hover:bg-accent-muted"
                     >
                       {tr('expressionCaseQuickFix')}
                     </button>
                   )}
                   <span className="truncate">{tr('expressionShortcutHint')}</span>
                 </div>
-                <button
-                  key="cancel"
-                  type="button"
-                  onClick={requestClose}
-                  className={`${footerButton} bg-surface text-text-primary hover:bg-surface-hover`}
-                >
-                  {tr('cancel')}
-                </button>
-                <button
-                  key="confirm"
-                  type="button"
-                  onClick={handleConfirm}
-                  disabled={confirmBlocked}
-                  aria-disabled={confirmBlocked}
-                  title={confirmBlocked ? tr('expressionConfirmBlocked') : undefined}
-                  style={{ gridColumn: 'span 2' }}
-                  className={`${footerButton} bg-accent text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent`}
-                >
-                  {tr('confirm')}
-                </button>
-              </>
+                <div className="flex shrink-0 items-stretch">
+                  <button
+                    key="cancel"
+                    type="button"
+                    onClick={requestClose}
+                    className={`${footerButton} w-[100px] bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary`}
+                  >
+                    {tr('cancel')}
+                  </button>
+                  <button
+                    key="confirm"
+                    type="button"
+                    onClick={handleConfirm}
+                    disabled={confirmBlocked}
+                    aria-disabled={confirmBlocked}
+                    title={confirmBlocked ? tr('expressionConfirmBlocked') : undefined}
+                    className={`${footerButton} w-[116px] bg-accent text-accent-foreground hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-accent`}
+                  >
+                    {tr('confirm')}
+                  </button>
+                </div>
+              </div>
             )}
           </>
         )}
