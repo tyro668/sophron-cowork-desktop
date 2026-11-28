@@ -43,6 +43,8 @@ export interface LlmPromptComposerProps {
   onSubmit?: () => void;
   submitDisabled?: boolean;
   submitTitle?: string;
+  /** Keep Enter-to-send keyboard submission while letting the parent render its own submit action. */
+  hideSubmitButton?: boolean;
 }
 
 function normalizeSelectedSkillNames(selectedSkillNames: string[] | undefined): string[] {
@@ -74,6 +76,7 @@ export function LlmPromptComposer({
   onSubmit,
   submitDisabled = false,
   submitTitle,
+  hideSubmitButton = false,
 }: LlmPromptComposerProps) {
   const { t } = useTranslation();
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
@@ -147,7 +150,7 @@ export function LlmPromptComposer({
         placeholder={placeholder}
         className={`min-h-[58px] flex-1 resize-none overflow-y-auto border-none bg-transparent text-[13px] leading-5 text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:opacity-60 ${textareaClassName}`}
       />
-      {onModelSelect || onSubmit ? (
+      {onModelSelect || (onSubmit && !hideSubmitButton) ? (
         <div className="mt-3 flex items-center justify-end gap-2">
           {onModelSelect ? (
             <AgentModelSelector
@@ -171,7 +174,7 @@ export function LlmPromptComposer({
               }
             />
           ) : null}
-          {onSubmit ? (
+          {onSubmit && !hideSubmitButton ? (
             <button
               type="button"
               onClick={onSubmit}

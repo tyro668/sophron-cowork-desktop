@@ -4,13 +4,15 @@ import { Cloud, Database, FileSpreadsheet, FileText, Folder, type LucideIcon } f
 import { Cell, FormGrid, FormScroll, LabelCell } from '../../../workflow-forms/shared/FormGrid';
 import { INPUT_GRID_COLUMNS } from '../../../workflow-forms/shared/gridColumns';
 import type {
+  DataGroup,
   DataRawSource,
   DataRawTable,
   DataRawTableSourceKind,
   DataWorkflowNode,
 } from '../../../../types';
 import { isRawTableUnavailable } from '../../../../../shared/contracts';
-import { GlassSelect, type GlassSelectOption } from '../../../GlassSelect';
+import type { GlassSelectOption } from '../../../GlassSelect';
+import { RawTableTreeSelect } from '../../raw-table-tree-select';
 import { dataClient } from '../../../../features/data/api/data-client';
 import { stringValue } from './workflow-summary';
 
@@ -85,15 +87,26 @@ export function WorkflowInputSourceConfig({
 }) {
   const { t } = useTranslation();
   const [sources, setSources] = useState<DataRawSource[]>([]);
+  const [groups, setGroups] = useState<DataGroup[]>([]);
   useEffect(() => {
-    if (!dataClient.isAvailable() || !dataClient.has('listRawSources')) return;
+    if (!dataClient.isAvailable()) return;
     let cancelled = false;
-    void dataClient
-      .listRawSources()
-      .then((next) => {
-        if (!cancelled) setSources(next);
-      })
-      .catch(() => undefined);
+    if (dataClient.has('listRawSources')) {
+      void dataClient
+        .listRawSources()
+        .then((next) => {
+          if (!cancelled) setSources(next);
+        })
+        .catch(() => undefined);
+    }
+    if (dataClient.has('listGroups')) {
+      void dataClient
+        .listGroups('raw')
+        .then((next) => {
+          if (!cancelled) setGroups(next);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };
@@ -103,7 +116,6 @@ export function WorkflowInputSourceConfig({
     stringValue(node.config.rawTableName) || stringValue(node.config.name);
   const selectedRawTableById =
     rawTables.find((rawTable) => rawTable.id === selectedRawTableId) ?? null;
-  const hasSelectedRawTableInChoices = selectedRawTableById !== null;
   // DSL-authored inputs bind by table name (`input rawTable "销售订单"`).
   const selectedRawTable =
     selectedRawTableById ??
@@ -156,38 +168,31 @@ export function WorkflowInputSourceConfig({
       <FormGrid columns={INPUT_GRID_COLUMNS} testId="input-form-grid">
         <LabelCell required>{t('data.workflow.rawTable')}</LabelCell>
         <Cell v={['ctl', !selectedRawTableId && !isLoading && 'err']}>
-          <GlassSelect
+          <RawTableTreeSelect
             ariaLabel={t('data.workflow.rawTable')}
-            value={selectedRawTableId || undefined}
-            onValueChange={handleRawTableChange}
-            options={[
-              ...(selectedRawTableId && !hasSelectedRawTableInChoices
-                ? [
-                    {
-                      value: selectedRawTableId,
-                      label:
-                        selectedRawTableName ||
-                        (isLoading ? selectedRawTableId : t('data.workflow.rawTableDeleted')),
-                      muted: !selectedRawTableName && !isLoading,
-                    },
-                  ]
-                : []),
-              ...rawTableOptionsBySource(rawTables, sources, t),
-            ]}
-            searchable
-            searchPlaceholder={t('data.rawSources.picker.search')}
-            searchEmptyText={t('data.rawSources.picker.empty')}
-            placeholder={
-              isLoading
-                ? t('data.workflow.loadingRawTables')
-                : hasAvailableRawTables
-                  ? t('data.workflow.selectRawTable')
-                  : t('data.workflow.noAvailableRawTables')
-            }
+            value={selectedRawTable ? selectedRawTable.id : selectedRawTableId}
+            rawTables={rawTables}
+            sources={sources}
+            groups={groups}
+            loading={isLoading}
+            loadingLabel={t('data.workflow.loadingRawTables')}
             disabled={isLoading || (!selectedRawTableId && !hasAvailableRawTables)}
+            placeholder={
+              hasAvailableRawTables
+                ? t('data.workflow.selectRawTable')
+                : t('data.workflow.noAvailableRawTables')
+            }
+            fallbackLabel={
+              selectedRawTableId && !selectedRawTable
+                ? selectedRawTableName ||
+                  (isLoading ? selectedRawTableId : t('data.workflow.rawTableDeleted'))
+                : undefined
+            }
+            fallbackMuted={Boolean(
+              selectedRawTableId && !selectedRawTable && !selectedRawTableName && !isLoading
+            )}
             triggerIcon={<Database className="h-3.5 w-3.5 flex-shrink-0 text-text-muted" />}
-            triggerClassName="w-full justify-between text-[13px] text-text-primary"
-            contentClassName="w-[var(--radix-select-trigger-width)]"
+            onValueChange={handleRawTableChange}
           />
         </Cell>
         <Cell v={['muted']}>

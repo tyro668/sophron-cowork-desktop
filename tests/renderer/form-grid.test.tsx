@@ -167,7 +167,9 @@ describe('WorkflowInputSourceConfig', () => {
       } as never)
     );
     expect(bound.host.textContent).toContain('orders');
-    expect(bound.host.textContent).toContain('inputTableInfo');
+    expect(bound.host.textContent).toContain('销售订单');
+    expect(bound.host.textContent).toContain('14 fields · 2,000 rows');
+    expect(bound.host.querySelector('[data-testid="raw-table-tree-select-trigger"]')).toBeTruthy();
     await bound.cleanup();
   });
 
@@ -191,8 +193,67 @@ describe('WorkflowInputSourceConfig', () => {
         onNodeChange: () => undefined,
       } as never)
     );
-    expect(view.host.textContent).toContain('rawTableDeleted');
+    expect(view.host.textContent).toContain('Raw table was deleted');
     expect(view.host.textContent).not.toContain('8e3b7d7a-gone');
+    await view.cleanup();
+  });
+});
+
+describe('WorkflowOutputConfig', () => {
+  it('reuses ResultTableTreeSelect for existing result table selection', async () => {
+    const { WorkflowOutputConfig } =
+      await import('../../src/renderer/components/data-view/data-pipelines/workflow/WorkflowOutputConfig');
+    const onNodeChange = vi.fn();
+    const view = await render(
+      createElement(WorkflowOutputConfig, {
+        node: {
+          id: 'o',
+          type: 'output',
+          config: { outputStrategy: 'existing', outputResultTableId: 'res1' },
+        },
+        resultTables: [
+          {
+            id: 'res1',
+            name: '月度销售汇总',
+            tableName: 'res_monthly_sales',
+            relatedPipelineNames: [],
+            updatedAt: 1,
+          },
+          {
+            id: 'res2',
+            name: '区域利润表',
+            tableName: 'res_region_profit',
+            relatedPipelineNames: [],
+            updatedAt: 2,
+          },
+        ],
+        onNodeChange,
+      } as never)
+    );
+    const trigger = view.host.querySelector(
+      '[data-testid="result-table-tree-select-trigger"]'
+    ) as HTMLButtonElement | null;
+    expect(trigger).toBeTruthy();
+    expect(trigger?.textContent).toContain('月度销售汇总');
+
+    await act(async () => {
+      trigger?.click();
+    });
+    const rows = document.querySelectorAll('[data-testid="result-table-tree-row"]');
+    expect(rows.length).toBe(2);
+    await act(async () => {
+      (rows[1] as HTMLElement).click();
+    });
+    expect(onNodeChange).toHaveBeenCalledTimes(1);
+    const updater = onNodeChange.mock.calls[0][0] as (node: {
+      config: Record<string, unknown>;
+    }) => { config: Record<string, unknown> };
+    expect(updater({ config: { outputStrategy: 'existing' } }).config).toMatchObject({
+      outputStrategy: 'existing',
+      outputResultTableId: 'res2',
+      table: 'res_region_profit',
+      resultTableName: '区域利润表',
+    });
     await view.cleanup();
   });
 });

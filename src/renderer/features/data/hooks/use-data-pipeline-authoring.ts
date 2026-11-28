@@ -11,6 +11,8 @@ import {
   type DataPipelineAuthoringSession,
 } from '../../../../shared/data-pipeline-authoring';
 import { getInitialSessionTitle } from '../../../../shared/session-title';
+import { parseBuiltinLlmConfigSetId } from '../../../../shared/builtin-llm';
+import { configClient } from '../../config/api/config-client';
 import { useIPC } from '../../../hooks/useIPC';
 import { useAppStore } from '../../../store';
 
@@ -110,8 +112,28 @@ export function useDataPipelineAuthoring({
 
   const startAuthoring = async (
     input: DataGeneratePipelineFromRequirementInput,
-    anchorLabel?: string
+    anchorLabel?: string,
+    modelConfigSetId?: string
   ) => {
+    const trimmedModelConfigSetId = modelConfigSetId?.trim() || undefined;
+    if (trimmedModelConfigSetId && configClient.isAvailable()) {
+      const store = useAppStore.getState();
+      const appConfig = store.appConfig;
+      const builtinModel = parseBuiltinLlmConfigSetId(trimmedModelConfigSetId);
+      const isAlreadyActive = builtinModel
+        ? appConfig?.provider === 'sophron' &&
+          (appConfig.builtinLlmModel?.trim() || appConfig.model?.trim()) === builtinModel
+        : appConfig?.activeConfigSetId === trimmedModelConfigSetId;
+      if (!isAlreadyActive) {
+        const switchResult = builtinModel
+          ? await configClient.selectBuiltinModel({ model: builtinModel })
+          : await configClient.switchSet({ id: trimmedModelConfigSetId });
+        if (switchResult.success) {
+          store.setAppConfig(switchResult.config);
+          store.setIsConfigured(Boolean(switchResult.config.isConfigured));
+        }
+      }
+    }
     const { source, output, reusePipelineId, startFromNodeId, workflow } = input;
     const request: DataPipelineAuthoringRequest = {
       id: crypto.randomUUID(),
@@ -151,7 +173,8 @@ export function useDataPipelineAuthoring({
         { type: 'text', text: prompt },
         { type: 'data_pipeline_request', request },
       ],
-      workingDirectory || workingDir || undefined
+      workingDirectory || workingDir || undefined,
+      trimmedModelConfigSetId ? { modelConfigSetId: trimmedModelConfigSetId } : undefined
     );
     if (!session) return null;
     setPending({ sessionId: session.id, requestId: request.id, input });

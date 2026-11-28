@@ -2073,6 +2073,7 @@
       "inputAliasNone": "连接到表连接或 SQL 后自动生成",
       "aiInputLabel": "输入表",
       "aiOutputLabel": "输出表",
+      "aiModelLabel": "模型",
       "aiRequirementLabel": "需求",
       "zoomOut": "缩小",
       "zoomIn": "放大",

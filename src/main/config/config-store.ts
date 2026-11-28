@@ -28,6 +28,7 @@ import {
   shouldUseAnthropicAuthToken,
 } from './auth-utils';
 import { API_PROVIDER_PRESETS, PI_AI_CURATED_PRESETS } from '../../shared/api-model-presets';
+import { parseBuiltinLlmConfigSetId } from '../../shared/builtin-llm';
 import { listCodexSubscriptionModelOptions } from './codex-models';
 import { hasCodexCredentials } from './codex-auth';
 import { normalizePersonalAnalysisApiOrigin } from '../../shared/personal-analysis';
@@ -1733,6 +1734,25 @@ export class ConfigStore {
       baseUrl: normalized.baseUrl,
       model: normalized.model,
     });
+  }
+
+  hasUsableCredentialsForConfigSetId(
+    configSetId: string,
+    config: AppConfig = this.getAll()
+  ): boolean {
+    const trimmed = configSetId.trim();
+    if (!trimmed) {
+      return this.hasUsableCredentialsForActiveSet(config);
+    }
+    if (parseBuiltinLlmConfigSetId(trimmed)) {
+      return true;
+    }
+    const normalized = this.normalizeConfig(config);
+    const target = normalized.configSets.find((configSet) => configSet.id === trimmed);
+    if (!target) {
+      return false;
+    }
+    return this.hasUsableCredentialsForConfigSet(target);
   }
 
   hasAnyUsableCredentials(config: AppConfig = this.getAll()): boolean {

@@ -87,6 +87,7 @@ const sessionStartPayload = z.looseObject({
   content: z.array(contentBlock).optional(),
   memoryEnabled: boolOpt,
   selectedSkillNames: z.array(str).optional(),
+  modelConfigSetId: strOpt,
 });
 const sessionContinuePayload = z.looseObject({
   sessionId: str,
@@ -94,6 +95,7 @@ const sessionContinuePayload = z.looseObject({
   permissionPolicy: z.enum(['default', 'auto_review', 'full_access']).optional(),
   content: z.array(contentBlock).optional(),
   selectedSkillNames: z.array(str).optional(),
+  modelConfigSetId: strOpt,
 });
 
 export const clientEventSchema = z.discriminatedUnion('type', [

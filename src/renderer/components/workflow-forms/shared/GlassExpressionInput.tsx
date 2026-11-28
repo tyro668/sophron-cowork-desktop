@@ -1192,7 +1192,7 @@ function FunctionList({
   );
 }
 
-export const EXPRESSION_PREVIEW_MAX_LINES = 3;
+export const EXPRESSION_PREVIEW_MAX_LINES = 1;
 
 /** `avg([x]) ▌` → `over ()` / `over (by: …)`. */
 function windowCompletionSource(ctx: CompletionContext): CompletionResult | null {
@@ -1232,6 +1232,11 @@ export function GlassExpressionInput({
     [fieldCompletions, lintFields, value]
   );
 
+  const singleLinePreview = useMemo(
+    () => (value ? value.replace(/\s*\r?\n\s*/g, ' ') : ''),
+    [value]
+  );
+
   return (
     <>
       <button
@@ -1241,31 +1246,24 @@ export function GlassExpressionInput({
         aria-label={label}
         title={value || undefined}
         style={{ paddingLeft: 10 }}
-        className="relative flex h-full min-h-8 w-full cursor-pointer items-center bg-transparent px-2.5 py-1 pr-8 text-left font-mono text-ui-control leading-[18px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
+        className="flex h-full min-h-8 w-full min-w-0 cursor-pointer items-center gap-2 bg-transparent px-2.5 text-left font-mono text-ui-control leading-[18px] text-text-primary outline-none transition-colors hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/30"
       >
-        {/* Long formulas wrap to up to 3 lines (full text in the tooltip/editor) instead of a one-line ellipsis. */}
         <span
           data-testid="expression-preview"
-          className={`min-w-0 shrink whitespace-pre-wrap break-all${issueCount > 0 ? ' text-error' : ''}`}
-          style={{
-            display: '-webkit-box',
-            WebkitLineClamp: EXPRESSION_PREVIEW_MAX_LINES,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
+          className={`min-w-0 flex-1 truncate whitespace-nowrap${issueCount > 0 ? ' text-error' : ''}`}
         >
-          {value || (
+          {singleLinePreview || (
             <span className="font-sans text-text-muted">
               {placeholderProp ?? tr('expressionPlaceholder')}
             </span>
           )}
         </span>
         {issueCount > 0 && (
-          <span className="ml-1.5 inline-flex h-[18px] shrink-0 items-center rounded-md bg-error/[0.08] px-1.5 font-sans text-[11px] text-error">
+          <span className="inline-flex h-[18px] shrink-0 items-center rounded-md bg-error/[0.08] px-1.5 font-sans text-[11px] text-error">
             {tr('expressionIssueCount', { count: issueCount })}
           </span>
         )}
-        <SquareFunction className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-muted" />
+        <SquareFunction className="h-3.5 w-3.5 shrink-0 text-text-muted" />
       </button>
       {open && (
         <ExpressionEditorDialog

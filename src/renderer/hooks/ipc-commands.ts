@@ -13,6 +13,7 @@ import { debugIpc, isElectron } from './ipc-event-bridge';
 
 export interface SessionSendOptions {
   selectedSkillNames?: string[];
+  modelConfigSetId?: string;
 }
 
 function send(event: ClientEvent): void {
@@ -117,6 +118,7 @@ async function startSession(
         permissionPolicy: useAppStore.getState().settings.permissionPolicy,
         content,
         selectedSkillNames: options?.selectedSkillNames,
+        modelConfigSetId: options?.modelConfigSetId,
       },
     });
     if (session) {
@@ -220,6 +222,7 @@ async function continueSession(
         permissionPolicy: store.settings.permissionPolicy,
         content,
         selectedSkillNames: options?.selectedSkillNames,
+        modelConfigSetId: options?.modelConfigSetId,
       },
     });
   } catch (e) {

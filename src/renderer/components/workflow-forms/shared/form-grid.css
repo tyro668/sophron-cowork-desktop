@@ -452,9 +452,11 @@
   background: var(--color-surface-hover) !important;
   color: var(--color-text-primary);
 }
-/* Field picker trigger has no inner padded span: give it the 10px cell inset itself. */
+/* Field/tree picker triggers have no inner padded span: give them the 10px cell inset themselves. */
 .opg-c.ctl > button[aria-haspopup='listbox'],
-.opg-c.ctl > div > button[aria-haspopup='listbox'] {
+.opg-c.ctl > div > button[aria-haspopup='listbox'],
+.opg-c.ctl > button[aria-haspopup='tree'],
+.opg-c.ctl > div > button[aria-haspopup='tree'] {
   padding-left: 10px;
 }
 

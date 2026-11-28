@@ -30,6 +30,7 @@ export type ClientEvent =
         content?: ContentBlock[];
         memoryEnabled?: boolean;
         selectedSkillNames?: string[];
+        modelConfigSetId?: string;
       };
     }
   | {
@@ -40,6 +41,7 @@ export type ClientEvent =
         permissionPolicy?: PermissionPolicyId;
         content?: ContentBlock[];
         selectedSkillNames?: string[];
+        modelConfigSetId?: string;
       };
     }
   | { type: 'session.stop'; payload: { sessionId: string } }

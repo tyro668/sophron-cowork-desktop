@@ -1,8 +1,9 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { DataResultTable, DataWorkflowNode } from '../../../../types';
-import { GlassSelect } from '../../../GlassSelect';
+import type { DataGroup, DataResultTable, DataWorkflowNode } from '../../../../types';
 import { Info } from 'lucide-react';
+import { dataClient } from '../../../../features/data/api/data-client';
+import { ResultTableTreeSelect } from '../../result-table-tree-select';
 import {
   Cell,
   FormGrid,
@@ -29,6 +30,20 @@ export function WorkflowOutputConfig({
   onNodeChange: (updater: (node: DataWorkflowNode) => DataWorkflowNode) => void;
 }) {
   const { t } = useTranslation();
+  const [groups, setGroups] = useState<DataGroup[]>([]);
+  useEffect(() => {
+    if (!dataClient.isAvailable() || !dataClient.has('listGroups')) return;
+    let cancelled = false;
+    void dataClient
+      .listGroups('result')
+      .then((next) => {
+        if (!cancelled) setGroups(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const selectedOutputRawTableId =
     stringValue(node.config.outputResultTableId) || stringValue(node.config.resultTableId);
   const configuredStrategy = stringValue(node.config.outputStrategy);
@@ -227,34 +242,22 @@ export function WorkflowOutputConfig({
           <>
             <LabelCell required>{t('data.workflow.resultTable')}</LabelCell>
             <Cell span={5} v={['ctl']}>
-              <GlassSelect
-                value={selectedOutputRawTableId || undefined}
-                onValueChange={handleResultTableChange}
-                options={[
-                  // Bound table missing from choices (still loading or beyond the
-                  // fetch cap): keep the option selectable but display its saved
-                  // display name instead of the raw id.
-                  ...(selectedOutputRawTableId &&
+              <ResultTableTreeSelect
+                ariaLabel={t('data.workflow.resultTable')}
+                value={selectedOutputRawTableId}
+                resultTables={availableResultTables}
+                groups={groups}
+                placeholder={t('data.workflow.noAvailableResultTables')}
+                disabled={!selectedOutputRawTableId && availableResultTables.length === 0}
+                fallbackLabel={
+                  selectedOutputRawTableId &&
                   !availableResultTables.some(
                     (resultTable) => resultTable.id === selectedOutputRawTableId
                   )
-                    ? [
-                        {
-                          value: selectedOutputRawTableId,
-                          label:
-                            stringValue(node.config.resultTableName) || selectedOutputRawTableId,
-                        },
-                      ]
-                    : []),
-                  ...availableResultTables.map((resultTable) => ({
-                    value: resultTable.id,
-                    label: resultTable.name,
-                  })),
-                ]}
-                placeholder={t('data.workflow.noAvailableResultTables')}
-                disabled={!selectedOutputRawTableId && availableResultTables.length === 0}
-                triggerClassName="w-full justify-between text-[13px] text-text-primary"
-                contentClassName="w-[var(--radix-select-trigger-width)]"
+                    ? stringValue(node.config.resultTableName) || selectedOutputRawTableId
+                    : undefined
+                }
+                onValueChange={handleResultTableChange}
               />
             </Cell>
           </>

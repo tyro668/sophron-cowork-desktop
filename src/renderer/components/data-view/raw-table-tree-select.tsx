@@ -2,7 +2,7 @@
  * Dropdown combobox that renders Cloud Connection's grouped `RawTableTree` picker
  * inside a floating portal popover (single-select, searchable, unavailable-safe).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, Loader2, Search, Table2, X } from 'lucide-react';
@@ -30,6 +30,9 @@ export interface RawTableTreeSelectProps {
   loadingLabel?: string;
   allowClear?: boolean;
   clearLabel?: string;
+  fallbackLabel?: string;
+  fallbackMuted?: boolean;
+  triggerIcon?: ReactNode;
   ariaLabel?: string;
   triggerClassName?: string;
   onValueChange: (tableId: string) => void;
@@ -47,6 +50,9 @@ export function RawTableTreeSelect({
   loadingLabel,
   allowClear = false,
   clearLabel,
+  fallbackLabel,
+  fallbackMuted = false,
+  triggerIcon,
   ariaLabel,
   triggerClassName,
   onValueChange,
@@ -153,7 +159,7 @@ export function RawTableTreeSelect({
     ? (loadingLabel ?? placeholder)
     : selectedTable
       ? selectedTable.name
-      : value || placeholder;
+      : (fallbackLabel ?? (value || placeholder));
 
   return (
     <>
@@ -176,10 +182,11 @@ export function RawTableTreeSelect({
         className={cn(
           'flex w-full min-w-0 items-center justify-between gap-2 text-left text-[13px] outline-none transition-colors',
           dropdown.open && 'bg-surface-hover',
-          selectedTable || value ? 'text-text-primary' : 'text-text-muted',
+          (selectedTable || value) && !fallbackMuted ? 'text-text-primary' : 'text-text-muted',
           triggerClassName
         )}
       >
+        {triggerIcon}
         <span className="min-w-0 flex-1 truncate">{displayLabel}</span>
         {loading ? (
           <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-text-muted" />

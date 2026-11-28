@@ -76,16 +76,22 @@ export function registerSessionIpc(context: SessionIpcContext): void {
 
   async function handleClientEvent(event: ClientEvent): Promise<unknown> {
     // Check if configured before starting sessions
-    if (event.type === 'session.start' && !configStore.hasUsableCredentialsForActiveSet()) {
-      sendToRenderer({
-        type: 'error',
-        payload: {
-          message: enTranslations.api.configRequiredActiveSet,
-          code: 'CONFIG_REQUIRED_ACTIVE_SET',
-          action: 'open_api_settings',
-        },
-      });
-      return null;
+    if (event.type === 'session.start') {
+      const requestedModelConfigSetId = event.payload.modelConfigSetId?.trim();
+      const hasUsableCredentials = requestedModelConfigSetId
+        ? configStore.hasUsableCredentialsForConfigSetId(requestedModelConfigSetId)
+        : configStore.hasUsableCredentialsForActiveSet();
+      if (!hasUsableCredentials) {
+        sendToRenderer({
+          type: 'error',
+          payload: {
+            message: enTranslations.api.configRequiredActiveSet,
+            code: 'CONFIG_REQUIRED_ACTIVE_SET',
+            action: 'open_api_settings',
+          },
+        });
+        return null;
+      }
     }
 
     if (eventRequiresSessionManager(event)) {
@@ -112,6 +118,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
             undefined,
             {
               selectedSkillNames: event.payload.selectedSkillNames,
+              modelConfigSetId: event.payload.modelConfigSetId?.trim() || undefined,
               permissionPolicy:
                 event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
               permissionRules: getPermissionRulesForPolicy(
@@ -129,6 +136,7 @@ export function registerSessionIpc(context: SessionIpcContext): void {
             event.payload.content,
             {
               selectedSkillNames: event.payload.selectedSkillNames,
+              modelConfigSetId: event.payload.modelConfigSetId?.trim() || undefined,
               permissionPolicy:
                 event.payload.permissionPolicy ?? configStore.get('permissionPolicy'),
               permissionRules: getPermissionRulesForPolicy(
