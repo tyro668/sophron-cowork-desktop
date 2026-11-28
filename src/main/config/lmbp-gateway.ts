@@ -62,13 +62,7 @@ function getPairingStatus(sdk: GatewaySdk): LmbpPairingStatus {
   return {
     link: sdk.pairing.link(TENANT),
     devices: devices.map(({ deviceId, name, online }) => ({ id: deviceId, name, online })),
-    models: devices.flatMap((device) =>
-      device.models.map((id) => ({
-        id: device.deviceId + '/' + id,
-        name: [device.modelNames?.[id] || id, device.name].filter(Boolean).join(' · '),
-        capabilities: device.modelCapabilities[id] ?? [],
-      }))
-    ),
+    models: sdk.pairing.listModels(TENANT, END_USER),
   };
 }
 
@@ -131,13 +125,18 @@ export async function startLmbpGateway(directory: string) {
         sdk.pairing.revokeDevice(TENANT, END_USER, id);
       },
       resolveModel(id: string) {
-        const model = getPairingStatus(sdk).models.find((item) => item.id === id);
+        const model = sdk.pairing.listModels(TENANT, END_USER).find((item) => item.routeId === id);
         if (!model) throw new Error(harnessMessage('lmbpUnavailable'));
         return {
           origin,
           apiKey,
-          headers: { 'X-End-User': END_USER, [SCHEME_HEADER]: id.split('/').slice(0, 2).join('/') },
-          capabilities: model.capabilities ?? [],
+          headers: {
+            'X-End-User': END_USER,
+            [SCHEME_HEADER]: [model.device.id, model.scheme?.id ?? '']
+              .map(encodeURIComponent)
+              .join('/'),
+          },
+          capabilities: model.capabilities,
         };
       },
       async close() {

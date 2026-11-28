@@ -26,6 +26,8 @@ export interface BeforeSessionRunContext {
   prompt: string;
   existingMessages: Message[];
   isColdStart: boolean;
+  /** The cached chat is being reused with a different model. */
+  isModelSwitch?: boolean;
   /** Resolved execution-only model config. Extensions must not serialize it into prompts. */
   runtimeConfig?: AgentRuntimeConfig;
   /**

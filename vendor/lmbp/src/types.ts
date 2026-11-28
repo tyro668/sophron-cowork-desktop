@@ -12,9 +12,19 @@ export interface TenantConfig { id: string; /** >= 32 chars; server-side only */
 export interface PairingInfo { link: string; qrSVG: string; qrDataURL: string }
 export interface PendingPairing { userCode: string; deviceName: string; jkt: string; status: string; expiresAt: Date }
 export interface ApproveResult { status: 'approved' | 'denied'; deviceId: string; deviceName: string; jkt: string }
+export interface ModelDetails { scheme_id: string; scheme_name: string; model_id: string }
+export interface NamedID { id: string; name: string }
+export interface CatalogModel {
+  routeId: string;
+  modelId: string;
+  device: NamedID;
+  scheme?: NamedID;
+  capabilities: string[];
+  displayName?: string;
+}
 export interface DeviceInfo {
   deviceId: string; name: string; status: string; createdAt: Date; jkt: string; online: boolean;
-  models: string[]; modelCapabilities: Record<string, string[]>; modelNames?: Record<string, string>;
+  models: string[]; modelCapabilities: Record<string, string[]>; modelNames?: Record<string, string>; modelDetails: Record<string, ModelDetails>;
   /** Ed25519 identity key (check against your pinned jkt) and the device-signed X25519 key statement ('' if none), for sealE2EERequest. */
   publicKey: Buffer; e2eeKey: string;
 }
@@ -60,7 +70,7 @@ export interface ChatCompletionChunk {
   choices: { index: number; delta: Partial<ChatMessage>; finish_reason: string | null }[]; usage?: Usage;
   lmbp_e2ee?: E2EEFrameWire;
 }
-export interface Model { id: string; object: 'model'; owned_by: string; display_name?: string; capabilities: string[] }
+export interface Model { id: string; object: 'model'; owned_by: string; display_name?: string; capabilities: string[]; lmbp?: { model_id: string; scheme: NamedID; device: NamedID } }
 
 // ---- Anthropic Messages shapes (subset) ----
 export type AnthropicBlock =

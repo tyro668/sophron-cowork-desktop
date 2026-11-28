@@ -137,7 +137,12 @@ function scanInjectedExperienceIds(text: string): {
 export class MemoryContextBuilder {
   constructor(private readonly deps: MemoryContextBuilderDeps) {}
 
-  async build(session: { cwd?: string }, prompt: string, signal?: AbortSignal): Promise<string> {
+  async build(
+    session: { cwd?: string },
+    prompt: string,
+    signal?: AbortSignal,
+    navigation: 'model' | 'ranked' = 'model'
+  ): Promise<string> {
     if (!this.deps.isEnabled() || signal?.aborted) {
       return '';
     }
@@ -192,7 +197,12 @@ export class MemoryContextBuilder {
       }
     }
 
-    const experience = await this.buildExperienceContext(prompt, currentWorkspace, signal);
+    const experience = await this.buildExperienceContext(
+      prompt,
+      currentWorkspace,
+      navigation,
+      signal
+    );
     if (experience.text.trim()) {
       const experienceSelection = selectLinesWithinBudget(
         escapeMemoryContextText(experience.text).split('\n'),
@@ -278,6 +288,7 @@ export class MemoryContextBuilder {
   private async buildExperienceContext(
     prompt: string,
     currentWorkspace: string | null,
+    navigation: 'model' | 'ranked',
     signal?: AbortSignal
   ): Promise<{ text: string; chunkIds: string[]; sessionIds: string[] }> {
     const empty = { text: '', chunkIds: [] as string[], sessionIds: [] as string[] };
@@ -322,12 +333,28 @@ export class MemoryContextBuilder {
     // Trivial requests skip the navigator entirely — bare acknowledgements or
     // single-keyword prompts gain nothing from multi-step expansion and the
     // extra LLM round-trip would dominate latency.
-    if (prompt.trim().length < 16 && extractKeywords(prompt).length < 3) {
+    const maxSteps = this.deps.getMaxNavSteps();
+    if (maxSteps === 0 || (prompt.trim().length < 16 && extractKeywords(prompt).length < 3)) {
       return { text: visibleContext, ...rankedIds() };
     }
     const expandedChunks = new Map<string, ExpandedChunkData>();
     const expandedSessions = new Map<string, ExpandedSessionData>();
     const rawSessions = new Map<string, string>();
+    // A cold chat sharing the navigator's LMBP route needs its slot for the
+    // user's first turn. Expand the top local match without another inference.
+    if (navigation === 'ranked') {
+      const [chunk] = retrieval.rankedChunks;
+      if (chunk) {
+        expandedChunks.set(chunk.id, { ...chunk, sourceWorkspace: chunk.sourceWorkspace ?? null });
+        visibleContext = this.formatFullContext(
+          retrieval,
+          expandedChunks,
+          expandedSessions,
+          rawSessions
+        );
+      }
+      return { text: visibleContext, ...rankedIds() };
+    }
     // The navigator may only expand ids that belong to the retrieved,
     // in-scope candidate set — arbitrary store ids are never dereferenced.
     const allowedChunkIds = new Set<string>([
@@ -344,7 +371,7 @@ export class MemoryContextBuilder {
     // Hard-bounded navigation: the decide call is raced against the shared
     // deadline AND receives a linked abort signal, so a navigator that ignores
     // its signal still cannot stall prompt construction.
-    for (let step = 0; step < this.deps.getMaxNavSteps(); step += 1) {
+    for (let step = 0; step < maxSteps; step += 1) {
       if (signal?.aborted || Date.now() >= deadlineAt) {
         break;
       }

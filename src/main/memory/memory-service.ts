@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { app } from 'electron';
 import type { AppConfig } from '../config/config-store';
+import type { AgentRuntimeConfig } from '../../shared/contracts';
 import { configStore } from '../config/config-store';
 import type { DatabaseInstance } from '../db/database';
 import { logWarn } from '../utils/logger';
@@ -19,7 +20,7 @@ import {
 } from './memory-generation';
 import { MemoryIngestionJobStore } from './memory-ingestion-jobs';
 import type { MemoryLLMClientLike } from './memory-llm-client';
-import { MemoryLLMClient } from './memory-llm-client';
+import { MemoryLLMClient, resolveMemoryCompletionModel } from './memory-llm-client';
 import { MemoryManualOverlayStore } from './memory-manual-overlay-store';
 import { MemoryNavigator } from './memory-navigator';
 import { DEFAULT_MEMORY_PROMPTS, type MemoryPromptSet } from './memory-prompts';
@@ -567,8 +568,15 @@ export class MemoryService {
   async buildPromptPrefix(
     session: { cwd?: string },
     prompt: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    coldStartModel?: Pick<AgentRuntimeConfig, 'provider' | 'model'>
   ): Promise<string> {
+    if (coldStartModel?.provider === 'lmbp') {
+      const memoryModel = resolveMemoryCompletionModel(this.getAppConfig());
+      if (memoryModel.provider === 'lmbp' && memoryModel.model === coldStartModel.model) {
+        return this.contextBuilder.build(session, prompt, signal, 'ranked');
+      }
+    }
     return this.contextBuilder.build(session, prompt, signal);
   }
 

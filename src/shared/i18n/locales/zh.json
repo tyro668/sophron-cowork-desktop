@@ -2791,6 +2791,7 @@
       "revoke": "解除配对",
       "noAuthorizedModels": "请在 Avora 中为此连接授权至少一个模型。",
       "textOnly": "此模型可用于对话。执行需要工具的任务时，请选择支持工具调用的模型。",
+      "savedModelOffline": "已选模型当前不可用",
       "unavailableModel": "已选模型当前不可用 · {{model}}",
       "loadFailed": "无法启动本机 Avora 配对服务。",
       "actionFailed": "Avora 配对操作失败。"

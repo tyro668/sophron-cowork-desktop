@@ -14,7 +14,15 @@ it('pairs Avora from the API form, collapses pairing controls after pairing, and
   };
   const approve = vi.fn(async () => {
     status.devices = [{ id: 'dev_fixture', name: 'Test Avora', online: true }];
-    status.models = [{ id: model, name: 'Demo', capabilities: [] }];
+    status.models = [
+      {
+        routeId: model,
+        modelId: 'org/vision',
+        scheme: { id: 'work', name: 'Demo' },
+        device: { id: 'dev_fixture', name: 'Test Avora' },
+        capabilities: [],
+      },
+    ];
   });
   const revoke = vi.fn(async () => {
     status.devices = [];
@@ -47,6 +55,7 @@ it('pairs Avora from the API form, collapses pairing controls after pairing, and
     await screen.findByText('Test Avora');
     expect(approve).toHaveBeenCalledWith('ABCD-EFGH');
     await screen.findByText('Demo');
+    expect(document.body.textContent).not.toContain(model);
 
     // Pairing link and pairing code inputs collapse once a device is paired.
     expect(screen.queryByRole('textbox', { name: /pairing code/i })).toBeNull();
@@ -84,6 +93,36 @@ it('pairs Avora from the API form, collapses pairing controls after pairing, and
     fireEvent.click(screen.getByRole('button', { name: /unpair/i }));
     await waitFor(() => expect(revoke).toHaveBeenCalledWith('dev_fixture'));
     expect(await screen.findByRole('textbox', { name: /pairing code/i })).toBeTruthy();
+    expect(await screen.findByText('Saved model currently unavailable · org/vision')).toBeTruthy();
+  } finally {
+    form.unmount();
+    vi.unstubAllGlobals();
+  }
+});
+
+it('shows the model ID in saved settings and the offline warning after reopening', async () => {
+  const model = 'dev_fixture/work/org/vision';
+  const { useLmbpCatalog } = await import('../../src/renderer/features/config/lmbp-catalog');
+  useLmbpCatalog.setState({ displayIds: { [model]: 'org/vision' } });
+  const config = { provider: 'lmbp', model, activeProfileKey: 'lmbp' };
+  vi.stubGlobal('electronAPI', {
+    config: {
+      getPresets: async () => API_PROVIDER_PRESETS,
+      get: async () => config,
+      getLmbpStatus: async () => ({ link: 'lmbp://pair', devices: [], models: [] }),
+    },
+  });
+  const { SettingsAPI } = await import('../../src/renderer/components/settings/SettingsAPI');
+  const { ConfirmDialogProvider } = await import('../../src/renderer/components/ConfirmDialog');
+  const form = render(
+    <ConfirmDialogProvider>
+      <SettingsAPI />
+    </ConfirmDialogProvider>
+  );
+  try {
+    expect(await screen.findByText('Avora (LMBP) · org/vision')).toBeTruthy();
+    expect(await screen.findByText('Saved model currently unavailable · org/vision')).toBeTruthy();
+    expect(form.container.textContent).not.toContain(model);
   } finally {
     form.unmount();
     vi.unstubAllGlobals();

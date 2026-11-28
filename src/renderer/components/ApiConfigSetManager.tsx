@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, Layers3, MoreHorizontal, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import type { ApiConfigSet, ProviderPresets } from '../types';
+import { useLmbpCatalog } from '../features/config/lmbp-catalog';
+import { getModelDisplayId } from '../../shared/model-display';
 import { GlassDropdownMenu, GlassMenuItem } from './GlassDropdownMenu';
 import { useConfirmDialog } from './ConfirmDialog';
 
@@ -152,6 +154,7 @@ export function ApiConfigSetManager({
 }: ApiConfigSetManagerProps) {
   const { t } = useTranslation();
   const { confirmDelete } = useConfirmDialog();
+  const displayIds = useLmbpCatalog((state) => state.displayIds);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [renameName, setRenameName] = useState('');
 
@@ -174,7 +177,11 @@ export function ApiConfigSetManager({
             ? t('api.anthropicCompatibleLabel')
             : presets?.custom?.name || ''
         : presets?.[set.provider]?.name || '';
-    const modelName = set.profiles?.[set.activeProfileKey]?.model?.trim() || '';
+    const modelName = getModelDisplayId(
+      set.profiles?.[set.activeProfileKey]?.model?.trim() || '',
+      set.provider,
+      displayIds
+    );
     const isSameAsName =
       modelName.length > 0 && modelName.toLowerCase() === set.name.trim().toLowerCase();
     if (isSameAsName) return providerLabel;

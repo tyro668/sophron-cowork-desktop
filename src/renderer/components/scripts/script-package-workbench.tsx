@@ -34,7 +34,8 @@ import { SCRIPT_SOURCE_KEYS } from './labels';
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from '../../../shared/automation/script-package';
 import type { Automation, DataRawTablePreview } from '../../../shared/contracts';
 import { useAppStore, type ScriptEditorTarget } from '../../store';
-import { getAgentModelId } from '../AgentModelSelector';
+import { useLmbpCatalog } from '../../features/config/lmbp-catalog';
+import { getAgentModelDisplayId } from '../AgentModelSelector';
 import {
   FixContinueActionCells,
   GenerateActionCells,
@@ -133,6 +134,7 @@ export function ScriptPackageWorkbench({
   const { confirm, confirmDelete } = useConfirmDialog();
   const api = automationClient.scripts;
   const appConfig = useAppStore((state) => state.appConfig);
+  const displayIds = useLmbpCatalog((state) => state.displayIds);
   const chat = target.chat;
   const sessions = useAppStore((state) => state.sessions);
   const setActiveSession = useAppStore((state) => state.setActiveSession);
@@ -337,8 +339,11 @@ export function ScriptPackageWorkbench({
         ? summary.runtimeVersion
         : 'Python';
   const modelLabel =
-    getAgentModelId(appConfig, modelConfigSetId ?? appConfig?.activeConfigSetId) ||
-    t('chat.noModel');
+    getAgentModelDisplayId(
+      appConfig,
+      modelConfigSetId ?? appConfig?.activeConfigSetId,
+      displayIds
+    ) || t('chat.noModel');
 
   const generate = async (
     override: {

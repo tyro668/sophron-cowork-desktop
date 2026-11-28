@@ -351,7 +351,7 @@ export class Gateway {
         public_key: L.publicJWK(d.pub), jkt: L.thumbprint(d.pub) };
       if (d.e2eeKey) item.e2ee_key = d.e2eeKey;
       const s = this.online(d.id);
-      if (s) Object.assign(item, { online: true, models: [...s.models], model_capabilities: { ...s.modelCaps }, ...(Object.keys(s.modelNames || {}).length ? { model_names: { ...s.modelNames } } : {}), capabilities: [...s.caps], max_concurrency: s.maxConc });
+      if (s) Object.assign(item, { online: true, models: [...s.models], model_capabilities: { ...s.modelCaps }, ...(Object.keys(s.modelNames || {}).length ? { model_names: { ...s.modelNames } } : {}), ...(Object.keys(s.modelDetails).length ? { model_details: s.modelDetails } : {}), capabilities: [...s.caps], max_concurrency: s.maxConc });
       return item;
     });
     const now = Date.now(), pending_pairings = [];
@@ -468,7 +468,7 @@ export class Gateway {
     if (!resumed) this.devs.set(dev.id, ds);
     const prev = ds.ws;
     const gen = ++ds.gen;
-    Object.assign(ds, { ws, models: Array.isArray(hello.models) ? hello.models : [], modelCaps: hello.model_capabilities || {}, modelNames: cleanNames(hello.model_names, hello.models), caps, maxConc: conc,
+    Object.assign(ds, { ws, models: Array.isArray(hello.models) ? hello.models : [], modelCaps: hello.model_capabilities || {}, modelNames: cleanNames(hello.model_names, hello.models), modelDetails: advertisedDetails(hello.model_details, hello.models), caps, maxConc: conc,
       tokenExp: claims.exp, issuer: iss, resumeToken: L.randomID('rt_') });
     if (!ds.inb) ds.inb = new L.Inbound(caps.includes('flow') ? this.cfg.flow : null);
     else ds.inb.resetWindows();
@@ -527,6 +527,7 @@ export class Gateway {
           if (muBad) { ds.sendErr(inp.id, 'BAD_REQUEST', muBad); break; } // rejected whole: nothing applied
           {
             ds.models = mu.models; ds.modelCaps = mu.model_capabilities || {}; ds.modelNames = cleanNames(mu.model_names, mu.models);
+            ds.modelDetails = advertisedDetails(mu.model_details, mu.models);
             if (mu.max_concurrency !== undefined) { ds.maxConc = Math.min(mu.max_concurrency, this.cfg.maxConc); ds.wakeSlots(); }
             if (mu.e2ee_key && ds.caps.includes('e2ee')) { try { L.verifyE2EEKey(dev.pub, dev.id, mu.e2ee_key); if (this.saveE2EEKey(dev.id, mu.e2ee_key)) dev.e2eeKey = mu.e2ee_key; } catch { /* ignore */ } }
           }
@@ -612,19 +613,37 @@ export class Gateway {
   }
 
   // ---------- OpenAI-compatible surface ----------
+  // Metadata belongs to the same authorized, online device as the route.
+  catalogModels(tenant, user, includeDisplayName = false) {
+    const models = [];
+    for (const device of this.ownDevices(tenant, user)) {
+      const session = this.online(device.id);
+      if (!session || device.status !== 'active') continue;
+      for (const key of session.models) {
+        const details = session.modelDetails[key];
+        const entry = {
+          routeId: device.id + '/' + key, modelId: details?.model_id ?? key,
+          device: { id: device.id, name: device.name }, capabilities: Array.isArray(session.modelCaps[key]) ? [...session.modelCaps[key]] : [],
+        };
+        if (details) entry.scheme = { id: details.scheme_id, name: details.scheme_name };
+        if ((!details || includeDisplayName) && typeof session.modelNames[key] === 'string') {
+          entry.displayName = session.modelNames[key];
+        }
+        models.push(entry);
+      }
+    }
+    return models;
+  }
+
   models(req, res, err) {
     const a = this.tenantAuth(req, err);
     if (!a) return;
-    const data = [];
-    for (const d of this.ownDevices(a.t.id, a.user)) {
-      const s = this.online(d.id);
-      if (!s || d.status !== 'active') continue;
-      for (const m of s.models) {
-        const item = { id: `${d.id}/${m}`, object: 'model', owned_by: d.name, capabilities: s.modelCaps[m] || [] };
-        if (s.modelNames && s.modelNames[m]) item.display_name = s.modelNames[m];
-        data.push(item);
-      }
-    }
+    const data = this.catalogModels(a.t.id, a.user, true).map((model) => {
+      const item = { id: model.routeId, object: 'model', owned_by: model.device.name, capabilities: model.capabilities };
+      if (model.displayName) item.display_name = model.displayName;
+      if (model.scheme) item.lmbp = { model_id: model.modelId, scheme: model.scheme, device: model.device };
+      return item;
+    });
     if (req.headers['anthropic-version']) return json(res, 200, A.modelsList(data));
     return json(res, 200, { object: 'list', data });
   }
@@ -941,7 +960,7 @@ const MAX_RECLAIMED = 1024;
 class DState {
   constructor(g, dev) {
     Object.assign(this, { g, deviceID: dev.id, tenant: dev.tenant, owner: dev.owner, out: new L.Outbox(), inb: null, ws: null, gen: 0,
-      models: [], modelCaps: {}, modelNames: {}, caps: [], maxConc: 1, tokenExp: 0, issuer: '', resumeToken: '', tasks: new Map(), reclaimed: new Map(), slots: 0, slotWait: [], dropped: false, lastSeen: Date.now() });
+      models: [], modelCaps: {}, modelNames: {}, modelDetails: {}, caps: [], maxConc: 1, tokenExp: 0, issuer: '', resumeToken: '', tasks: new Map(), reclaimed: new Map(), slots: 0, slotWait: [], dropped: false, lastSeen: Date.now() });
   }
   connected() { return !!this.ws && !this.dropped; }
   control(e) {
@@ -1358,6 +1377,17 @@ function helloProblem(h) {
     }
   }
   return '';
+}
+
+// The wire schema validates each detail before the session is updated.
+function advertisedDetails(details, models) {
+  const out = Object.create(null);
+  for (const key of models) {
+    if (!details || !Object.hasOwn(details, key)) continue;
+    const { scheme_id, scheme_name, model_id } = details[key];
+    out[key] = { scheme_id, scheme_name, model_id };
+  }
+  return out;
 }
 
 // cleanNames keeps optional display names (model_names) only for advertised models.

@@ -87,6 +87,10 @@ function buildAppConfig(base: AppConfig, resolved: ResolvedMemoryModelConfig): A
   };
 }
 
+export function resolveMemoryCompletionModel(appConfig: AppConfig): ResolvedMemoryModelConfig {
+  return normalizeModelConfig(appConfig, appConfig.memoryRuntime?.llm, appConfig.model);
+}
+
 export class MemoryLLMClient implements MemoryLLMClientLike {
   constructor(
     private readonly getConfig: () => AppConfig | Promise<AppConfig> = () => configStore.getAll()
@@ -94,11 +98,7 @@ export class MemoryLLMClient implements MemoryLLMClientLike {
 
   async complete(request: MemoryCompletionRequest): Promise<MemoryCompletionResponse> {
     const appConfig = await this.getConfig();
-    const llmConfig = normalizeModelConfig(
-      appConfig,
-      appConfig.memoryRuntime?.llm,
-      appConfig.model
-    );
+    const llmConfig = resolveMemoryCompletionModel(appConfig);
     const controller = new AbortController();
     // Caller-supplied cancellation (prompt-assembly deadline, run abort) is
     // linked into the internal timeout controller.

@@ -281,10 +281,19 @@ export interface ProviderModelInfo {
   capabilities?: string[];
 }
 
+export interface LmbpCatalogModel {
+  routeId: string;
+  modelId: string;
+  scheme?: { id: string; name: string };
+  device: { id: string; name: string };
+  capabilities: string[];
+  displayName?: string;
+}
+
 export interface LmbpPairingStatus {
   link: string;
   devices: Array<{ id: string; name: string; online: boolean }>;
-  models: ProviderModelInfo[];
+  models: LmbpCatalogModel[];
 }
 
 export interface ApiTestInput {

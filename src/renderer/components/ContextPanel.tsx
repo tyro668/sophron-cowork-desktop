@@ -20,6 +20,8 @@ import {
 } from '../utils/artifact-steps';
 import { useIPC } from '../hooks/useIPC';
 import { isHtmlReportPath } from '../../shared/report-path';
+import { useLmbpCatalog } from '../features/config/lmbp-catalog';
+import { getModelDisplayId } from '../../shared/model-display';
 import {
   ChevronDown,
   ChevronUp,
@@ -103,7 +105,10 @@ export function ContextPanel() {
   );
   const deletedDataObjects = useDeletedDataObjects(sessionDataObjects, messageCount);
   const toolCallCount = steps.filter((s) => s.type === 'tool_call').length;
-  const modelName = activeSession?.model || appConfig?.model || '—';
+  const modelId = activeSession?.model || appConfig?.model || '';
+  const modelProvider = modelId === appConfig?.model ? appConfig.provider : undefined;
+  const displayIds = useLmbpCatalog((state) => state.displayIds);
+  const modelName = getModelDisplayId(modelId, modelProvider, displayIds) || '—';
 
   // Token usage aggregation
   const tokenUsage = useMemo(() => {

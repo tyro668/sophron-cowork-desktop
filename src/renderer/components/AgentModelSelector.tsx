@@ -9,6 +9,7 @@ import {
   parseBuiltinLlmConfigSetId,
 } from '../../shared/builtin-llm';
 import type { ApiConfigSet, AppConfig, ProviderModelInfo } from '../types';
+import { getModelDisplayId } from '../../shared/model-display';
 import { cn } from './ui';
 
 export interface AgentModelOption {
@@ -111,16 +112,32 @@ export function getAgentModelOptions(
   return [...builtinOptions, ...customOptions];
 }
 
+function resolveAgentModel(
+  appConfig: AppConfig | null | undefined,
+  selectedConfigSetId?: string
+): { id: string; provider?: ApiConfigSet['provider'] } {
+  const builtinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
+  if (builtinModel) return { id: builtinModel, provider: BUILTIN_LLM_PROVIDER };
+  const set = findConfigSet(appConfig, selectedConfigSetId);
+  const id = getConfigSetModel(set);
+  if (set && id) return { id, provider: set.provider };
+  return { id: appConfig?.model?.trim() || '', provider: appConfig?.provider };
+}
+
 export function getAgentModelId(
   appConfig: AppConfig | null | undefined,
   selectedConfigSetId?: string
 ): string {
-  return (
-    resolveSelectedBuiltinModel(appConfig, selectedConfigSetId) ||
-    getConfigSetModel(findConfigSet(appConfig, selectedConfigSetId)) ||
-    appConfig?.model?.trim() ||
-    ''
-  );
+  return resolveAgentModel(appConfig, selectedConfigSetId).id;
+}
+
+export function getAgentModelDisplayId(
+  appConfig: AppConfig | null | undefined,
+  selectedConfigSetId: string | undefined,
+  displayIds: Readonly<Record<string, string>>
+): string {
+  const { id, provider } = resolveAgentModel(appConfig, selectedConfigSetId);
+  return getModelDisplayId(id, provider, displayIds);
 }
 
 export function getAgentModelLabel(

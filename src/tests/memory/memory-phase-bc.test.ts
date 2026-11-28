@@ -175,8 +175,7 @@ function createDatabaseInstance(db: Database.Database): DatabaseInstance {
       get: vi.fn(
         (id: string) =>
           db.prepare('SELECT * FROM sessions WHERE id = ? LIMIT 1').get(id) as
-            | SessionRow
-            | undefined
+            SessionRow | undefined
       ),
       getAll: vi.fn(
         () => db.prepare('SELECT * FROM sessions ORDER BY created_at ASC').all() as SessionRow[]
@@ -598,6 +597,64 @@ describe('memory phase-B reliability and phase-C retrieval hardening', () => {
     expect(injection.projectKeys.length).toBeGreaterThan(0);
     expect(injection.totalChars).toBeGreaterThan(0);
     expect(fs.existsSync(path.join(memoryRoot(), 'memory_injections.json'))).toBe(true);
+  });
+
+  it('retrieves relevant evidence locally when a cold chat shares the navigator LMBP route', async () => {
+    const oldConfig = configStore.getAll();
+    const coldModel = { provider: 'lmbp', model: 'opaque-grok-route' } as const;
+    const workspace = { cwd: '/repo/a' };
+    const prompt = 'Look up the payroll worksheet calculation from the previous session.';
+    mockLLMState.experienceResponder = () =>
+      JSON.stringify({
+        session_summary: 'Payroll worksheet calculation',
+        session_keywords: ['payroll', 'worksheet'],
+        session_confidence: 0.9,
+        chunks: [
+          {
+            summary: 'Payroll worksheet calculation',
+            details: 'Subtotal entries before calculating tax.',
+            keywords: ['payroll', 'worksheet'],
+            source_turns: [1, 2],
+            confidence: 0.9,
+          },
+        ],
+      });
+    insertSessionWithMessages(rawDb, { id: 'payroll', title: 'Payroll', ...workspace });
+    await service.enqueueIngestion({
+      session: makeSession('payroll', 'Payroll', workspace.cwd),
+      prompt,
+      messages: makeMessages('payroll', [
+        { role: 'user', text: 'Read the payroll worksheet.', timestamp: 1 },
+        { role: 'assistant', text: 'Payroll reference 2381.', timestamp: 2 },
+      ]),
+    });
+    const llmClient = new MockMemoryLLMClient();
+    const complete = vi.spyOn(llmClient, 'complete');
+    const memory = new MemoryService(db, { llmClient });
+    try {
+      configStore.update(coldModel);
+      const prefix = await memory.buildPromptPrefix(workspace, prompt, undefined, coldModel);
+      expect(prefix).toContain('Payroll reference 2381');
+      expect(complete).not.toHaveBeenCalled();
+      await memory.buildPromptPrefix(workspace, prompt);
+      expect(complete).toHaveBeenCalled();
+      complete.mockClear();
+      configStore.update({
+        memoryRuntime: {
+          ...oldConfig.memoryRuntime,
+          llm: {
+            ...oldConfig.memoryRuntime.llm,
+            inheritFromActive: false,
+            provider: 'lmbp',
+            model: 'dedicated-route',
+          },
+        },
+      });
+      await memory.buildPromptPrefix(workspace, prompt, undefined, coldModel);
+      expect(complete).toHaveBeenCalled();
+    } finally {
+      configStore.update(oldConfig);
+    }
   });
 
   it('C4: navigator failure degrades to summary-only context instead of failing', async () => {

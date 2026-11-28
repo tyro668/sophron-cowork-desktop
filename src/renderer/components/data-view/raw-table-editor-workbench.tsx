@@ -59,7 +59,8 @@ import type {
 } from '../../../shared/contracts';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
-import { getAgentModelId } from '../AgentModelSelector';
+import { useLmbpCatalog } from '../../features/config/lmbp-catalog';
+import { getAgentModelDisplayId, getAgentModelId } from '../AgentModelSelector';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
@@ -181,6 +182,7 @@ export function RawTableEditorWorkbench({
   const { t } = useTranslation();
   const { confirm, confirmDelete } = useConfirmDialog();
   const appConfig = useAppStore((state) => state.appConfig);
+  const displayIds = useLmbpCatalog((state) => state.displayIds);
   const targetId = draft?.id ?? rawTable?.id ?? '';
   const initialName = draft?.name ?? rawTable?.name ?? '';
   const savedCloudSource = getCloudMirror(rawTable);
@@ -1810,9 +1812,10 @@ export function RawTableEditorWorkbench({
                       isStreaming={customizeGenerating || fixing}
                       log={generationLog}
                       modelLabel={
-                        getAgentModelId(
+                        getAgentModelDisplayId(
                           appConfig,
-                          selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId
+                          selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId,
+                          displayIds
                         ) || t('chat.noModel')
                       }
                       t={t}

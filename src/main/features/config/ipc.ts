@@ -10,6 +10,7 @@ import type {
 } from '../../../shared/contracts';
 import { desktopAuthService } from '../../app/context';
 import { resolveApiTestInputForAuth } from '../../app/runtime-config';
+import { getLmbpModelOptions } from '../../../shared/model-display';
 import { getLmbpGateway } from '../../config/lmbp-gateway';
 import {
   ensureCodexCredentials,
@@ -159,7 +160,9 @@ export function registerConfigIpc(): void {
       _event,
       payload: { provider: AppConfig['provider']; apiKey: string; baseUrl?: string }
     ): Promise<ProviderModelInfo[]> => {
-      if (payload.provider === 'lmbp') return (await getLmbpGateway()).getStatus().models;
+      if (payload.provider === 'lmbp') {
+        return getLmbpModelOptions((await getLmbpGateway()).getStatus().models);
+      }
       if (payload.provider === 'sophron') {
         return desktopAuthService.listLlmModels();
       }

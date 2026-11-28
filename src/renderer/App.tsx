@@ -1,6 +1,7 @@
 import { ChatToScriptDialog } from './components/chat-script/ChatToScriptDialog';
 import { Suspense, lazy, useEffect, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useWatchLmbpCatalog } from './features/config/lmbp-catalog';
 import { useAppStore } from './store';
 import {
   useActiveSessionId,
@@ -99,6 +100,12 @@ function App() {
   const { showSettings } = useSettingsState();
   const mainView = useMainView();
   const { showConfigModal, isConfigured, appConfig } = useConfigModalState();
+  useWatchLmbpCatalog(
+    Boolean(
+      appConfig?.configSets?.some((set) => set.provider === 'lmbp') ||
+      appConfig?.provider === 'lmbp'
+    )
+  );
   const globalNotice = useGlobalNotice();
   const { progress: sandboxSetupProgress, isComplete: isSandboxSetupComplete } =
     useSandboxSetupState();

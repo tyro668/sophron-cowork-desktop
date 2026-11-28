@@ -25,7 +25,7 @@ export * as anthropic from './anthropic.js';
 export * from './e2ee.js';
 export { LMBPStream, IncompleteStreamError, LMBPAPIError } from './client.js';
 export type * from './types.js';
-import type { TenantConfig, PairingInfo, DeviceInfo, ApproveResult, PendingPairing } from './types.js';
+import type { TenantConfig, PairingInfo, DeviceInfo, CatalogModel, ApproveResult, PendingPairing } from './types.js';
 
 export interface LMBPServerOptions {
   /** Tenants (SaaS products) served by this gateway. Usually one. */
@@ -180,11 +180,13 @@ export class LMBPServer {
       this.decide(tenant, endUser, userCode, false, opts.jkt),
     /** Deny the user code. */
     deny: (tenant: string, endUser: string, userCode: string): ApproveResult => this.decide(tenant, endUser, userCode, true),
+    /** Routable catalog entries. Use routeId for requests and the metadata for display. */
+    listModels: (tenant: string, endUser: string): CatalogModel[] => this.engine.catalogModels(tenant, endUser),
     /** Devices paired to endUser, with live status. */
     listDevices: (tenant: string, endUser: string): DeviceInfo[] => this.store.listDevices(tenant, endUser).map((d) => {
       const s = this.engine.online(d.id);
       return { deviceId: d.id, name: d.name, status: d.status, createdAt: d.created, jkt: L.thumbprint(d.pub), online: !!s,
-        models: s ? [...s.models] : [], modelCapabilities: s ? { ...s.modelCaps } : {}, modelNames: s ? { ...(s.modelNames || {}) } : {}, publicKey: Buffer.from(d.pub), e2eeKey: d.e2eeKey || '' };
+        models: s ? [...s.models] : [], modelCapabilities: s ? { ...s.modelCaps } : {}, modelNames: s ? { ...(s.modelNames || {}) } : {}, modelDetails: s ? structuredClone(s.modelDetails) : {}, publicKey: Buffer.from(d.pub), e2eeKey: d.e2eeKey || '' };
     }),
     /** Revoke a device: its session ends immediately and refresh is refused. */
     revokeDevice: (tenant: string, endUser: string, deviceId: string): boolean => this.engine.revokeDevice(tenant, endUser, deviceId),

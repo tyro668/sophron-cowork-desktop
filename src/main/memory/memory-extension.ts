@@ -16,6 +16,9 @@ export class MemoryExtension implements AgentRuntimeExtension {
     session,
     prompt,
     signal,
+    isColdStart,
+    isModelSwitch,
+    runtimeConfig,
   }: Parameters<
     NonNullable<AgentRuntimeExtension['beforeSessionRun']>
   >[0]): Promise<BeforeSessionRunResult | void> {
@@ -24,7 +27,12 @@ export class MemoryExtension implements AgentRuntimeExtension {
     let statePrompt: string | undefined;
     if (enabled) {
       try {
-        statePrompt = await this.memoryService.buildPromptPrefix(session, prompt, signal);
+        statePrompt = await this.memoryService.buildPromptPrefix(
+          session,
+          prompt,
+          signal,
+          isColdStart || isModelSwitch ? runtimeConfig : undefined
+        );
       } catch (error) {
         // Retrieval failure must not remove the capability rules/compatibility
         // handler and bring back "Tool memory_update not found" on this turn.

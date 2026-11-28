@@ -2791,6 +2791,7 @@
       "revoke": "Unpair",
       "noAuthorizedModels": "Open this connection in Avora and allow at least one model.",
       "textOnly": "This model supports conversation. Tasks that call tools require a tool-capable model.",
+      "savedModelOffline": "Saved model currently unavailable",
       "unavailableModel": "Saved model currently unavailable · {{model}}",
       "loadFailed": "Could not start local Avora pairing.",
       "actionFailed": "The Avora pairing action failed."

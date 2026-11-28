@@ -24,6 +24,9 @@
     "model_capabilities": {
       "$ref": "defs.json#/$defs/modelCapabilities"
     },
+    "model_details": {
+      "$ref": "defs.json#/$defs/modelDetails"
+    },
     "model_names": {
       "$ref": "defs.json#/$defs/modelNames"
     },

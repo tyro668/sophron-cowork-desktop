@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, CheckCircle, Copy, Link2, Loader2, RefreshCw, Unlink } from 'lucide-react';
-import type { LmbpPairingStatus, ProviderModelInfo } from '../../../shared/contracts';
+import type { ProviderModelInfo } from '../../../shared/contracts';
+import { getLmbpModelOptions } from '../../../shared/model-display';
+import {
+  refreshLmbpCatalog,
+  useLmbpCatalog,
+  useWatchLmbpCatalog,
+} from '../../features/config/lmbp-catalog';
 import { configClient } from '../../features/config/api/config-client';
 import { formatIpcError } from '../../utils/ipc-error';
 import { InlineBanner } from '../ui';
@@ -15,50 +21,26 @@ const PAIRING_CODE_PATTERN = /^[A-Z0-9]{4}[- ]?[A-Z0-9]{4}$/;
 
 export function LmbpPairing({ onModels, selectedModel }: Props) {
   const { t } = useTranslation();
-  const [status, setStatus] = useState<LmbpPairingStatus>();
+  useWatchLmbpCatalog(true);
+  const status = useLmbpCatalog((state) => state.status);
+  const error = useLmbpCatalog((state) => state.error);
+  const selectedModelId = useLmbpCatalog((state) => state.displayIds[selectedModel]);
+  const loadError = error ? formatIpcError(error, t('api.lmbp.loadFailed')) : '';
+
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [pairingOpen, setPairingOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [revision, setRevision] = useState(0);
-  const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [notice, setNotice] = useState('');
-  const modelSignature = useRef('');
   const copiedTimer = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    async function refresh() {
-      try {
-        const next = await configClient.getLmbpStatus();
-        if (!active) return;
-        setStatus(next);
-        setLoadError('');
-        if (next.devices.some((device) => device.online)) {
-          setNotice((current) => (current === 'api.lmbp.approved' ? '' : current));
-        }
-        const signature = JSON.stringify(next.models);
-        if (modelSignature.current !== signature) {
-          modelSignature.current = signature;
-          onModels(next.models);
-        }
-      } catch (error) {
-        if (!active) return;
-        setStatus(undefined);
-        if (modelSignature.current) onModels([]);
-        modelSignature.current = '';
-        setLoadError(formatIpcError(error, t('api.lmbp.loadFailed')));
-      }
-      if (active) timer = setTimeout(refresh, 2000);
+    onModels(getLmbpModelOptions(status?.models ?? []));
+    if (status?.devices.some((device) => device.online)) {
+      setNotice((current) => (current === 'api.lmbp.approved' ? '' : current));
     }
-    void refresh();
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [onModels, revision, t]);
+  }, [onModels, status]);
 
   useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
@@ -69,7 +51,7 @@ export function LmbpPairing({ onModels, selectedModel }: Props) {
     try {
       await action();
       if (message) setNotice(message);
-      setRevision((value) => value + 1);
+      await refreshLmbpCatalog();
     } catch (error) {
       setActionError(formatIpcError(error, t('api.lmbp.actionFailed')));
     } finally {
@@ -99,7 +81,7 @@ export function LmbpPairing({ onModels, selectedModel }: Props) {
 
   const hasPairedDevices = Boolean(status && status.devices.length > 0);
   const showPairingForm = Boolean(status && (!hasPairedDevices || pairingOpen));
-  const selected = status?.models.find((item) => item.id === selectedModel);
+  const selected = status?.models.find((item) => item.routeId === selectedModel);
   const online = status?.devices.some((device) => device.online);
 
   return (
@@ -256,7 +238,9 @@ export function LmbpPairing({ onModels, selectedModel }: Props) {
             {online && !status.models.length && <p>{t('api.lmbp.noAuthorizedModels')}</p>}
             {selectedModel && !selected && (
               <p className="break-all text-warning">
-                {t('api.lmbp.unavailableModel', { model: selectedModel })}
+                {selectedModelId
+                  ? t('api.lmbp.unavailableModel', { model: selectedModelId })
+                  : t('api.lmbp.savedModelOffline')}
               </p>
             )}
             {selected && !selected.capabilities?.includes('tools') && (

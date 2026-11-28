@@ -968,6 +968,7 @@ export class AgentRunner {
             prompt,
             existingMessages,
             isColdStart: !cachedSession,
+            isModelSwitch: Boolean(cachedSession && cachedSession.modelId !== piModel.id),
             runtimeConfig,
             signal: controller.signal,
             activateTools: activateToolsForRun,

@@ -42,6 +42,38 @@ function setup(enabled = true) {
 }
 
 describe('automatic memory runtime compatibility', () => {
+  it.each([
+    { isColdStart: true, isModelSwitch: false, first: true },
+    { isColdStart: false, isModelSwitch: true, first: true },
+    { isColdStart: false, isModelSwitch: false, first: false },
+  ])(
+    'passes a first-turn model to retrieval on cold starts and switches ($isColdStart/$isModelSwitch)',
+    async ({ isColdStart, isModelSwitch, first }) => {
+      const { manager, service } = setup();
+      const runtimeConfig = {
+        provider: 'lmbp',
+        model: 'grok-route',
+        apiKey: '',
+        enableThinking: false,
+        thinkingLevel: 'low',
+      } as const;
+      await manager.beforeSessionRun({
+        session,
+        prompt: 'Read the workbook',
+        existingMessages: [],
+        isColdStart,
+        isModelSwitch,
+        runtimeConfig,
+      });
+      expect(service.buildPromptPrefix).toHaveBeenCalledWith(
+        session,
+        'Read the workbook',
+        undefined,
+        first ? runtimeConfig : undefined
+      );
+    }
+  );
+
   it.each([true, false])(
     'registers legacy calls with empty retrieved memory (cold start: %s)',
     async (isColdStart) => {

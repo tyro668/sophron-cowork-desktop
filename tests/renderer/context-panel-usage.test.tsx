@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLmbpCatalog } from '../../src/renderer/features/config/lmbp-catalog';
 import { ContextPanel } from '../../src/renderer/components/ContextPanel';
 import { useAppStore } from '../../src/renderer/store';
 import { normalizeTokenUsage } from '../../src/main/agent/agent-runner-log-utils';
@@ -45,6 +46,15 @@ function addResponse(usage: unknown) {
 }
 
 describe('context usage display', () => {
+  it('shows the upstream model ID for a saved LMBP session without a current configuration', async () => {
+    const route = 'dev_0123456789abcdef0123456789abcdef/scheme/org/vision';
+    useLmbpCatalog.setState({ displayIds: { [route]: 'org/vision' } });
+    useAppStore.getState().updateSession('s1', { model: route });
+    render(<ContextPanel />);
+    expect(await screen.findByText('org/vision')).toBeTruthy();
+    expect(screen.queryByText(route)).toBeNull();
+  });
+
   it('tracks the latest full prompt and output as cache hits change across tool turns', async () => {
     render(<ContextPanel />);
     addResponse({ input: 1600, output: 200 });

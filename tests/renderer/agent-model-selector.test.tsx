@@ -1,10 +1,13 @@
 // @vitest-environment happy-dom
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import { getLmbpModelOptions } from '../../src/shared/model-display';
 import { makeBuiltinLlmConfigSetId } from '../../src/shared/builtin-llm';
 import type { ApiConfigSet, AppConfig } from '../../src/shared/contracts';
 import {
   AgentModelSelector,
+  getAgentModelDisplayId,
+  getAgentModelId,
   getAgentModelLabel,
 } from '../../src/renderer/components/AgentModelSelector';
 import { LlmPromptComposer } from '../../src/renderer/components/LlmPromptComposer';
@@ -74,4 +77,46 @@ it('uses the advertised name for a built-in model and selects it by its catalog 
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+it('displays the upstream model ID while keeping the selected device and scheme for requests', () => {
+  const model = 'org/model-id';
+  const routes = ['opaque-request-a', 'opaque-request-b'];
+  const sets = [localSet, otherSet].map((set, index) => ({
+    ...set,
+    profiles: { lmbp: { apiKey: '', model: routes[index] } },
+  }));
+  const selection = { ...config, configSets: sets };
+  for (const [index, set] of sets.entries()) {
+    expect(
+      getAgentModelDisplayId(selection, set.id, Object.fromEntries(routes.map((id) => [id, model])))
+    ).toBe(model);
+    expect(getAgentModelId(selection, set.id)).toBe(routes[index]);
+  }
+  const external = { ...config, provider: 'openrouter' as const, model: 'dev_team/org/model-id' };
+  expect(getAgentModelDisplayId(external, undefined, {})).toBe(external.model);
+});
+
+it('labels multi-model schemes and same-named schemes on other devices without parsing a route', () => {
+  const first = {
+    routeId: 'route-a',
+    modelId: 'org/vision',
+    device: { id: 'A', name: 'Laptop' },
+    scheme: { id: 'work', name: 'Work · Lab' },
+    capabilities: ['vision'],
+  };
+  const second = { ...first, routeId: 'route-b', modelId: 'org/text' };
+  const third = { ...first, routeId: 'route-c', device: { id: 'B', name: 'Studio' } };
+  expect(getLmbpModelOptions([first])[0].name).toBe('Work · Lab');
+  const options = getLmbpModelOptions([first, second, third]);
+  expect(options.map(({ id, name }) => [id, name])).toEqual([
+    ['route-a', 'Work · Lab · org/vision · Laptop'],
+    ['route-b', 'Work · Lab · org/text · Laptop'],
+    ['route-c', 'Work · Lab · org/vision · Studio'],
+  ]);
+  const sameDeviceName = { ...third, device: { ...third.device, name: 'Laptop' } };
+  expect(getLmbpModelOptions([sameDeviceName, first]).map((option) => option.name)).toEqual([
+    'Work · Lab · Laptop (2)',
+    'Work · Lab · Laptop (1)',
+  ]);
 });
