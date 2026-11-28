@@ -21,7 +21,8 @@ export type ProviderType =
   | 'zai'
   | 'sophron'
   | 'gemini'
-  | 'ollama';
+  | 'ollama'
+  | 'lmbp';
 
 export type CustomProtocolType = 'anthropic' | 'openai' | 'gemini';
 
@@ -48,6 +49,7 @@ export type ProviderProfileKey =
   | 'sophron'
   | 'gemini'
   | 'ollama'
+  | 'lmbp'
   | 'custom:anthropic'
   | 'custom:openai'
   | 'custom:gemini';
@@ -264,6 +266,7 @@ export interface ProviderPresets {
   sophron: ProviderPreset;
   gemini: ProviderPreset;
   ollama: ProviderPreset;
+  lmbp: ProviderPreset;
 }
 
 export interface ProviderModelInfo {
@@ -275,6 +278,13 @@ export interface ProviderModelInfo {
   inputCreditMultiplier?: number;
   outputCreditMultiplier?: number;
   creditUnit?: string;
+  capabilities?: string[];
+}
+
+export interface LmbpPairingStatus {
+  link: string;
+  devices: Array<{ id: string; name: string; online: boolean }>;
+  models: ProviderModelInfo[];
 }
 
 export interface ApiTestInput {

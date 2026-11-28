@@ -256,6 +256,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
   );
 
   const allowEmptyApiKey =
+    provider === 'lmbp' ||
     provider === 'sophron' ||
     provider === 'ollama' ||
     provider === 'openai-codex' ||
@@ -654,7 +655,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     await handleDiagnose('deep');
   }, [handleDiagnose]);
 
-  const { refreshModelOptions, discoverLocalOllama } = useApiModelDiscovery({
+  const { refreshModelOptions, discoverLocalOllama, applyLmbpModels } = useApiModelDiscovery({
     activeProfileKey,
     provider,
     apiKey,
@@ -885,6 +886,7 @@ export function useApiConfigState(options: UseApiConfigStateOptions = {}) {
     handleTest,
     refreshModelOptions,
     discoverLocalOllama,
+    applyLmbpModels,
     setError: showErrorText,
     setSuccessMessage: showSuccessText,
   };

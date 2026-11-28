@@ -145,11 +145,14 @@ export class HeadlessToolAgent {
 
   private async ensureAgent(): Promise<Agent> {
     if (this.agent) return this.agent;
-    const { model, apiKey } = await waitWithSignal(
+    const { model, apiKey, capabilities } = await waitWithSignal(
       resolvePiAiTarget(this.options.config),
       this.cancellation.signal
     );
     this.cancellation.signal.throwIfAborted();
+    if (this.options.tools.length && capabilities && !capabilities.includes('tools')) {
+      throw new Error(harnessMessage('lmbpToolsRequired'));
+    }
     const thinkingLevel = resolveEffectiveThinkingLevel(
       model,
       resolveConfiguredThinkingLevel(this.options.config)
@@ -169,7 +172,8 @@ export class HeadlessToolAgent {
             ...streamOptions,
             apiKey: streamOptions?.apiKey ?? apiKey,
             maxTokens: this.options.maxTokens ?? streamOptions?.maxTokens,
-            ...(model.api === 'openai-codex-responses'
+            ...(model.api === 'openai-codex-responses' ||
+            (capabilities?.includes('params') && !capabilities.includes('temperature'))
               ? {}
               : { temperature: this.options.temperature ?? 0.1 }),
           })),

@@ -79,8 +79,10 @@ docs/*
 # Worktrees
 .worktrees/
 
-# Empty vendored deps
-vendor/
+# Vendored SDK source
+/vendor/*
+!/vendor/README.md
+!/vendor/lmbp/
 
 # LSP config
 .cclsp.json

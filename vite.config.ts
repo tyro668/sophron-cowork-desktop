@@ -34,6 +34,8 @@ export default defineConfig({
               external: [
                 ...nodeBuiltins,
                 'better-sqlite3',
+                // Photon loads its WASM from the directory containing its CommonJS entry.
+                '@silvia-odwyer/photon-node',
                 '@duckdb/node-api',
                 '@duckdb/node-bindings',
                 '@duckdb/node-bindings-darwin-arm64',

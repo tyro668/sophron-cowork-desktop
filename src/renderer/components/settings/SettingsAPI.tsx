@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { LmbpPairing } from './LmbpPairing';
 import { useTranslation } from 'react-i18next';
 import {
   AlertCircle,
@@ -133,6 +134,12 @@ export function SettingsAPI() {
   }
 
   const isSophronMode = provider === 'sophron';
+  const isLmbpMode = provider === 'lmbp';
+  const modelCapabilities = isLmbpMode
+    ? modelOptions.find((item) => item.id === model)?.capabilities
+    : undefined;
+  const supportsMaxTokens =
+    !modelCapabilities?.includes('params') || modelCapabilities.includes('max_tokens');
   const isCodexMode = provider === 'openai-codex';
   const isSelectedDefault = selectedConfigSetId === activeConfigSetId;
   const selectedProviderValue = providerUnset
@@ -252,7 +259,7 @@ export function SettingsAPI() {
               </ApiFieldRow>
             )}
 
-            {!providerUnset && !isSophronMode && !isCodexMode && (
+            {!providerUnset && !isSophronMode && !isCodexMode && !isLmbpMode && (
               <ApiFieldRow label={t('api.apiKey')} valueClassName="!flex-row items-stretch">
                 <input
                   id="api-key-input"
@@ -279,6 +286,13 @@ export function SettingsAPI() {
             )}
 
             {!providerUnset && isCodexMode && <CodexAuthCard />}
+            {!providerUnset && isLmbpMode && (
+              <LmbpPairing
+                key={selectedConfigSetId}
+                selectedModel={model}
+                onModels={apiConfigState.applyLmbpModels}
+              />
+            )}
 
             {!providerUnset && (provider === 'custom' || isOllamaMode) && (
               <ApiFieldRow label={t('api.baseUrl')} valueClassName="!flex-row items-stretch">
@@ -341,7 +355,7 @@ export function SettingsAPI() {
                       onCustomModelChange={setCustomModel}
                     />
                   </div>
-                  {!isSophronMode && !isCodexMode && (
+                  {!isSophronMode && !isCodexMode && !isLmbpMode && (
                     <button
                       type="button"
                       onClick={toggleCustomModel}
@@ -358,19 +372,20 @@ export function SettingsAPI() {
                       </span>
                     </button>
                   )}
-                  {(isOllamaMode || provider === 'sophron' || isCodexMode) && !useCustomModel && (
-                    <button
-                      type="button"
-                      onClick={() => void refreshModelOptions()}
-                      disabled={isRefreshingModels}
-                      className="inline-flex w-9 shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
-                      title={t('api.refreshModels')}
-                    >
-                      <RefreshCw
-                        className={`h-3.5 w-3.5 ${isRefreshingModels ? 'animate-spin' : ''}`}
-                      />
-                    </button>
-                  )}
+                  {(isOllamaMode || isSophronMode || isCodexMode || isLmbpMode) &&
+                    !useCustomModel && (
+                      <button
+                        type="button"
+                        onClick={() => void refreshModelOptions()}
+                        disabled={isRefreshingModels}
+                        className="inline-flex w-9 shrink-0 items-center justify-center border-l border-border-subtle text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        title={t('api.refreshModels')}
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 ${isRefreshingModels ? 'animate-spin' : ''}`}
+                        />
+                      </button>
+                    )}
                 </ApiFieldRow>
 
                 {/* Context window & max output tokens paired flush side by side */}
@@ -387,60 +402,64 @@ export function SettingsAPI() {
                       className="tabular-nums text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
                     />
                   </ApiFieldRow>
-                  <ApiFieldRow
-                    label={t('api.maxOutputTokens')}
-                    rowClassName="border-t border-border-subtle !border-b-0 lg:border-t-0"
-                  >
-                    <input
-                      id="api-max-tokens-input"
-                      type="number"
-                      value={maxTokens}
-                      onChange={(event) => setMaxTokens(event.target.value)}
-                      placeholder={t('api.maxOutputTokensPlaceholder')}
-                      min={256}
-                      step={256}
-                      className="tabular-nums text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
-                    />
-                  </ApiFieldRow>
+                  {supportsMaxTokens && (
+                    <ApiFieldRow
+                      label={t('api.maxOutputTokens')}
+                      rowClassName="border-t border-border-subtle !border-b-0 lg:border-t-0"
+                    >
+                      <input
+                        id="api-max-tokens-input"
+                        type="number"
+                        value={maxTokens}
+                        onChange={(event) => setMaxTokens(event.target.value)}
+                        placeholder={t('api.maxOutputTokensPlaceholder')}
+                        min={256}
+                        step={256}
+                        className="tabular-nums text-text-primary placeholder:text-text-muted focus:bg-surface-hover/40 focus:outline-none"
+                      />
+                    </ApiFieldRow>
+                  )}
                 </div>
 
-                <ApiFieldRow label={t('api.thinkingLevel')}>
-                  <div
-                    role="radiogroup"
-                    aria-label={t('api.thinkingLevel')}
-                    className="grid min-h-[35px] w-full grid-cols-6 divide-x divide-border-subtle"
-                  >
-                    {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
-                      const active =
-                        level === 'off'
-                          ? !enableThinking
-                          : enableThinking && thinkingLevel === level;
-                      return (
-                        <button
-                          key={level}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => {
-                            if (level === 'off') {
-                              setEnableThinking(false);
-                            } else {
-                              setEnableThinking(true);
-                              setThinkingLevel(level);
-                            }
-                          }}
-                          className={`flex items-center justify-center whitespace-nowrap px-1 text-[12px] font-medium transition-colors ${
-                            active
-                              ? 'bg-accent-muted text-accent'
-                              : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                          }`}
-                        >
-                          {t(`api.thinkingLevels.${level}`)}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </ApiFieldRow>
+                {!isLmbpMode && (
+                  <ApiFieldRow label={t('api.thinkingLevel')}>
+                    <div
+                      role="radiogroup"
+                      aria-label={t('api.thinkingLevel')}
+                      className="grid min-h-[35px] w-full grid-cols-6 divide-x divide-border-subtle"
+                    >
+                      {(['off', 'low', 'medium', 'high', 'xhigh', 'max'] as const).map((level) => {
+                        const active =
+                          level === 'off'
+                            ? !enableThinking
+                            : enableThinking && thinkingLevel === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => {
+                              if (level === 'off') {
+                                setEnableThinking(false);
+                              } else {
+                                setEnableThinking(true);
+                                setThinkingLevel(level);
+                              }
+                            }}
+                            className={`flex items-center justify-center whitespace-nowrap px-1 text-[12px] font-medium transition-colors ${
+                              active
+                                ? 'bg-accent-muted text-accent'
+                                : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                            }`}
+                          >
+                            {t(`api.thinkingLevels.${level}`)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </ApiFieldRow>
+                )}
               </>
             )}
           </section>
@@ -451,7 +470,7 @@ export function SettingsAPI() {
                 result={diagnosticResult}
                 isRunning={isDiagnosing}
                 onRunDiagnostics={handleDiagnose}
-                onRunDeepDiagnostics={isOllamaMode ? handleDeepDiagnose : undefined}
+                onRunDeepDiagnostics={isOllamaMode || isLmbpMode ? handleDeepDiagnose : undefined}
                 disabled={requiresApiKey && !apiKey.trim()}
                 showActions={false}
               />
@@ -496,7 +515,7 @@ export function SettingsAPI() {
             {isDiagnosing ? t('api.diagnostic.running') : t('api.testConnection')}
           </button>
 
-          {isOllamaMode && (
+          {(isOllamaMode || isLmbpMode) && (
             <button
               type="button"
               onClick={() => void handleDeepDiagnose()}

@@ -1,6 +1,7 @@
 import { abortAllAiRuns } from '../agent/ai-runs';
 import { app, BrowserWindow } from 'electron';
 import { closeDatabase } from '../db/database';
+import { stopLmbpGateway } from '../config/lmbp-gateway';
 import { stopNavServer } from '../nav-server';
 import { stopCloudConnection } from '../features/cloud-connection/runtime';
 import { remoteManager } from '../remote/remote-manager';
@@ -56,6 +57,7 @@ async function cleanupAppResources(): Promise<void> {
   } catch (error) {
     logError('[App] Error stopping remote control:', error);
   }
+  await stopLmbpGateway().catch((error) => logError('[LMBP] Shutdown failed:', error));
 
   // Cleanup all sandbox sessions (sync changes back to host OS first)
   try {
@@ -124,6 +126,7 @@ async function cleanupAppResources(): Promise<void> {
 
 export async function prepareForUpdateInstall(): Promise<void> {
   appContext.isInstallingUpdate = true;
+  await stopLmbpGateway().catch((error) => logError('[LMBP] Shutdown failed:', error));
   stopNavServer();
   try {
     appContext.dataPipelineStore?.close();

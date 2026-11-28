@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import type { AppConfig, DataRawTableCustomizeProcessingConfig } from '../../../types';
-import { AgentModelSelector, getAgentModelLabel } from '../../AgentModelSelector';
+import { AgentModelSelector, getAgentModelId } from '../../AgentModelSelector';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
 import { RawTableConfigRow } from '../ColumnTypeOverridesEditor';
 
@@ -43,7 +43,7 @@ export function CustomizeRulesStep({
           onSelect={(configSetId) =>
             onPatchProcessing({
               modelConfigSetId: configSetId,
-              model: getAgentModelLabel(appConfig, '', configSetId),
+              model: getAgentModelId(appConfig, configSetId),
             })
           }
         />

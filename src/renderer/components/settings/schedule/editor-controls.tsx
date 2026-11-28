@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { AppConfig } from '../../../types';
 import { GlassSelect, type GlassSelectOption } from '../../GlassSelect';
 import { LlmPromptComposer } from '../../LlmPromptComposer';
-import { AgentModelSelector, getAgentModelLabel } from '../../AgentModelSelector';
+import { AgentModelSelector, getAgentModelId } from '../../AgentModelSelector';
 
 export function SegmentedControl<T extends string>({
   value,
@@ -309,7 +309,7 @@ export function AutomationPromptPermissionFields({
           onSelect={(configSetId) =>
             onModelSelect({
               configSetId,
-              model: getAgentModelLabel(appConfig, '', configSetId),
+              model: getAgentModelId(appConfig, configSetId),
             })
           }
         />

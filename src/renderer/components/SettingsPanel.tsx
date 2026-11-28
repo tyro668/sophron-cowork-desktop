@@ -102,12 +102,6 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       icon: Settings,
     },
     {
-      id: 'sandbox' as TabId,
-      group: 'models',
-      label: t('settings.sandbox'),
-      icon: Shield,
-    },
-    {
       id: 'connectors' as TabId,
       group: 'models',
       label: t('settings.connectors'),
@@ -136,6 +130,12 @@ export function SettingsPanel({ onClose, initialTab = 'api' }: SettingsPanelProp
       group: 'collab',
       label: t('settings.remote'),
       icon: Wifi,
+    },
+    {
+      id: 'sandbox' as TabId,
+      group: 'app',
+      label: t('settings.sandbox'),
+      icon: Shield,
     },
     {
       id: 'logs' as TabId,

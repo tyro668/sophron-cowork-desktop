@@ -33,10 +33,7 @@ export interface CommonProviderSetup {
 }
 
 export type ProviderGuidanceHintCode =
-  | 'empty_probe_response'
-  | 'probe_response_mismatch'
-  | 'prefer_provider_tab'
-  | 'protocol_mismatch';
+  'empty_probe_response' | 'probe_response_mismatch' | 'prefer_provider_tab' | 'protocol_mismatch';
 
 export type ProviderGuidanceErrorHintKind =
   | 'emptyProbeGeneric'
@@ -308,6 +305,10 @@ export function getFallbackOpenAISetup(): CommonProviderSetup {
   return COMMON_PROVIDER_SETUPS.find((setup) => setup.id === 'generic-openai')!;
 }
 
+export function getProbeMismatchReply(details?: string): string | undefined {
+  return /^probe_response_mismatch:(.*)$/is.exec(details?.trim() ?? '')?.[1];
+}
+
 function detectProviderGuidanceHintCode(
   details: string | undefined
 ): ProviderGuidanceHintCode | null {
@@ -318,7 +319,7 @@ function detectProviderGuidanceHintCode(
   if (value === 'empty_probe_response') {
     return 'empty_probe_response';
   }
-  if (value.startsWith('probe_response_mismatch:')) {
+  if (getProbeMismatchReply(value) !== undefined) {
     return 'probe_response_mismatch';
   }
   return null;

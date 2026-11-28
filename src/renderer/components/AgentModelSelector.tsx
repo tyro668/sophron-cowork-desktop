@@ -27,6 +27,10 @@ function getConfigSetModel(configSet: ApiConfigSet | null | undefined): string {
   return configSet?.profiles?.[configSet.activeProfileKey]?.model?.trim() || '';
 }
 
+function findConfigSet(appConfig: AppConfig | null | undefined, id?: string) {
+  return appConfig?.configSets?.find((set) => set.id === id);
+}
+
 function normalizeBuiltinModels(builtinModels: ProviderModelInfo[] = []): ProviderModelInfo[] {
   const seen = new Set<string>();
   return builtinModels
@@ -54,10 +58,7 @@ function resolveSelectedBuiltinModel(
   const virtualModel = parseBuiltinLlmConfigSetId(selectedConfigSetId);
   if (virtualModel) return virtualModel;
 
-  const selectedSet =
-    selectedConfigSetId && appConfig?.configSets
-      ? appConfig.configSets.find((set) => set.id === selectedConfigSetId)
-      : null;
+  const selectedSet = findConfigSet(appConfig, selectedConfigSetId);
   if (selectedSet?.provider === BUILTIN_LLM_PROVIDER) {
     return getConfigSetModel(selectedSet);
   }
@@ -110,6 +111,18 @@ export function getAgentModelOptions(
   return [...builtinOptions, ...customOptions];
 }
 
+export function getAgentModelId(
+  appConfig: AppConfig | null | undefined,
+  selectedConfigSetId?: string
+): string {
+  return (
+    resolveSelectedBuiltinModel(appConfig, selectedConfigSetId) ||
+    getConfigSetModel(findConfigSet(appConfig, selectedConfigSetId)) ||
+    appConfig?.model?.trim() ||
+    ''
+  );
+}
+
 export function getAgentModelLabel(
   appConfig: AppConfig | null | undefined,
   fallback: string,
@@ -117,12 +130,8 @@ export function getAgentModelLabel(
 ): string {
   const builtinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
   if (builtinModel) return builtinModel;
-
-  const selected =
-    selectedConfigSetId && appConfig?.configSets
-      ? appConfig.configSets.find((set) => set.id === selectedConfigSetId)
-      : null;
-  return getConfigSetModel(selected) || appConfig?.model?.trim() || fallback;
+  const selected = findConfigSet(appConfig, selectedConfigSetId || appConfig?.activeConfigSetId);
+  return (getConfigSetModel(selected) && selected?.name) || fallback;
 }
 
 export function AgentModelSelector({
@@ -156,14 +165,7 @@ export function AgentModelSelector({
   );
   const builtinOptions = options.filter((option) => option.source === 'builtin');
   const customOptions = options.filter((option) => option.source === 'custom');
-  const label = useMemo(() => {
-    const builtinModel = resolveSelectedBuiltinModel(appConfig, selectedConfigSetId);
-    if (!builtinModel) {
-      return getAgentModelLabel(appConfig, fallbackLabel, selectedConfigSetId);
-    }
-
-    return builtinOptions.find((option) => option.model === builtinModel)?.name || fallbackLabel;
-  }, [appConfig, builtinOptions, fallbackLabel, selectedConfigSetId]);
+  const label = options.find((option) => option.isActive)?.name || fallbackLabel;
 
   const formatMultiplier = (value: number | undefined) => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return '';
@@ -186,15 +188,6 @@ export function AgentModelSelector({
     return t('chat.modelCreditMultiplierSingle', {
       value: formatMultiplier(Math.max(...multipliers)),
     });
-  };
-
-  // Unified naming: the model id is the primary label everywhere (trigger and
-  // menu); a custom config-set name only appears as the secondary line.
-  const getPrimaryModelText = (option: AgentModelOption) =>
-    option.source === 'builtin' ? option.name : option.model || option.name;
-  const getSecondaryModelText = (option: AgentModelOption) => {
-    if (option.source === 'builtin') return '';
-    return option.name && option.name !== getPrimaryModelText(option) ? option.name : '';
   };
 
   useEffect(() => {
@@ -233,7 +226,6 @@ export function AgentModelSelector({
         <div className="space-y-0.5">
           {groupOptions.map((option) => {
             const costMultiplier = formatCostMultiplier(option);
-            const secondaryModelText = getSecondaryModelText(option);
             return (
               <DropdownMenu.Item
                 key={option.id}
@@ -244,15 +236,8 @@ export function AgentModelSelector({
                   option.isActive ? 'bg-accent-muted text-text-primary' : 'text-text-primary'
                 )}
               >
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[12.5px] font-medium leading-5">
-                    {getPrimaryModelText(option)}
-                  </span>
-                  {secondaryModelText ? (
-                    <span className="block truncate text-[11px] leading-4 text-text-muted">
-                      {secondaryModelText}
-                    </span>
-                  ) : null}
+                <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium leading-5">
+                  {option.name}
                 </span>
                 <span className="flex shrink-0 items-center gap-1.5">
                   {costMultiplier ? (

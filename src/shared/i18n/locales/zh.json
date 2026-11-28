@@ -1,5 +1,12 @@
 {
   "agentHarness": {
+    "lmbpInvalidCode": "配对码无效或已过期，请输入 Avora 当前显示的配对码。",
+    "lmbpCodeRateLimited": "配对尝试过于频繁，请在一分钟后重试。",
+    "lmbpUnavailable": "所选 Avora 模型当前不可用。请打开 Avora，检查此连接获准使用的模型。",
+    "lmbpPairingRequired": "请打开 Avora，让已配对的设备上线。",
+    "lmbpToolsRequired": "此任务需要调用工具。请选择支持工具调用的 Avora 模型。",
+    "lmbpVisionRequired": "此消息包含图片。请选择支持图片输入的 Avora 模型。",
+    "lmbpPortInUse": "本机配对端口 {{port}} 已被占用。请释放该端口，让 Avora 重新连接。",
     "interrupted": "应用重启中断了本轮任务。请先核对工具回执，再决定是否重试。",
     "searchAliases": {
       "data_preview_table": ["预览表", "预览数据表", "查看表数据"],
@@ -2456,7 +2463,7 @@
   },
   "settings": {
     "title": "设置",
-    "apiSettings": "API 设置",
+    "apiSettings": "模型配置",
     "apiSettingsDesc": "配置 API 提供商和密钥",
     "sandbox": "沙盒",
     "sandboxDesc": "隔离执行环境",
@@ -2766,9 +2773,31 @@
     "currentLanguage": "当前语言"
   },
   "api": {
+    "lmbp": {
+      "instructions": "在本机 Avora 中点击「添加连接」，粘贴链接并选择要共享的模型，然后在这里输入 Avora 显示的配对码。",
+      "link": "配对链接",
+      "copy": "复制链接",
+      "copied": "已复制配对链接。",
+      "copiedShort": "已复制",
+      "code": "Avora 配对码",
+      "codeLabel": "配对码",
+      "codePlaceholder": "配对码 · XXXX-XXXX",
+      "approve": "确认配对",
+      "approved": "已批准配对，Avora 将自动连接。",
+      "pairedDevice": "配对设备",
+      "repair": "重新配对",
+      "online": "在线",
+      "offline": "离线",
+      "revoke": "解除配对",
+      "noAuthorizedModels": "请在 Avora 中为此连接授权至少一个模型。",
+      "textOnly": "此模型可用于对话。执行需要工具的任务时，请选择支持工具调用的模型。",
+      "unavailableModel": "已选模型当前不可用 · {{model}}",
+      "loadFailed": "无法启动本机 Avora 配对服务。",
+      "actionFailed": "Avora 配对操作失败。"
+    },
     "firstRunTitle": "配置 API",
     "firstRunSubtitle": "设置 API 提供商后即可开始使用",
-    "settingsTitle": "API 设置",
+    "settingsTitle": "模型配置",
     "settingsSubtitle": "管理 API 提供商、密钥和模型",
     "configSet": "配置方案",
     "configSetDescription": "管理不同的模型配置方案，每个方案可使用不同的服务商与模型",
@@ -2832,8 +2861,8 @@
     "saveFailed": "保存失败，请稍后重试",
     "getStarted": "开始使用",
     "saveSettings": "保存设置",
-    "openSettingsAction": "打开 API 设置",
-    "configRequiredActiveSet": "当前方案未配置可用凭证，请先在 API 设置中完成配置",
+    "openSettingsAction": "打开模型配置",
+    "configRequiredActiveSet": "当前方案未配置可用凭证，请先在模型配置中完成配置",
     "testConnection": "测试连接",
     "testingConnection": "测试中...",
     "refreshModels": "刷新模型",
@@ -2917,7 +2946,7 @@
         "emptyProbeGeneric": "该 endpoint 返回了空的探测响应，通常表示当前选择的协议或模型与服务不兼容。",
         "emptyProbeDetected": "{{service}} 返回了空的探测响应。请尝试推荐的 {{recommendedProtocol}} 配置，并确认模型 ID 与该 endpoint 对应。",
         "emptyProbePreferProvider": "{{service}} 返回了空的探测响应。建议改用专用的 {{provider}} 配置入口，而不是作为通用自定义 endpoint 来配置。",
-        "probeMismatchGeneric": "服务有返回，但格式不符合当前探针预期，通常意味着协议或模型兼容性不匹配。",
+        "probeMismatchGeneric": "模型回复了「{{reply}}」，与验证题的预期答案不符。",
         "probeMismatchDetected": "{{service}} 返回了非预期的探针格式。请尝试推荐的 {{recommendedProtocol}} 配置，并确认模型 ID 与该 endpoint 对应。"
       },
       "setups": {

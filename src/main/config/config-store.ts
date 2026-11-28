@@ -156,6 +156,7 @@ const defaultProfiles: Record<ConfigurableProviderProfileKey, ProviderProfile> =
     baseUrl: 'http://localhost:11434/v1',
     model: '',
   },
+  lmbp: { apiKey: '', baseUrl: '', model: '' },
   gemini: {
     apiKey: '',
     baseUrl: 'https://generativelanguage.googleapis.com',
@@ -330,6 +331,7 @@ const PROFILE_KEYS: ProviderProfileKey[] = [
   'sophron',
   'gemini',
   'ollama',
+  'lmbp',
   'custom:anthropic',
   'custom:openai',
   'custom:gemini',
@@ -351,7 +353,8 @@ function isProviderType(value: unknown): value is ProviderType {
     value === 'zai' ||
     value === 'sophron' ||
     value === 'gemini' ||
-    value === 'ollama'
+    value === 'ollama' ||
+    value === 'lmbp'
   );
 }
 
@@ -717,8 +720,8 @@ export class ConfigStore {
     const baseUrl =
       profileKey === 'ollama' ? normalizeOllamaBaseUrl(rawBaseUrl) || fallback.baseUrl : rawBaseUrl;
     const result: ProviderProfile = {
-      apiKey: typeof profile?.apiKey === 'string' ? profile.apiKey : '',
-      baseUrl,
+      apiKey: profileKey !== 'lmbp' && typeof profile?.apiKey === 'string' ? profile.apiKey : '',
+      baseUrl: profileKey === 'lmbp' ? '' : baseUrl,
       model,
     };
     // Preserve optional numeric fields so callers don't silently lose user-set values
@@ -1657,6 +1660,7 @@ export class ConfigStore {
     baseUrl?: string;
     model?: string;
   }): boolean {
+    if (projection.provider === 'lmbp') return Boolean(projection.model?.trim());
     if (projection.provider === 'ollama' && !projection.model?.trim()) {
       return false;
     }
@@ -1847,7 +1851,7 @@ export class ConfigStore {
       if (projectedConfig.model) {
         process.env.CLAUDE_MODEL = projectedConfig.model;
       }
-    } else {
+    } else if (projectedConfig.provider !== 'lmbp') {
       const effectiveAnthropicApiKey =
         projectedConfig.apiKey?.trim() ||
         (shouldAllowEmptyAnthropicApiKey(projectedConfig) ? LOCAL_ANTHROPIC_PLACEHOLDER_KEY : '');

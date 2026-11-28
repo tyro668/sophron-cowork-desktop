@@ -9,8 +9,13 @@ import {
   resolveSyntheticPiModelFallback,
 } from './pi-model-resolution';
 import { fetchOllamaModelInfo } from '../config/ollama-api';
+import { resolveLmbpTarget } from './lmbp-model';
 
 export async function resolveRunModel(runtimeConfig: AgentRuntimeConfig, modelString: string) {
+  if (runtimeConfig.provider === 'lmbp') {
+    const { model, apiKey, capabilities } = await resolveLmbpTarget(runtimeConfig);
+    return { piModel: model, provider: 'lmbp', usedSyntheticModel: true, apiKey, capabilities };
+  }
   const configProtocol = resolvePiRouteProtocol(
     runtimeConfig.provider,
     runtimeConfig.customProtocol
@@ -89,5 +94,10 @@ export async function resolveRunModel(runtimeConfig: AgentRuntimeConfig, modelSt
     }
   }
 
-  return { piModel, provider, usedSyntheticModel };
+  return {
+    piModel,
+    provider,
+    usedSyntheticModel,
+    apiKey: provider === 'openai-codex' ? undefined : runtimeConfig.apiKey?.trim(),
+  };
 }

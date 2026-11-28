@@ -44,6 +44,9 @@ export function createConfigApi(): ElectronApi['config'] {
     }): Promise<{ success: boolean; config: AppConfig }> =>
       ipcRenderer.invoke('config.selectBuiltinModel', payload),
     isConfigured: (): Promise<boolean> => ipcRenderer.invoke('config.isConfigured'),
+    getLmbpStatus: () => ipcRenderer.invoke('config.getLmbpStatus'),
+    approveLmbpPairing: (code) => ipcRenderer.invoke('config.approveLmbpPairing', code),
+    revokeLmbpDevice: (id) => ipcRenderer.invoke('config.revokeLmbpDevice', id),
     test: (config: ApiTestInput): Promise<ApiTestResult> =>
       ipcRenderer.invoke('config.test', config),
     listModels: (payload: {

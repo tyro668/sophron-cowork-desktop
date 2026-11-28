@@ -89,6 +89,20 @@ export function useApiModelDiscovery({
     });
   }, [activeProfileKey, baseUrl, provider, presets, dispatch]);
 
+  const applyLmbpModels = useCallback(
+    (models: ProviderModelInfo[]) => {
+      dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: 'lmbp', models });
+      if (!models.length) return;
+      dispatch({
+        type: 'UPDATE_PROFILE_FN',
+        profileKey: 'lmbp',
+        updater: (profile) =>
+          profile.model ? profile : { ...profile, model: models[0].id, useCustomModel: false },
+      });
+    },
+    [dispatch]
+  );
+
   const refreshModelOptions = useCallback(
     async (options?: { silent?: boolean }) => {
       if (!isElectron || !canProviderRefreshModels(provider)) {
@@ -120,6 +134,10 @@ export function useApiModelDiscovery({
           return models;
         }
 
+        if (provider === 'lmbp') {
+          applyLmbpModels(models);
+          return models;
+        }
         dispatch({ type: 'SET_DISCOVERED_MODELS', profileKey: requestedProfileKey, models });
 
         dispatch({
@@ -171,7 +189,16 @@ export function useApiModelDiscovery({
         }
       }
     },
-    [activeProfileKey, apiKey, baseUrl, provider, clearError, dispatch, showErrorKey]
+    [
+      activeProfileKey,
+      apiKey,
+      baseUrl,
+      provider,
+      clearError,
+      dispatch,
+      showErrorKey,
+      applyLmbpModels,
+    ]
   );
 
   const applyDiscoveredOllamaState = useCallback(
@@ -322,6 +349,7 @@ export function useApiModelDiscovery({
   }, [provider, refreshModelOptions]);
 
   return {
+    applyLmbpModels,
     refreshModelOptions,
     discoverLocalOllama,
   };

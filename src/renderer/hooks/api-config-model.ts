@@ -69,6 +69,7 @@ export const PROFILE_KEYS: ProviderProfileKey[] = [
   'sophron',
   'gemini',
   'ollama',
+  'lmbp',
   'custom:anthropic',
   'custom:openai',
   'custom:gemini',
@@ -101,7 +102,8 @@ export function isProviderType(value: unknown): value is ProviderType {
     value === 'zai' ||
     value === 'sophron' ||
     value === 'gemini' ||
-    value === 'ollama'
+    value === 'ollama' ||
+    value === 'lmbp'
   );
 }
 
@@ -208,7 +210,12 @@ export function isLegacyOllamaConfig(
 }
 
 export function canProviderRefreshModels(provider: string): boolean {
-  return provider === 'ollama' || provider === 'sophron' || provider === 'openai-codex';
+  return (
+    provider === 'ollama' ||
+    provider === 'sophron' ||
+    provider === 'openai-codex' ||
+    provider === 'lmbp'
+  );
 }
 
 /**
@@ -222,7 +229,7 @@ export function resolveProfileModelOptions(
   discoveredModels: ProviderModelInfo[] | undefined,
   hasDiscovered: boolean
 ): ProviderModelInfo[] {
-  if (provider === 'ollama') {
+  if (provider === 'ollama' || provider === 'lmbp') {
     return discoveredModels || [];
   }
   if (!hasDiscovered) {
@@ -324,6 +331,14 @@ export function normalizeProfile(
 
   const modelValue = profile?.model?.trim() || fallback.model;
   const rawBaseUrl = profile?.baseUrl?.trim() || fallback.baseUrl;
+  if (profileKey === 'lmbp') {
+    return {
+      ...fallback,
+      model: modelValue,
+      contextWindow: String(profile.contextWindow || ''),
+      maxTokens: String(profile.maxTokens || ''),
+    };
+  }
   const hasPresetModel = modelPresetForProfile(profileKey, presets).models.some(
     (item) => item.id === modelValue
   );

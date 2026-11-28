@@ -78,7 +78,7 @@ describe('workflow conversation authoring', () => {
     );
     expect(screen.getByText('Sales')).toBeTruthy();
     expect(screen.getByText('模型')).toBeTruthy();
-    expect(screen.getByTitle('gpt-5.4')).toBeTruthy();
+    expect(screen.getByTitle('OpenAI Default')).toBeTruthy();
     expect(screen.getByText(/将以所选算子「筛选」为起点继续生成/)).toBeTruthy();
     const composer = screen.getByPlaceholderText(/描述想要的处理流程/);
     fireEvent.change(composer, { target: { value: '汇总销售额' } });
@@ -117,12 +117,11 @@ describe('workflow conversation authoring', () => {
     expect(submitButton.disabled).toBe(true);
 
     // Open the model dropdown and pick the second custom config set.
-    const modelTrigger = screen.getByTitle('gpt-5.4');
+    const modelTrigger = screen.getByTitle('OpenAI Default');
     fireEvent.pointerDown(modelTrigger, { button: 0, ctrlKey: false });
-    const claudeItem = await screen.findByText('claude-sonnet-4-6');
-    fireEvent.click(claudeItem);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Claude Work' }));
 
-    expect(screen.getByTitle('claude-sonnet-4-6')).toBeTruthy();
+    expect(screen.getByTitle('Claude Work')).toBeTruthy();
     // Choosing a model in the dialog does not mutate global config until submitted.
     expect(switchSet).not.toHaveBeenCalled();
 

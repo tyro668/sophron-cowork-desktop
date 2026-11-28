@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowUp } from 'lucide-react';
 import type { AppConfig } from '../types';
 import { useSkillMentions } from '../hooks/useSkillMentions';
-import { AgentModelSelector, getAgentModelLabel } from './AgentModelSelector';
+import { AgentModelSelector, getAgentModelId } from './AgentModelSelector';
 import { SelectedSkillChips, SkillMentionMenu } from './SkillMentionPicker';
 
 const isElectron = typeof window !== 'undefined' && window.electronAPI !== undefined;
@@ -169,7 +169,7 @@ export function LlmPromptComposer({
               onSelect={(configSetId) =>
                 onModelSelect({
                   configSetId,
-                  model: getAgentModelLabel(appConfig, '', configSetId),
+                  model: getAgentModelId(appConfig, configSetId),
                 })
               }
             />

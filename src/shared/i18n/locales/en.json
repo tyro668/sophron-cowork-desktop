@@ -1,5 +1,12 @@
 {
   "agentHarness": {
+    "lmbpInvalidCode": "The pairing code is invalid or expired. Enter the current code from Avora.",
+    "lmbpCodeRateLimited": "Too many pairing attempts. Wait a minute before trying again.",
+    "lmbpUnavailable": "The selected Avora model is unavailable. Open Avora and check which models it shares with this connection.",
+    "lmbpPairingRequired": "Open Avora and connect a paired device.",
+    "lmbpToolsRequired": "This task requires tools. Select an Avora model that supports tool calling.",
+    "lmbpVisionRequired": "This message contains an image. Select an Avora model with image support.",
+    "lmbpPortInUse": "Another process is using local pairing port {{port}}. Free the port to reconnect Avora.",
     "interrupted": "This turn was interrupted by an application restart. Check its tool receipts before retrying.",
     "searchAliases": {
       "data_preview_table": ["preview table", "preview a table"],
@@ -2456,7 +2463,7 @@
   },
   "settings": {
     "title": "Settings",
-    "apiSettings": "API Settings",
+    "apiSettings": "Model Settings",
     "apiSettingsDesc": "Configure API provider and key",
     "sandbox": "Sandbox",
     "sandboxDesc": "Isolated execution environment",
@@ -2766,9 +2773,31 @@
     "currentLanguage": "Current language"
   },
   "api": {
+    "lmbp": {
+      "instructions": "In Avora, choose Add connection, paste this link, and select the models to share. Enter the code Avora shows below.",
+      "link": "Pairing link",
+      "copy": "Copy link",
+      "copied": "Pairing link copied.",
+      "copiedShort": "Copied",
+      "code": "Avora pairing code",
+      "codeLabel": "Pairing code",
+      "codePlaceholder": "Pairing code · XXXX-XXXX",
+      "approve": "Confirm pairing",
+      "approved": "Pairing approved. Avora will connect automatically.",
+      "pairedDevice": "Paired device",
+      "repair": "Re-pair",
+      "online": "Online",
+      "offline": "Offline",
+      "revoke": "Unpair",
+      "noAuthorizedModels": "Open this connection in Avora and allow at least one model.",
+      "textOnly": "This model supports conversation. Tasks that call tools require a tool-capable model.",
+      "unavailableModel": "Saved model currently unavailable · {{model}}",
+      "loadFailed": "Could not start local Avora pairing.",
+      "actionFailed": "The Avora pairing action failed."
+    },
     "firstRunTitle": "Set Up API",
     "firstRunSubtitle": "Configure a provider to start processing local data with sophron cowork",
-    "settingsTitle": "API Settings",
+    "settingsTitle": "Model Settings",
     "settingsSubtitle": "Manage provider, key, and model settings",
     "configSet": "Config Set",
     "configSetDescription": "Manage model configurations with a different provider and model in each set",
@@ -2832,8 +2861,8 @@
     "saveFailed": "Failed to save settings. Please try again.",
     "getStarted": "Get Started",
     "saveSettings": "Save Settings",
-    "openSettingsAction": "Open API Settings",
-    "configRequiredActiveSet": "The current config set does not have usable credentials. Finish setup in API Settings first.",
+    "openSettingsAction": "Open Model Settings",
+    "configRequiredActiveSet": "The current config set does not have usable credentials. Finish setup in Model Settings first.",
     "testConnection": "Test Connection",
     "testingConnection": "Testing...",
     "refreshModels": "Refresh Models",
@@ -2917,7 +2946,7 @@
         "emptyProbeGeneric": "The endpoint returned an empty probe response. This usually means the selected protocol or model is incompatible with the service.",
         "emptyProbeDetected": "{{service}} returned an empty probe response. Try the recommended {{recommendedProtocol}} setup and verify the model ID for that endpoint.",
         "emptyProbePreferProvider": "{{service}} returned an empty probe response. Try the dedicated {{provider}} tab instead of configuring it as a generic custom endpoint.",
-        "probeMismatchGeneric": "The endpoint responded, but not in the format expected by this probe. This usually points to a protocol or model compatibility mismatch.",
+        "probeMismatchGeneric": "The model replied “{{reply}}”. This answer did not match the expected result.",
         "probeMismatchDetected": "{{service}} responded with an unexpected probe format. Try the recommended {{recommendedProtocol}} setup and verify the model ID for that endpoint."
       },
       "setups": {

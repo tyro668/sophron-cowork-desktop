@@ -1,5 +1,5 @@
 import { cloudSyncSchema } from '../../../../shared/automation/cloud-sync';
-import { getAgentModelLabel } from '../../AgentModelSelector';
+import { getAgentModelId } from '../../AgentModelSelector';
 import type {
   Automation,
   AutomationActionGraph,
@@ -462,7 +462,7 @@ export function enrichActionGraphDefaults(
         config: {
           ...nextConfig,
           modelConfigSetId,
-          model: getAgentModelLabel(appConfig, '', modelConfigSetId) || node.config.model || null,
+          model: getAgentModelId(appConfig, modelConfigSetId) || node.config.model || null,
         },
       };
     }),

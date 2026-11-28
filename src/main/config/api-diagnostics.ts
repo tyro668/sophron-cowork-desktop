@@ -36,6 +36,8 @@ import { probeWithPiAi } from '../agent/pi-ai-one-shot';
 import { getProviderApiKey } from '../agent/shared-auth';
 import { ensureCodexCredentials, OPENAI_CODEX_PROVIDER } from './codex-auth';
 import { fetchOllamaModelIndex } from './ollama-api';
+import { getLmbpGateway } from './lmbp-gateway';
+import { harnessMessage } from '../utils/harness-messages';
 
 const STEP_NAMES: DiagnosticStepName[] = ['dns', 'tcp', 'tls', 'auth', 'model'];
 const TCP_TIMEOUT_MS = 5000;
@@ -612,7 +614,46 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<Diagnostic
   }
 }
 
+async function diagnoseLmbp(input: DiagnosticInput): Promise<DiagnosticResult> {
+  const started = Date.now();
+  const verificationLevel = input.verificationLevel ?? 'deep';
+  const connection = makeStep('tcp');
+  const pairing = makeStep('auth');
+  const model = makeStep('model');
+  const steps = [connection, pairing, model];
+  let current = connection;
+  try {
+    const gateway = await getLmbpGateway();
+    connection.status = 'ok';
+    current = pairing;
+    if (!gateway.getStatus().devices.some((device) => device.online))
+      throw new Error(harnessMessage('lmbpPairingRequired'));
+    pairing.status = 'ok';
+    current = model;
+    gateway.resolveModel(input.model ?? '');
+    if (verificationLevel === 'deep') {
+      const probe = await probeWithPiAi(input, configStore.getAll());
+      if (!probe.ok) throw new Error(probe.details || harnessMessage('lmbpUnavailable'));
+    }
+    model.status = 'ok';
+  } catch (error) {
+    current.status = 'fail';
+    current.error = getErrorMessage(error);
+    for (const step of steps) if (step.status === 'pending') step.status = 'skip';
+  }
+  const overallOk = model.status === 'ok';
+  return {
+    steps,
+    overallOk,
+    verificationLevel,
+    totalLatencyMs: Date.now() - started,
+    failedAt: overallOk ? undefined : current.name,
+    advisoryCode: overallOk && verificationLevel === 'fast' ? 'not_deep_verified' : undefined,
+  };
+}
+
 async function runDiagnosticsImpl(input: DiagnosticInput): Promise<DiagnosticResult> {
+  if (input.provider === 'lmbp') return diagnoseLmbp(input);
   const verificationLevel: DiagnosticVerificationLevel = input.verificationLevel ?? 'deep';
   log('[Diagnostics] Starting', {
     provider: input.provider,

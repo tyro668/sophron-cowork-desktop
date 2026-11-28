@@ -626,7 +626,10 @@ export class SessionManager {
           let actualSize = 0;
 
           // Copy file to .tmp directory
-          if (sourcePath && fs.existsSync(sourcePath)) {
+          if (sourcePath === path.join('.tmp', destFilename) && fs.existsSync(destPath)) {
+            // A resent message refers to the attachment already staged for this session.
+            actualSize = fs.statSync(destPath).size;
+          } else if (sourcePath && fs.existsSync(sourcePath)) {
             fs.copyFileSync(sourcePath, destPath);
 
             // Get actual file size

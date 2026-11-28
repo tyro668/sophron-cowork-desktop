@@ -1,4 +1,4 @@
-import { ipcRenderer } from 'electron';
+import { ipcRenderer, webUtils } from 'electron';
 import type { DataRawTableSourceKind, DataRawTableSourceSelection } from '../../shared/contracts';
 import type { ElectronApi } from '../../shared/contracts/electron-api';
 
@@ -9,6 +9,7 @@ export function createShellApi(): Pick<
   | 'openPath'
   | 'openGeneratedReport'
   | 'selectFiles'
+  | 'getPathForFile'
   | 'selectRawTableSource'
   | 'artifacts'
 > {
@@ -41,6 +42,7 @@ export function createShellApi(): Pick<
 
     // Select files using native dialog
     selectFiles: (): Promise<string[]> => ipcRenderer.invoke('dialog.selectFiles'),
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
 
     selectRawTableSource: (
       kind?: DataRawTableSourceKind

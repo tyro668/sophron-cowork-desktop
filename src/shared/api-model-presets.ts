@@ -10,7 +10,8 @@ export type SharedProviderType =
   | 'zai'
   | 'sophron'
   | 'gemini'
-  | 'ollama';
+  | 'ollama'
+  | 'lmbp';
 
 export type SharedCustomProtocolType = 'anthropic' | 'openai' | 'gemini';
 export type VisibleApiProviderType = Exclude<SharedProviderType, 'custom' | 'gemini' | 'sophron'>;
@@ -27,6 +28,7 @@ export const VISIBLE_API_PROVIDER_OPTIONS = [
   'openai-codex',
   'openrouter',
   'ollama',
+  'lmbp',
   'custom:openai',
   'custom:anthropic',
 ] as const satisfies readonly VisibleApiProviderOption[];
@@ -52,6 +54,7 @@ export interface SharedProviderPresets {
   sophron: SharedProviderPreset;
   gemini: SharedProviderPreset;
   ollama: SharedProviderPreset;
+  lmbp: SharedProviderPreset;
 }
 
 export interface ModelInputGuidance {
@@ -60,6 +63,7 @@ export interface ModelInputGuidance {
 }
 
 export const API_PROVIDER_PRESETS: SharedProviderPresets = {
+  lmbp: { name: 'Avora (LMBP)', baseUrl: '', models: [], keyPlaceholder: '', keyHint: '' },
   openrouter: {
     name: 'OpenRouter',
     baseUrl: 'https://openrouter.ai/api/v1',

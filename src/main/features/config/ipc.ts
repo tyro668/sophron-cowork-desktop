@@ -9,7 +9,8 @@ import type {
   ProviderModelInfo,
 } from '../../../shared/contracts';
 import { desktopAuthService } from '../../app/context';
-import { resolveAppConfigForAuth, resolveApiTestInputForAuth } from '../../app/runtime-config';
+import { resolveApiTestInputForAuth } from '../../app/runtime-config';
+import { getLmbpGateway } from '../../config/lmbp-gateway';
 import {
   ensureCodexCredentials,
   getCodexAuthStatus,
@@ -141,10 +142,7 @@ export function registerConfigIpc(): void {
   handleIpc('config.test', async (_event, payload: ApiTestInput): Promise<ApiTestResult> => {
     try {
       const resolvedPayload = await resolveApiTestInputForAuth(payload);
-      return await runConfigApiTest(
-        resolvedPayload,
-        await resolveAppConfigForAuth(configStore.getAll())
-      );
+      return await runConfigApiTest(resolvedPayload, configStore.getAll());
     } catch (error) {
       logError('[Config] API test failed:', error);
       return {
@@ -161,6 +159,7 @@ export function registerConfigIpc(): void {
       _event,
       payload: { provider: AppConfig['provider']; apiKey: string; baseUrl?: string }
     ): Promise<ProviderModelInfo[]> => {
+      if (payload.provider === 'lmbp') return (await getLmbpGateway()).getStatus().models;
       if (payload.provider === 'sophron') {
         return desktopAuthService.listLlmModels();
       }
@@ -201,6 +200,14 @@ export function registerConfigIpc(): void {
       return [];
     }
   });
+
+  handleIpc('config.getLmbpStatus', async () => (await getLmbpGateway()).getStatus());
+  handleIpc('config.approveLmbpPairing', async (_event, code: string) =>
+    (await getLmbpGateway()).approve(code)
+  );
+  handleIpc('config.revokeLmbpDevice', async (_event, id: string) =>
+    (await getLmbpGateway()).revoke(id)
+  );
 
   handleIpc('config.codexAuthStatus', () => {
     try {

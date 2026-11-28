@@ -228,25 +228,6 @@ export function useComposerAttachments({
     });
   }, []);
 
-  const handleFileSelect = useCallback(async () => {
-    if (!isElectron || !window.electronAPI) return;
-
-    try {
-      const filePaths = await window.electronAPI.selectFiles();
-      if (filePaths.length === 0) return;
-
-      const newFiles: AttachedFile[] = filePaths.map((filePath) => ({
-        name: filePath.split(/[/\\]/).pop() || 'unknown',
-        path: filePath,
-        size: 0,
-        type: 'application/octet-stream',
-      }));
-      setAttachedFiles((prev) => [...prev, ...newFiles]);
-    } catch (error) {
-      console.error('[Composer] Error selecting files:', error);
-    }
-  }, [isElectron]);
-
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -259,13 +240,8 @@ export function useComposerAttachments({
     setIsDragging(false);
   }, []);
 
-  const handleDrop = useCallback(
-    async (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setIsDragging(false);
-
-      const files = Array.from(e.dataTransfer.files);
+  const attachFiles = useCallback(
+    async (files: File[]) => {
       const imageFiles = files.filter((file) => file.type.startsWith('image/'));
       const otherFiles = files.filter((file) => !file.type.startsWith('image/'));
 
@@ -276,11 +252,11 @@ export function useComposerAttachments({
       if (otherFiles.length > 0) {
         const newFiles: AttachedFile[] = await Promise.all(
           otherFiles.map(async (file) => {
-            const droppedPath = 'path' in file && typeof file.path === 'string' ? file.path : '';
-            const inlineDataBase64 = droppedPath ? undefined : await blobToBase64(file);
+            const filePath = window.electronAPI?.getPathForFile(file) || '';
+            const inlineDataBase64 = filePath ? undefined : await blobToBase64(file);
             return {
               name: file.name,
-              path: droppedPath,
+              path: filePath,
               size: file.size,
               type: file.type || 'application/octet-stream',
               inlineDataBase64,
@@ -291,6 +267,29 @@ export function useComposerAttachments({
       }
     },
     [encodeImageBlobs]
+  );
+
+  const handleFileSelect = useCallback(() => {
+    if (!isElectron) return;
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.multiple = true;
+    picker.onchange = () => {
+      void attachFiles(Array.from(picker.files ?? [])).catch((error) =>
+        console.error('[Composer] Error selecting files:', error)
+      );
+    };
+    picker.click();
+  }, [attachFiles, isElectron]);
+
+  const handleDrop = useCallback(
+    async (event: React.DragEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setIsDragging(false);
+      await attachFiles(Array.from(event.dataTransfer.files));
+    },
+    [attachFiles]
   );
 
   return {

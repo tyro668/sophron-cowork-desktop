@@ -15,7 +15,7 @@ import {
 } from '../utils/working-dir-label';
 import { normalizeWorkspacePath } from '../utils/sidebar-project-groups';
 import { BUILTIN_LLM_PROVIDER } from '../../shared/builtin-llm';
-import { AgentModelSelector } from './AgentModelSelector';
+import { AgentModelSelector, getAgentModelLabel } from './AgentModelSelector';
 import { ComposerAttachmentBar } from './ComposerAttachmentBar';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { PermissionPolicySelector } from './PermissionPolicySelector';
@@ -99,7 +99,7 @@ export function WelcomeView() {
   const clearCloudTablesFromWelcomeChat = useAppStore(
     (state) => state.clearCloudTablesFromWelcomeChat
   );
-  const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
+  const modelLabel = getAgentModelLabel(appConfig, t('chat.noModel'));
   const hasSelectedModel = Boolean(appConfig?.model?.trim());
   const effectiveWorkingDir =
     workingDir && !isInternalDefaultWorkingDirPath(workingDir) ? workingDir.trim() : null;

@@ -71,7 +71,7 @@ import { configStore } from '../config/config-store';
 import { toUserFacingErrorText } from './agent-runner-message-end';
 import { AGENT_TURN_RETRY_SETTINGS } from './agent-runner-retry';
 import { buildPiSessionRuntimeSignature } from './pi-session-runtime';
-import { buildColdStartAgentHistory } from './agent-protocol-safety';
+import { buildColdStartAgentHistory, toPiImageContent } from './agent-protocol-safety';
 import { ensureCodexCredentials } from '../config/codex-auth';
 import { createWindowsBashOperations } from './windows-bash-operations';
 import { createSandboxCodingTools } from './sandbox-tool-operations';
@@ -777,15 +777,14 @@ export class AgentRunner {
       const sandbox = syncState.sandbox;
       controller.signal.throwIfAborted();
 
-      // Check if current user message includes images
-      const lastUserMessage =
-        existingMessages.length > 0 ? existingMessages[existingMessages.length - 1] : null;
-
       logCtx('[AgentRunner] Total messages:', existingMessages.length);
 
-      const hasImages =
-        lastUserMessage?.content.some((c) => (c as { type?: string }).type === 'image') || false;
-      if (hasImages) {
+      const currentUser = existingMessages.at(-1);
+      const images =
+        currentUser?.role === 'user'
+          ? currentUser.content.filter((block) => block.type === 'image').map(toPiImageContent)
+          : [];
+      if (images.length) {
         log('[AgentRunner] User message contains images');
       }
 
@@ -794,12 +793,18 @@ export class AgentRunner {
       // Resolve model via pi-ai
       const runtimeConfig = runtimeConfigOverride ?? configStore.getAll();
       const modelString = this.getCurrentModelString(runtimeConfig.model);
-      const { piModel, provider, usedSyntheticModel } = await resolveRunModel(
+      const { piModel, provider, usedSyntheticModel, apiKey, capabilities } = await resolveRunModel(
         runtimeConfig,
         modelString
       );
 
       controller.signal.throwIfAborted();
+
+      const supportsTools = capabilities?.includes('tools') ?? true;
+      const supportsImages = piModel.input.includes('image');
+      if (capabilities && images.length && !supportsImages) {
+        throw new Error(harnessMessage('lmbpVisionRequired'));
+      }
 
       // Send context window info to renderer for UI display
       this.sendToRenderer({
@@ -810,7 +815,6 @@ export class AgentRunner {
         },
       });
 
-      const apiKey = provider === 'openai-codex' ? undefined : runtimeConfig.apiKey?.trim();
       if (provider === 'openai-codex') {
         if (!(await ensureCodexCredentials())) {
           throw new Error(
@@ -874,6 +878,7 @@ export class AgentRunner {
         thinkingLevel
       );
       const sessionRuntimeSignature = buildPiSessionRuntimeSignature({
+        modelCapabilities: capabilities,
         configProvider: runtimeConfig.provider,
         customProtocol: runtimeConfig.customProtocol,
         modelProvider: piModel.provider,
@@ -938,6 +943,7 @@ export class AgentRunner {
       const runSessionRef: { current?: PiAgentSession } = {};
       const queuedToolActivations = new Set<string>();
       const activateToolsForRun = (toolNames: string[]): ToolActivationResult => {
+        if (!supportsTools) return { activated: [], unknown: toolNames };
         const target = runSessionRef.current;
         if (!target) {
           toolNames.forEach((name) => queuedToolActivations.add(name));
@@ -969,7 +975,6 @@ export class AgentRunner {
         : { customTools: [] };
 
       requestContext.update(extensionResult);
-      const contextualPrompt = prompt;
       let coldStartHistory: PiMessage[] = [];
       const restoredUserIds = new Map<PiMessage, string>();
       const historyMessages = existingMessages.slice(0, -1);
@@ -995,6 +1000,8 @@ export class AgentRunner {
             provider: piModel.provider,
             model: piModel.id,
             maxChars: historyCharBudget,
+            charsPerToken,
+            supportsImages,
             summaries,
             restoredUserIds,
           });
@@ -1370,12 +1377,14 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
       if (/resultRef|tool_result_read|result_[a-f0-9-]+/i.test(prompt))
         allowedExtensionTools.add(RESULT_READ_TOOL);
       const registeredNames = new Set(piSession.getAllTools().map((tool) => tool.name));
-      const nextActiveTools = selectActiveToolsForTurn(
-        piSession.getActiveToolNames(),
-        registeredNames,
-        hiddenCatalogs,
-        [...allowedExtensionTools, ...queuedToolActivations, ...requestContext.getStickyTools()]
-      );
+      const nextActiveTools = supportsTools
+        ? selectActiveToolsForTurn(
+            piSession.getActiveToolNames(),
+            registeredNames,
+            hiddenCatalogs,
+            [...allowedExtensionTools, ...queuedToolActivations, ...requestContext.getStickyTools()]
+          )
+        : [];
       queuedToolActivations.clear();
       activateSessionTools(piSession, nextActiveTools);
       requestContext.setActiveTools(nextActiveTools);
@@ -1443,10 +1452,9 @@ This is an isolated sandbox environment. Use ${VIRTUAL_WORKSPACE_PATH} as the ro
             })
           );
         }
-        const currentUser = existingMessages.at(-1);
         if (currentUser?.role === 'user')
           piSession.sessionManager.appendCustomEntry(APP_TURN_ENTRY, currentUser.id);
-        const promptResult = await piSession.prompt(contextualPrompt);
+        const promptResult = await piSession.prompt(prompt, { images });
         controller.signal.throwIfAborted();
         // Backstop: surface a held-back attempt error if no agent_end flushed it.
         eventBridge.flushPendingError();

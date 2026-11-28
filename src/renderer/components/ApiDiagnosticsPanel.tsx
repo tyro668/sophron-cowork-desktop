@@ -12,6 +12,10 @@ import {
   KeyRound,
   Cpu,
 } from 'lucide-react';
+import {
+  getProbeMismatchReply,
+  resolveProviderGuidanceErrorHint,
+} from '../../shared/api-provider-guidance';
 import type {
   DiagnosticResult,
   DiagnosticStep,
@@ -174,6 +178,10 @@ function PipelineNode({ step }: { step: DiagnosticStep }) {
 /** Error detail card shown below the pipeline */
 function FailureDetail({ step }: { step: DiagnosticStep }) {
   const { t } = useTranslation();
+  const probeHint = resolveProviderGuidanceErrorHint(step.error);
+  const errorText = probeHint
+    ? t(`api.guidance.errorHints.${probeHint}`, { reply: getProbeMismatchReply(step.error) })
+    : step.error;
 
   const fixText = (() => {
     if (!step.fix) return '';
@@ -186,7 +194,7 @@ function FailureDetail({ step }: { step: DiagnosticStep }) {
 
   return (
     <div className="mt-2 rounded-lg bg-error/8 border border-error/20 px-3 py-2 text-xs">
-      {step.error && <p className="text-error font-medium">{step.error}</p>}
+      {errorText && <p className="text-error font-medium">{errorText}</p>}
       {fixText && <p className="mt-1 text-text-secondary">{fixText}</p>}
     </div>
   );
@@ -269,9 +277,9 @@ export default function ApiDiagnosticsPanel({
           {/* Failure detail */}
           {failedStep && <FailureDetail step={failedStep} />}
 
-          {result?.advisoryText && !isRunning && (
+          {(result?.advisoryCode || result?.advisoryText) && !isRunning && (
             <div className="mt-3 rounded-lg bg-accent-muted border border-accent/20 px-3 py-2 text-xs text-text-secondary">
-              {t(`api.diagnostic.advisory.${result.advisoryCode ?? ''}`, result.advisoryText)}
+              {t(`api.diagnostic.advisory.${result.advisoryCode ?? ''}`, result.advisoryText ?? '')}
             </div>
           )}
 

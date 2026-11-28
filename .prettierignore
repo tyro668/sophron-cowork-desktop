@@ -1,0 +1,2 @@
+# Keep the vendored SDK comparable to its upstream source.
+vendor/lmbp/

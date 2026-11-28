@@ -21,6 +21,7 @@ import {
 import { log, logWarn } from '../utils/logger';
 import { normalizeGeneratedTitle } from '../session/session-title-utils';
 import { getProviderApiKey } from './shared-auth';
+import { resolveLmbpTarget } from './lmbp-model';
 import {
   ensureCodexCredentials,
   hasCodexCredentials,
@@ -43,7 +44,6 @@ const AUTH_ERROR_RE =
   /authentication[_\s-]?failed|\bunauthorized\b|invalid[_\s-]?api[_\s-]?key|api[_\s-]?key[_\s-]?invalid|api[_\s]+key[_\s]+not[_\s]+valid|\bforbidden\b|permission[_\s-]?denied|\b401\b|\b403\b/i;
 const RATE_LIMIT_RE = /rate[_\s-]?limit|too\s+many\s+requests|429/i;
 const SERVER_ERROR_RE = /server[_\s-]?error|internal\s+server\s+error|\b5\d\d\b/i;
-const PROBE_ACK = 'sdk_probe_ok';
 const LOCAL_ANTHROPIC_PLACEHOLDER_KEY = 'sk-ant-local-proxy';
 const LOCAL_GEMINI_PLACEHOLDER_KEY = 'sk-gemini-local-proxy';
 
@@ -184,7 +184,8 @@ export interface PiAiOneShotResult {
 /** Resolve the pi-ai model and API key for a config (shared by one-shot calls and headless agents). */
 export async function resolvePiAiTarget(
   config: AppConfig | AgentRuntimeConfig
-): Promise<{ model: Model<Api>; apiKey: string | undefined }> {
+): Promise<{ model: Model<Api>; apiKey: string | undefined; capabilities?: string[] }> {
+  if (config.provider === 'lmbp') return resolveLmbpTarget(config);
   const modelString = resolvePiModelString(config);
   const keyProvider = config.customProtocol || config.provider || 'anthropic';
 
@@ -270,7 +271,7 @@ export async function runPiAiOneShot(
     onThinkingDelta?: (delta: string) => void;
   }
 ): Promise<PiAiOneShotResult> {
-  const { model: resolvedModel, apiKey } = await resolvePiAiTarget(config);
+  const { model: resolvedModel, apiKey, capabilities } = await resolvePiAiTarget(config);
 
   const start = Date.now();
 
@@ -290,7 +291,10 @@ export async function runPiAiOneShot(
   );
   const { onTextDelta, onThinkingDelta, onActivity, reasoning, ...requestOptions } = options ?? {};
   // The ChatGPT Codex backend rejects sampling params: {"detail":"Unsupported parameter: temperature"}.
-  if (resolvedModel.api === 'openai-codex-responses') {
+  if (
+    resolvedModel.api === 'openai-codex-responses' ||
+    (capabilities?.includes('params') && !capabilities.includes('temperature'))
+  ) {
     delete requestOptions.temperature;
   }
   const context = {
@@ -421,14 +425,12 @@ function normalizeStreamDelta(delta: unknown): string {
   return typeof delta === 'string' ? delta : '';
 }
 
-function normalizeProbeAck(raw: string): string {
-  // Strip markdown formatting and quotes around/between words, but preserve
-  // underscores inside words (PROBE_ACK = 'sdk_probe_ok' contains underscores).
-  return raw
-    .replace(/(?<!\w)[*_~`"']+|[*_~`"']+(?!\w)/g, '')
-    .replace(/[.,!?;:]+$/g, '')
-    .trim()
-    .toLowerCase();
+function isCorrectProbeAnswer(text: string): boolean {
+  const answer = text
+    .normalize('NFKC')
+    .replace(/[*_`"']/g, '')
+    .trim();
+  return /^(?:2\s*\+\s*2\s*=\s*|the answer is\s+)?(?:4|four)[.!\u3002]?$/i.test(answer);
 }
 
 export async function probeWithPiAi(
@@ -445,7 +447,7 @@ export async function probeWithPiAi(
     return { ok: false, errorType: 'unknown', details: 'missing_model' };
   }
 
-  if (!probeConfig.apiKey?.trim()) {
+  if (input.provider !== 'lmbp' && !probeConfig.apiKey?.trim()) {
     // openai-codex authenticates via OAuth; the access token is resolved
     // inside runPiAiOneShot from AuthStorage.
     if (!(input.provider === 'openai-codex' && hasCodexCredentials())) {
@@ -455,11 +457,7 @@ export async function probeWithPiAi(
 
   const probeStart = Date.now();
   try {
-    const result = await runPiAiOneShot(
-      `What is 2+2? After answering, also include this token: ${PROBE_ACK}`,
-      `You are a connectivity test. Answer briefly, then include the token: ${PROBE_ACK}`,
-      probeConfig
-    );
+    const result = await runPiAiOneShot('What is 2+2?', 'Reply with only the number.', probeConfig);
 
     if (!result.text && !result.hasThinking) {
       return {
@@ -472,12 +470,10 @@ export async function probeWithPiAi(
     // Thinking models may respond only with reasoning content and no text —
     // treat as successful probe since the model is reachable and responding.
     if (!result.text && result.hasThinking) {
-      log(
-        '[Probe] Thinking-only response — treating as ok (model reachable, cannot validate ack text)'
-      );
+      log('[Probe] Model returned reasoning only, with no final answer to check');
       return { ok: true, latencyMs: result.durationMs };
     }
-    if (!normalizeProbeAck(result.text).includes(PROBE_ACK)) {
+    if (!isCorrectProbeAnswer(result.text)) {
       return {
         ok: false,
         latencyMs: result.durationMs,

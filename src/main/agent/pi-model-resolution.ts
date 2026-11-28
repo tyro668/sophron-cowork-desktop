@@ -108,6 +108,7 @@ export function resolveEffectiveThinkingLevel(
 }
 
 export function resolvePiRouteProtocol(provider?: string, customProtocol?: string): string {
+  if (provider === 'lmbp') return 'anthropic';
   if (provider === 'custom') {
     if (customProtocol === 'openai' || customProtocol === 'gemini') {
       return customProtocol;

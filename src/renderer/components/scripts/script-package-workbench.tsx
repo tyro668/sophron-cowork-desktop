@@ -34,7 +34,7 @@ import { SCRIPT_SOURCE_KEYS } from './labels';
 import { DEFAULT_SCRIPT_TIMEOUT_MS } from '../../../shared/automation/script-package';
 import type { Automation, DataRawTablePreview } from '../../../shared/contracts';
 import { useAppStore, type ScriptEditorTarget } from '../../store';
-import { getAgentModelLabel } from '../AgentModelSelector';
+import { getAgentModelId } from '../AgentModelSelector';
 import {
   FixContinueActionCells,
   GenerateActionCells,
@@ -336,11 +336,9 @@ export function ScriptPackageWorkbench({
       : summary?.runtimeVersion?.startsWith('Python')
         ? summary.runtimeVersion
         : 'Python';
-  const modelLabel = getAgentModelLabel(
-    appConfig,
-    t('chat.noModel'),
-    modelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
-  );
+  const modelLabel =
+    getAgentModelId(appConfig, modelConfigSetId ?? appConfig?.activeConfigSetId) ||
+    t('chat.noModel');
 
   const generate = async (
     override: {

@@ -198,6 +198,28 @@ describe('ConfigStore applyToEnv', () => {
     expect(process.env.ANTHROPIC_API_KEY).toBe('sk-ant-local-proxy');
   });
 
+  it('keeps Avora transport credentials and endpoint out of config and the child process environment', () => {
+    const store = new ConfigStore();
+    store.update({
+      provider: 'lmbp',
+      model: 'dev_test/scheme/model',
+      apiKey: 'unused',
+      baseUrl: 'https://unused.example',
+    });
+    store.applyToEnv();
+    expect(store.getRuntimeConfigForSet(store.get('activeConfigSetId'))).toMatchObject({
+      provider: 'lmbp',
+      model: 'dev_test/scheme/model',
+      apiKey: '',
+      baseUrl: '',
+    });
+    expect(store.hasUsableCredentialsForActiveSet()).toBe(true);
+    expect(process.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(process.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(process.env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(process.env.CLAUDE_MODEL).toBeUndefined();
+  });
+
   it('exports loopback placeholder key for custom openai profile when api key is empty', () => {
     const store = new ConfigStore();
 

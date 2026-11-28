@@ -13,8 +13,8 @@ interface MessageCardProps {
   isStreaming?: boolean;
   /** User message: load its text back into the composer. */
   onEdit?: (text: string) => void;
-  /** User message: send the same text again as a new message. */
-  onResend?: (text: string) => void;
+  /** Send the original user content, including attachments, as a new turn. */
+  onResend?: (content: ContentBlock[]) => void;
   /** Assistant message (last of a turn): re-ask the preceding user message. */
   onRegenerate?: () => void;
   /** 对话「转成脚本」: entry, backlink and proposal cards of this turn (last message only). */
@@ -145,9 +145,9 @@ export const MessageCard = memo(function MessageCard({
                 <PencilLine className="h-3 w-3" />
               </MessageActionButton>
             )}
-            {onResend && hasText && (
+            {onResend && contentBlocks.length > 0 && (
               <MessageActionButton
-                onClick={() => onResend(getTextContent())}
+                onClick={() => onResend(contentBlocks)}
                 title={t('messageCard.resendMessage')}
               >
                 <RotateCcw className="h-3 w-3" />

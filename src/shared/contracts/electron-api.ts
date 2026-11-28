@@ -42,6 +42,7 @@ import type {
   ProviderModelInfo,
   PersonalAnalysisDatasource,
   LocalOllamaDiscoveryResult,
+  LmbpPairingStatus,
   MemoryOverview,
   MemorySearchResult,
   MemoryReadResult,
@@ -199,6 +200,7 @@ export interface ElectronApi {
   openPath: (filePath: string, cwd?: string) => Promise<boolean>;
   openGeneratedReport: (filePath: string, cwd?: string) => Promise<boolean>;
   selectFiles: () => Promise<string[]>;
+  getPathForFile: (file: File) => string;
   selectRawTableSource: (
     kind?: DataRawTableSourceKind
   ) => Promise<DataRawTableSourceSelection | null>;
@@ -342,6 +344,9 @@ export interface ElectronApi {
       model: string;
     }) => Promise<{ success: boolean; config: AppConfig }>;
     isConfigured: () => Promise<boolean>;
+    getLmbpStatus: () => Promise<LmbpPairingStatus>;
+    approveLmbpPairing: (code: string) => Promise<void>;
+    revokeLmbpDevice: (deviceId: string) => Promise<void>;
     test: (config: ApiTestInput) => Promise<ApiTestResult>;
     listModels: (payload: {
       provider: AppConfig['provider'];

@@ -50,6 +50,13 @@ vi.mock('@earendil-works/pi-ai/compat', () => ({
   streamSimple: mocks.streamSimple,
 }));
 
+vi.mock('../src/main/agent/lmbp-model', () => ({
+  resolveLmbpTarget: ({ model }: { model: string }) => ({
+    model: { id: model, provider: 'lmbp', api: 'anthropic-messages' },
+    apiKey: 'loopback-test-key',
+  }),
+}));
+
 vi.mock('../src/main/agent/shared-auth', () => ({
   setRuntimeApiKey: mocks.setRuntimeApiKey,
   getProviderApiKey: vi.fn(),
@@ -207,7 +214,7 @@ describe('probeWithPiAi', () => {
       baseUrl: 'https://api.openai.com/v1',
     });
     mocks.completeSimple.mockResolvedValue({
-      content: [{ type: 'text', text: 'sdk_probe_ok' }],
+      content: [{ type: 'text', text: '4' }],
     });
   });
 
@@ -379,11 +386,28 @@ describe('probeWithPiAi', () => {
     expect(result.details).toBe('empty_probe_response');
   });
 
-  it('succeeds when response has both text ack and thinking blocks', async () => {
+  it('accepts the bare arithmetic answer from an Avora Codex subscription', async () => {
+    const model = 'dev_test/subscription/gpt-6.2-sol';
+    const result = await probeWithPiAi(
+      { provider: 'lmbp', apiKey: '', model, verificationLevel: 'deep' },
+      createConfig()
+    );
+
+    expect(mocks.completeSimple).toHaveBeenCalledWith(
+      expect.objectContaining({ id: model, provider: 'lmbp' }),
+      expect.objectContaining({
+        messages: [expect.objectContaining({ role: 'user', content: 'What is 2+2?' })],
+      }),
+      expect.objectContaining({ apiKey: 'loopback-test-key' })
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('checks the final answer when the response also contains thinking', async () => {
     mocks.completeSimple.mockResolvedValue({
       content: [
-        { type: 'thinking', thinking: 'The user wants me to reply with sdk_probe_ok.' },
-        { type: 'text', text: 'sdk_probe_ok' },
+        { type: 'thinking', thinking: 'Adding two and two.' },
+        { type: 'text', text: '4' },
       ],
     });
 
@@ -395,44 +419,40 @@ describe('probeWithPiAi', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('accepts probe ack wrapped in markdown formatting', async () => {
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: 'text', text: '**sdk_probe_ok**' }],
-    });
+  it.each(['**4**', '4.', 'The answer is four.', '2 + 2 = 4', '\uFF14\u3002'])(
+    'accepts a formatted arithmetic answer: %s',
+    async (answer) => {
+      mocks.completeSimple.mockResolvedValue({
+        content: [{ type: 'text', text: answer }],
+      });
 
-    const result = await probeWithPiAi(
-      { provider: 'openai', apiKey: 'sk-test', model: 'gpt-5.4' },
-      createConfig()
-    );
+      const result = await probeWithPiAi(
+        { provider: 'openai', apiKey: 'sk-test', model: 'gpt-5.4' },
+        createConfig()
+      );
 
-    expect(result.ok).toBe(true);
-  });
+      expect(result.ok).toBe(true);
+    }
+  );
 
-  it('accepts probe ack with trailing punctuation', async () => {
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: 'text', text: 'sdk_probe_ok.' }],
-    });
+  it.each(['5', '404', 'HTTP 429', 'What is 2+2?', 'sdk_probe_ok'])(
+    'rejects an incorrect or unrelated final answer: %s',
+    async (answer) => {
+      mocks.completeSimple.mockResolvedValue({
+        content: [
+          { type: 'thinking', thinking: '2 + 2 = 4' },
+          { type: 'text', text: answer },
+        ],
+      });
 
-    const result = await probeWithPiAi(
-      { provider: 'openai', apiKey: 'sk-test', model: 'gpt-5.4' },
-      createConfig()
-    );
+      const result = await probeWithPiAi(
+        { provider: 'openai', apiKey: 'sk-test', model: 'gpt-5.4' },
+        createConfig()
+      );
 
-    expect(result.ok).toBe(true);
-  });
-
-  it('accepts probe ack with chatty prefix', async () => {
-    mocks.completeSimple.mockResolvedValue({
-      content: [{ type: 'text', text: 'Sure! sdk_probe_ok' }],
-    });
-
-    const result = await probeWithPiAi(
-      { provider: 'openai', apiKey: 'sk-test', model: 'gpt-5.4' },
-      createConfig()
-    );
-
-    expect(result.ok).toBe(true);
-  });
+      expect(result).toMatchObject({ ok: false, details: `probe_response_mismatch:${answer}` });
+    }
+  );
 
   it('maps ECONNREFUSED to ollama_not_running for ollama provider', async () => {
     mocks.completeSimple.mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:11434'));
@@ -739,19 +759,13 @@ describe('probeWithPiAi', () => {
     expect(result.details).toBe('An unknown error occurred');
   });
 
-  it('accepts probe ack with math answer prefix from question-style prompt', async () => {
+  it('accepts a Gemini response with the equation and its formatted result', async () => {
     mocks.completeSimple.mockResolvedValue({
-      content: [{ type: 'text', text: '2+2 = 4\n\nsdk_probe_ok' }],
+      content: [{ type: 'text', text: '2+2 = **4**' }],
     });
-
     const result = await probeWithPiAi(
       { provider: 'gemini', apiKey: 'key', model: 'gemini-2.5-flash' },
-      createConfig({
-        provider: 'gemini',
-        customProtocol: 'gemini',
-        apiKey: 'key',
-        model: 'gemini-2.5-flash',
-      })
+      createConfig({ provider: 'gemini', customProtocol: 'gemini', model: 'gemini-2.5-flash' })
     );
 
     expect(result.ok).toBe(true);

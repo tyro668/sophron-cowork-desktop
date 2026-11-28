@@ -15,6 +15,8 @@ const HISTORY_OPTIONS = {
   provider: 'test-provider',
   model: 'test-model',
   maxChars: 100_000,
+  charsPerToken: 4,
+  supportsImages: false,
 };
 
 function message(
@@ -27,6 +29,51 @@ function message(
 }
 
 describe('buildColdStartAgentHistory', () => {
+  it('restores image pixels in user and tool messages within the vision token budget', () => {
+    const data = 'YWFh'.repeat(20_000);
+    const image = { type: 'image', mimeType: 'image/png', data } as const;
+    const history = [
+      message(
+        'u1',
+        'user',
+        [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data } },
+          { type: 'text', text: 'Compare these' },
+        ],
+        1
+      ),
+      message('a1', 'assistant', [{ type: 'tool_use', id: 'p', name: 'plot', input: {} }], 2),
+      message(
+        'a2',
+        'assistant',
+        [
+          {
+            type: 'tool_result',
+            toolUseId: 'p',
+            content: 'Chart',
+            images: [{ mimeType: 'image/png', data }],
+          },
+        ],
+        3
+      ),
+    ];
+    const options = { ...HISTORY_OPTIONS, maxChars: 13_000 };
+    const restored = buildColdStartAgentHistory(history, { ...options, supportsImages: true });
+    expect(restored[0]).toMatchObject({
+      role: 'user',
+      content: [image, { type: 'text', text: 'Compare these' }],
+    });
+    expect(restored[2]).toMatchObject({
+      role: 'toolResult',
+      content: [{ type: 'text', text: 'Chart' }, image],
+    });
+    const textOnly = JSON.stringify(
+      buildColdStartAgentHistory(history, { ...options, supportsImages: false })
+    );
+    expect(textOnly).toContain('Historical image');
+    expect(textOnly).not.toContain(data);
+  });
+
   it('restores tool calls and results through native SDK message roles', () => {
     const history = buildColdStartAgentHistory(
       [

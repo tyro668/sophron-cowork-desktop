@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { AppConfig, ApiTestResult } from '../types';
 import { useApiConfigState } from '../hooks/useApiConfigState';
 import { ApiConfigSetManager, pickApiConfigSetManagerProps } from './ApiConfigSetManager';
+import { LmbpPairing } from './settings/LmbpPairing';
 import { ApiModelSelectorField } from './settings/ApiModelSelectorField';
 import { Button } from './ui/button';
 import { Dialog } from './ui/dialog';
@@ -30,6 +31,7 @@ const PROVIDER_LABELS: Record<
   | 'aliyun'
   | 'zai'
   | 'sophron'
+  | 'lmbp'
   | 'ollama'
   | 'custom:openai'
   | 'custom:anthropic',
@@ -45,6 +47,7 @@ const PROVIDER_LABELS: Record<
   zai: 'Z.AI',
   sophron: 'api.builtinLlmLabel',
   ollama: 'Ollama',
+  lmbp: 'Avora (LMBP)',
   'custom:openai': 'api.openaiCompatibleLabel',
   'custom:anthropic': 'api.anthropicCompatibleLabel',
 };
@@ -163,6 +166,7 @@ export function ConfigModal({
   const providerOptions = VISIBLE_API_PROVIDER_OPTIONS;
   const selectedProviderOption = provider === 'custom' ? `custom:${customProtocol}` : provider;
   const isSophronMode = provider === 'sophron';
+  const isLmbpMode = provider === 'lmbp';
   const isCodexMode = provider === 'openai-codex';
   const showsBaseUrl = provider === 'custom' || provider === 'ollama';
   const baseUrlPlaceholder =
@@ -249,7 +253,15 @@ export function ConfigModal({
             </div>
           </div>
 
-          {!isSophronMode && !isCodexMode && (
+          {isLmbpMode && (
+            <LmbpPairing
+              key={apiConfigState.selectedConfigSetId}
+              selectedModel={model}
+              onModels={apiConfigState.applyLmbpModels}
+            />
+          )}
+
+          {!isSophronMode && !isCodexMode && !isLmbpMode && (
             <div className="ui-form-row">
               <div className="ui-form-label items-center">
                 <span className="flex items-center gap-1.5">
@@ -364,7 +376,7 @@ export function ConfigModal({
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  {(isOllamaMode || isSophronMode || isCodexMode) && (
+                  {(isOllamaMode || isSophronMode || isCodexMode || isLmbpMode) && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -380,7 +392,7 @@ export function ConfigModal({
                       {isRefreshingModels ? t('api.refreshingModels') : t('api.refreshModels')}
                     </Button>
                   )}
-                  {shouldShowOllamaManualModelToggle && (
+                  {!isLmbpMode && shouldShowOllamaManualModelToggle && (
                     <Button
                       variant="ghost"
                       size="sm"

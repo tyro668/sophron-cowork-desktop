@@ -10,5 +10,5 @@
   },
   "include": ["src/main", "src/main/**/*.json", "src/shared/i18n/locales/*.json"],
   "exclude": ["src/main/sandbox/wsl-agent", "src/main/sandbox/lima-agent"],
-  "references": [{ "path": "./tsconfig.shared.json" }]
+  "references": [{ "path": "./tsconfig.shared.json" }, { "path": "./vendor/lmbp" }]
 }

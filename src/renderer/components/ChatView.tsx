@@ -22,6 +22,7 @@ import { useComposerModelSwitcher } from '../hooks/useComposerModelSwitcher';
 import { useSkillMentions } from '../hooks/useSkillMentions';
 import { BUILTIN_LLM_PROVIDER } from '../../shared/builtin-llm';
 import { ChatComposerForm } from './chat/ChatComposerForm';
+import { getAgentModelLabel } from './AgentModelSelector';
 import { ChatHeader } from './chat/ChatHeader';
 import { MessageCard } from './MessageCard';
 import type { ChatScriptMessageInfo } from './message/ChatScriptCards';
@@ -101,7 +102,7 @@ export function ChatView() {
   const pendingCount = pendingTurns.length;
   const isSessionRunning = activeSession?.status === 'running';
   const canStop = isSessionRunning || hasActiveTurn || pendingCount > 0;
-  const modelLabel = appConfig?.model?.trim() || t('chat.noModel');
+  const modelLabel = getAgentModelLabel(appConfig, t('chat.noModel'));
   const hasSelectedModel = Boolean(appConfig?.model?.trim());
   const hasConfiguredModel = Boolean(
     isConfigured && (appConfig?.model?.trim() || appConfig?.provider === BUILTIN_LLM_PROVIDER)
@@ -288,27 +289,22 @@ export function ChatView() {
       });
     }
   }, []);
-  const resendText = useCallback(
-    (text: string) => {
-      if (!activeSessionId || !text.trim()) return;
-      void continueSession(activeSessionId, [{ type: 'text', text: text.trim() }], {});
+  const resendContent = useCallback(
+    (content: ContentBlock[]) => {
+      if (!activeSessionId || !content.length) return;
+      void continueSession(activeSessionId, content, {});
     },
     [activeSessionId, continueSession]
   );
-  const findPreviousUserText = (index: number): string | null => {
+  const findPreviousUserContent = (index: number): ContentBlock[] | undefined => {
     for (let i = index - 1; i >= 0; i -= 1) {
       const candidate = displayedMessages[i];
       if (candidate.role !== 'user') continue;
       const content = candidate.content as unknown;
-      const text = Array.isArray(content)
-        ? (content as ContentBlock[])
-            .filter((block) => block.type === 'text')
-            .map((block) => (block as { text: string }).text)
-            .join('\n')
-        : String(content ?? '');
-      if (text.trim()) return text.trim();
+      if (Array.isArray(content)) return content.length ? content : undefined;
+      const text = String(content ?? '').trim();
+      return text ? [{ type: 'text', text }] : undefined;
     }
-    return null;
   };
 
   // 对话「转成脚本」: packages generated from this conversation (backlink cards). Reloaded when
@@ -387,6 +383,13 @@ export function ChatView() {
         const isPendingReply = typeof message.id === 'string' && message.id.startsWith('partial-');
         const previous = index > 0 ? displayedMessages[index - 1] : null;
         const startsTurn = message.role === 'user' || previous?.role === 'user';
+        const regenerateContent =
+          canActOnMessages &&
+          message.role === 'assistant' &&
+          !isPendingReply &&
+          displayedMessages[index + 1]?.role !== 'assistant'
+            ? findPreviousUserContent(index)
+            : undefined;
         return (
           <div
             key={message.id}
@@ -411,16 +414,8 @@ export function ChatView() {
                   : undefined
               }
               onEdit={canActOnMessages && message.role === 'user' ? editIntoComposer : undefined}
-              onResend={canActOnMessages && message.role === 'user' ? resendText : undefined}
-              onRegenerate={
-                canActOnMessages &&
-                message.role === 'assistant' &&
-                !isPendingReply &&
-                displayedMessages[index + 1]?.role !== 'assistant' &&
-                findPreviousUserText(index)
-                  ? () => resendText(findPreviousUserText(index) ?? '')
-                  : undefined
-              }
+              onResend={canActOnMessages && message.role === 'user' ? resendContent : undefined}
+              onRegenerate={regenerateContent ? () => resendContent(regenerateContent) : undefined}
             />
             {isPendingReply && activeSessionId && activeTurn && (
               <TaskActivity
@@ -442,7 +437,7 @@ export function ChatView() {
       activeSession?.title,
       canActOnMessages,
       editIntoComposer,
-      resendText,
+      resendContent,
       activeSessionId,
       activeTurn,
       partialMessage,

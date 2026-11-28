@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "allowJs": true,
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "../../node_modules/.cache/tsbuild/lmbp",
+    "tsBuildInfoFile": "../../node_modules/.cache/tsbuild/tsconfig.lmbp.tsbuildinfo"
+  },
+  "include": ["src", "schemas/*.json", "vendor"]
+}

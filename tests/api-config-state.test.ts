@@ -30,6 +30,7 @@ describe('api config state helpers', () => {
       'openai-codex',
       'openrouter',
       'ollama',
+      'lmbp',
       'custom:openai',
       'custom:anthropic',
     ]);
@@ -37,6 +38,7 @@ describe('api config state helpers', () => {
   });
 
   it('maps provider/protocol to profile key and back', () => {
+    expect(profileKeyToProvider('lmbp')).toEqual({ provider: 'lmbp', customProtocol: 'anthropic' });
     expect(profileKeyFromProvider('openrouter')).toBe('openrouter');
     expect(profileKeyFromProvider('deepseek')).toBe('deepseek');
     expect(profileKeyFromProvider('moonshot')).toBe('moonshot');
@@ -80,6 +82,19 @@ describe('api config state helpers', () => {
 
     expect(snapshot.activeProfileKey).toBe('deepseek');
     expect(snapshot.profiles.deepseek.model).toBe('deepseek-v4-pro');
+  });
+
+  it('restores an Avora selection before the device reconnects', () => {
+    const model = 'dev_example/work/team/model';
+    const config = { provider: 'lmbp', activeProfileKey: 'lmbp', model } as AppConfig;
+    const snapshot = buildApiConfigSnapshot(config, FALLBACK_PROVIDER_PRESETS);
+    expect(snapshot.profiles.lmbp).toMatchObject({
+      model,
+      apiKey: '',
+      baseUrl: '',
+      useCustomModel: false,
+    });
+    expect(resolveProfileModelOptions('lmbp', [], undefined, false)).toEqual([]);
   });
 
   it('conservatively upgrades legacy localhost ollama config into the ollama profile', () => {

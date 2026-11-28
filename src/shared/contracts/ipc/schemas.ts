@@ -37,6 +37,7 @@ const providerType = z.enum([
   'sophron',
   'gemini',
   'ollama',
+  'lmbp',
 ]);
 const customProtocol = z.enum(['anthropic', 'openai', 'gemini']);
 const channelType = z.enum([
@@ -416,6 +417,14 @@ export const IPC_INPUT_SCHEMAS = {
   'config.updateSet': [z.looseObject({ id: str, updates: appConfigUpdate })],
   'config.selectBuiltinModel': [z.looseObject({ model: str })],
   'config.isConfigured': [],
+  'config.getLmbpStatus': [],
+  'config.approveLmbpPairing': [
+    z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9]{4}[- ]?[a-z0-9]{4}$/i),
+  ],
+  'config.revokeLmbpDevice': [z.string().min(1).max(128)],
   'config.test': [apiTestInput],
   'config.listModels': [z.looseObject({ provider: providerType, apiKey: str, baseUrl: strOpt })],
   'config.diagnose': [diagnosticInput],

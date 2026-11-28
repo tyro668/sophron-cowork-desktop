@@ -19,6 +19,7 @@ import { createScriptPackageAgentRuntimeExtension } from '../automation/script-p
 import { createAutomationAgentRuntimeExtension } from '../automation/tools';
 import { AutomationToolService } from '../automation/tools/service';
 import { configStore } from '../config/config-store';
+import { resumeLmbpGateway, startLmbpGateway } from '../config/lmbp-gateway';
 import { setPermissionRules } from '../config/permission-rules-store';
 import { getPermissionRulesForPolicy } from '../../shared/permission-policies';
 import { createDataAgentRuntimeExtension } from '../data/data-agent-extension';
@@ -85,22 +86,37 @@ export async function bootstrap(): Promise<void> {
       log('[SmokeTest] better-sqlite3: OK');
     } catch (e) {
       log('[SmokeTest] FAIL: better-sqlite3 failed to load:', e);
-      process.exit(1);
+      return app.exit(1);
     }
     try {
       await import('@duckdb/node-api');
       log('[SmokeTest] @duckdb/node-api: OK');
     } catch (e) {
       log('[SmokeTest] FAIL: @duckdb/node-api failed to load:', e);
-      process.exit(1);
+      return app.exit(1);
     }
+    const gatewayDir = fs.mkdtempSync(join(app.getPath('temp'), 'sophron-lmbp-smoke-'));
+    try {
+      const gateway = await startLmbpGateway(gatewayDir);
+      await gateway.close();
+      log('[SmokeTest] LMBP gateway: OK');
+    } catch (error) {
+      log('[SmokeTest] FAIL: LMBP gateway failed to start:', error);
+      process.exitCode = 1;
+    } finally {
+      fs.rmSync(gatewayDir, { recursive: true, force: true });
+    }
+    if (process.exitCode) return app.exit(1);
     log('[SmokeTest] PASSED');
-    process.exit(0);
+    return app.exit(0);
   }
 
   // Apply dev logs setting from config
   const enableDevLogs = configStore.get('enableDevLogs');
   setDevLogsEnabled(enableDevLogs);
+  void resumeLmbpGateway().catch((error) =>
+    logWarn('[LMBP] Could not resume local pairing:', error)
+  );
   setPermissionRules(
     getPermissionRulesForPolicy(configStore.get('permissionPolicy')),
     configStore.get('permissionPolicy')

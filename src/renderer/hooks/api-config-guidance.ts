@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import {
   detectCommonProviderSetup,
   getFallbackOpenAISetup,
+  getProbeMismatchReply,
   isParsableBaseUrl,
   orderCommonProviderSetups,
   resolveProviderGuidanceErrorHint,
@@ -123,7 +124,9 @@ export function computeApiProviderGuidance({
       recommendedProtocol: setupDisplayProtocol(effectiveProviderSetup),
     });
   } else if (hintKind === 'probeMismatchGeneric') {
-    friendlyTestDetails = t('api.guidance.errorHints.probeMismatchGeneric');
+    friendlyTestDetails = t('api.guidance.errorHints.probeMismatchGeneric', {
+      reply: getProbeMismatchReply(testResultDetails),
+    });
   }
 
   return {

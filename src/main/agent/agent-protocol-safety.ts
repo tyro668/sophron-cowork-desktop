@@ -1,5 +1,6 @@
 import type {
   AssistantMessage as PiAssistantMessage,
+  ImageContent as PiImageContent,
   JsonObject,
   Message as PiMessage,
   TextContent as PiTextContent,
@@ -7,13 +8,14 @@ import type {
   ToolResultMessage as PiToolResultMessage,
   UserMessage as PiUserMessage,
 } from '@earendil-works/pi-ai';
+import { estimateTokens } from '@earendil-works/pi-coding-agent';
 import {
   historyUserText,
   renderHistorySummary,
   summarizeHistory,
   type HistorySummaryRepository,
 } from './history-summary';
-import type { ContentBlock, Message } from '../../shared/contracts';
+import type { ContentBlock, ImageContent, Message } from '../../shared/contracts';
 
 const TOOL_PROTOCOL_OPENERS = [
   '<tool_use',
@@ -30,6 +32,8 @@ export interface ColdStartHistoryOptions {
   provider: string;
   model: string;
   maxChars: number;
+  charsPerToken: number;
+  supportsImages: boolean;
   summaries?: HistorySummaryRepository;
   restoredUserIds?: Map<PiMessage, string>;
 }
@@ -196,6 +200,24 @@ export class PseudoToolCallStreamGuard {
   }
 }
 
+export function toPiImageContent(image: ImageContent): PiImageContent {
+  return { type: 'image', mimeType: image.source.media_type, data: image.source.data };
+}
+
+function historyUserContent(
+  blocks: ContentBlock[],
+  supportsImages: boolean
+): PiUserMessage['content'] {
+  if (!supportsImages || !blocks.some((block) => block.type === 'image')) {
+    return blocks.map(historyUserText).filter(Boolean).join('\n');
+  }
+  return blocks.flatMap<PiTextContent | PiImageContent>((block) => {
+    if (block.type === 'image') return [toPiImageContent(block)];
+    const text = historyUserText(block);
+    return text ? [{ type: 'text', text }] : [];
+  });
+}
+
 function convertTurnToPiMessages(turn: Message[], options: ColdStartHistoryOptions): PiMessage[] {
   const resultPositions = new Map<string, number>();
   const toolNames = new Map<string, string>();
@@ -215,11 +237,11 @@ function convertTurnToPiMessages(turn: Message[], options: ColdStartHistoryOptio
   for (let messageIndex = 0; messageIndex < turn.length; messageIndex++) {
     const message = turn[messageIndex];
     if (message.role === 'user') {
-      const text = message.content.map(historyUserText).filter(Boolean).join('\n');
-      if (text) {
+      const content = historyUserContent(message.content, options.supportsImages);
+      if (content.length) {
         const userMessage: PiUserMessage = {
           role: 'user',
-          content: text,
+          content,
           timestamp: message.timestamp,
         };
         options.restoredUserIds?.set(userMessage, message.id);
@@ -292,6 +314,11 @@ function convertTurnToPiMessages(turn: Message[], options: ColdStartHistoryOptio
         isError: Boolean(block.isError),
         timestamp: message.timestamp,
       };
+      if (options.supportsImages && block.images) {
+        for (const image of block.images) {
+          toolResult.content.push({ type: 'image', data: image.data, mimeType: image.mimeType });
+        }
+      }
       converted.push(toolResult);
       emittedToolResults.add(block.toolUseId);
     }
@@ -309,6 +336,23 @@ function groupMessagesByUserTurn(messages: Message[]): Message[][] {
     }
   }
   return turns;
+}
+
+function historyMessageChars(message: PiMessage, charsPerToken: number): number {
+  if (
+    (message.role !== 'user' && message.role !== 'toolResult') ||
+    !Array.isArray(message.content)
+  ) {
+    return JSON.stringify(message).length;
+  }
+  const images = message.content.filter((block) => block.type === 'image');
+  if (!images.length) return JSON.stringify(message).length;
+  // Use the SDK's image token estimate in the same units as the text budget.
+  const text = message.content.filter((block) => block.type !== 'image');
+  const imageTokens = estimateTokens({ ...message, content: images });
+  return (
+    JSON.stringify({ ...message, content: text }).length + Math.ceil(imageTokens * charsPerToken)
+  );
 }
 
 /**
@@ -329,7 +373,10 @@ export function buildColdStartAgentHistory(
   const reserve = Math.min(4000, Math.floor(options.maxChars * 0.45));
   for (let index = turns.length - 1; index >= 0; index--) {
     const converted = convertTurnToPiMessages(turns[index], options);
-    const size = converted.reduce((sum, message) => sum + JSON.stringify(message).length + 1, 0);
+    const size = converted.reduce(
+      (sum, message) => sum + historyMessageChars(message, options.charsPerToken) + 1,
+      0
+    );
     if (used + size - 1 > options.maxChars) break;
     selected.unshift(converted);
     coveredCount -= turns[index].length;
@@ -338,12 +385,14 @@ export function buildColdStartAgentHistory(
   if (!coveredCount) return selected.flat();
 
   // Make room for earlier constraints without splitting a tool call from its result.
-  const recent = selected.flat();
   while (selected.length > 1 && options.maxChars - used < reserve) {
     const oldest = selected.shift()!;
     const originalTurn = turns[turns.length - selected.length - 1];
     coveredCount += originalTurn.length;
-    used -= oldest.reduce((sum, message) => sum + JSON.stringify(message).length + 1, 0);
+    used -= oldest.reduce(
+      (sum, message) => sum + historyMessageChars(message, options.charsPerToken) + 1,
+      0
+    );
   }
   const covered = messages.slice(0, coveredCount);
   const summary =
@@ -362,19 +411,15 @@ export function buildColdStartAgentHistory(
     timestamp: covered[covered.length - 1].timestamp,
   };
   const room = options.maxChars - used - JSON.stringify(neutralSummary).length - 2;
-  if (room < 64 && recent.length) return recent;
+  const tail = selected.flat();
+  if (room < 64 && tail.length) return tail;
   if (room <= 0) return [];
   let text = renderHistorySummary(summary, room);
   neutralSummary.content = [{ type: 'text', text }];
-  const tail = selected.flat();
-  while (text && JSON.stringify([neutralSummary, ...tail]).length > options.maxChars) {
-    text = text.slice(
-      0,
-      Math.max(
-        0,
-        text.length - (JSON.stringify([neutralSummary, ...tail]).length - options.maxChars)
-      )
-    );
+  while (text) {
+    const excess = used + JSON.stringify(neutralSummary).length + 1 - options.maxChars;
+    if (excess <= 0) break;
+    text = text.slice(0, Math.max(0, text.length - excess));
     neutralSummary.content = [{ type: 'text', text }];
   }
   return text ? [neutralSummary, ...tail] : tail;

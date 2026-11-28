@@ -59,7 +59,7 @@ import type {
 } from '../../../shared/contracts';
 import { useAppStore } from '../../store';
 import { GlassSelect } from '../GlassSelect';
-import { getAgentModelLabel } from '../AgentModelSelector';
+import { getAgentModelId } from '../AgentModelSelector';
 import { useLeaveGuard } from '../../utils/leave-guard';
 import { useConfirmDialog } from '../ConfirmDialog';
 import type { RawTableDraft } from '../../features/data/model/types';
@@ -569,7 +569,7 @@ export function RawTableEditorWorkbench({
         rulePrompt,
         selectedSkillNames: customizeSelectedSkillNames,
         modelConfigSetId: selectedCustomizeModelConfigSetId,
-        model: getAgentModelLabel(appConfig, '', selectedCustomizeModelConfigSetId),
+        model: getAgentModelId(appConfig, selectedCustomizeModelConfigSetId),
         primaryLanguage: normalizerLanguage,
         progressId,
         secrets: reviewed.secrets,
@@ -1075,7 +1075,7 @@ export function RawTableEditorWorkbench({
             rulePrompt: processing.rulePrompt.trim() || baseRecord.rulePrompt,
             selectedSkillNames: customizeSelectedSkillNames,
             modelConfigSetId: selectedCustomizeModelConfigSetId,
-            model: getAgentModelLabel(appConfig, '', selectedCustomizeModelConfigSetId),
+            model: getAgentModelId(appConfig, selectedCustomizeModelConfigSetId),
             primaryLanguage: normalizerLanguage,
             progressId,
             fix: {
@@ -1809,11 +1809,12 @@ export function RawTableEditorWorkbench({
                     <RawTableGenerationConsole
                       isStreaming={customizeGenerating || fixing}
                       log={generationLog}
-                      modelLabel={getAgentModelLabel(
-                        appConfig,
-                        t('chat.noModel'),
-                        selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId ?? ''
-                      )}
+                      modelLabel={
+                        getAgentModelId(
+                          appConfig,
+                          selectedCustomizeModelConfigSetId ?? appConfig?.activeConfigSetId
+                        ) || t('chat.noModel')
+                      }
                       t={t}
                     />
                   ) : null}

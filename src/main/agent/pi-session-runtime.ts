@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export interface PiSessionRuntimeSignatureInput {
+  modelCapabilities?: string[];
   configProvider?: string;
   customProtocol?: string;
   modelProvider?: string;
@@ -24,6 +25,7 @@ function fingerprintSecret(value: string | undefined): string {
 
 export function buildPiSessionRuntimeSignature(input: PiSessionRuntimeSignatureInput): string {
   return JSON.stringify({
+    modelCapabilities: input.modelCapabilities?.slice().sort(),
     configProvider: normalizeText(input.configProvider),
     customProtocol: normalizeText(input.customProtocol),
     modelProvider: normalizeText(input.modelProvider),
